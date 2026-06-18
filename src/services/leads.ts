@@ -15,9 +15,11 @@ import { isProfileComplete, missingRequiredFields } from "./personalization.ts";
 import { getProfile } from "./personalization.ts";
 
 export class ProfileIncompleteError extends Error {
-  constructor(public readonly missing: string[]) {
+  readonly missing: string[];
+  constructor(missing: string[]) {
     super(`product profile incomplete: ${missing.join(", ")}`);
     this.name = "ProfileIncompleteError";
+    this.missing = missing;
   }
 }
 

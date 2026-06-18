@@ -19,9 +19,11 @@ export interface ProfileInput {
 }
 
 export class ProfileValidationError extends Error {
-  constructor(public readonly missing: string[]) {
+  readonly missing: string[];
+  constructor(missing: string[]) {
     super(`product profile missing required fields: ${missing.join(", ")}`);
     this.name = "ProfileValidationError";
+    this.missing = missing;
   }
 }
 
