@@ -28,7 +28,7 @@ import { runResearch } from "../agents/research.ts";
 import { buildSite } from "../agents/builder.ts";
 import { publishSite } from "../providers/storage.ts";
 import { AgentRefusalError } from "../providers/anthropic.ts";
-import { validateResearch, type ResearchObject } from "../domain/research.ts";
+import { validateResearch, ResearchSchemaError, type ResearchObject } from "../domain/research.ts";
 import type { Job, JobStatus } from "../domain/entities.ts";
 
 // A permanent failure moves the job straight to failed; a transient one leaves
@@ -139,18 +139,18 @@ async function researchStage(job: Job, log: TickLogger): Promise<string | null> 
       onStep: (s) => log("research step", { jobId: job.id, phase: s.phase, detail: s.detail }),
     });
   } catch (err) {
-    if (err instanceof AgentRefusalError) throw err; // permanent
-    const msg = (err as Error).message;
-    // A schema-invalid result is permanent: a retry repeats it. Everything else
-    // (timeout, rate limit, network) is transient and retried via the lease.
-    if (msg.includes("research.") || msg.toLowerCase().includes("schema")) {
-      throw new PermanentStageError(`research validation failed: ${msg}`);
+    // A refusal or a schema-invalid result is permanent: a retry repeats it.
+    // Everything else (timeout, rate limit, network) is transient and retried
+    // via the lease. runResearch validates before returning, so a schema error
+    // surfaces here as a typed ResearchSchemaError, classified on instanceof.
+    if (err instanceof AgentRefusalError) throw err;
+    if (err instanceof ResearchSchemaError) {
+      throw new PermanentStageError(`research validation failed: ${err.message}`);
     }
     throw err; // transient
   }
 
-  const validated = validateResearch(research);
-  const row = await insertResearch({ job_id: job.id, org_id: job.org_id, payload: validated });
+  const row = await insertResearch({ job_id: job.id, org_id: job.org_id, payload: research });
 
   const updated = await updateJob(job.id, job.status, {
     status: "building",

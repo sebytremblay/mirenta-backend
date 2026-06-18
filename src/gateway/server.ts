@@ -75,10 +75,12 @@ async function resolveContext(req: IncomingMessage): Promise<Ctx> {
     return { orgId };
   }
 
-  // Dev fallback: an explicit org header, allowed only when not in production.
+  // Dev fallback: an explicit org header, fail-closed behind an opt-in flag that
+  // defaults off and never activates in production (config.gateway.allowDevOrgHeader).
   // Lets the pipeline run end to end before the frontend wires Supabase Auth.
+  // The absence of a variable must never be what enables a tenant override.
   const devOrg = req.headers["x-mirenta-org"];
-  if (typeof devOrg === "string" && devOrg && process.env.NODE_ENV !== "production") {
+  if (config.gateway.allowDevOrgHeader && typeof devOrg === "string" && devOrg) {
     return { orgId: devOrg };
   }
 

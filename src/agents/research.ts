@@ -10,7 +10,6 @@
 import { runAgentLoop } from "../providers/anthropic.ts";
 import type { LoopTool } from "../providers/anthropic.ts";
 import { exaSearch, exaFetchContents } from "../providers/exa.ts";
-import type { ExaResult } from "../providers/exa.ts";
 import {
   validateResearch,
   RESEARCH_TOOL_SCHEMA,

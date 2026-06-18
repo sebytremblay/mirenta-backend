@@ -321,9 +321,10 @@ function assembleHtml(
   // seller-supplied brand.logo_url when present; otherwise fall back to a clean
   // text wordmark rather than guessing an asset path that will not resolve. The
   // favicon points at the prospect's own site root, which most sites serve.
-  const faviconLink = lead.website_url
-    ? `<link rel="icon" href="${escapeHtml(stripTrailingSlash(lead.website_url))}/favicon.ico">`
-    : "";
+  const faviconLink =
+    lead.website_url && /^https?:\/\//.test(lead.website_url)
+      ? `<link rel="icon" href="${escapeHtml(stripTrailingSlash(lead.website_url))}/favicon.ico">`
+      : "";
   const logoUrl = profile.brand?.logo_url;
   const logoMarkup =
     typeof logoUrl === "string" && /^https?:\/\//.test(logoUrl)

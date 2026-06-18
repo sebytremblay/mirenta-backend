@@ -95,7 +95,16 @@ export interface Config {
   };
   readonly gateway: {
     readonly port: number;
+    // Fail-closed dev escape hatch: honor the x-mirenta-org header only when this
+    // flag is explicitly on AND the environment is non-production.
+    readonly allowDevOrgHeader: boolean;
   };
+}
+
+function boolOptional(key: string, fallback: boolean): boolean {
+  const value = process.env[key];
+  if (value === undefined || value === "") return fallback;
+  return value === "true" || value === "1";
 }
 
 // The S3 website endpoint follows the region-specific S3 static-hosting form.
@@ -118,9 +127,10 @@ export const config: Config = Object.freeze({
     apiKey: required("ANTHROPIC_API_KEY"),
     baseUrl: process.env.ANTHROPIC_BASE_URL || undefined,
     // Models pin to the dated Haiku id for the build (D47). The Salesforce
-    // gateway rejects the undated alias; see mirenta-managed-agents-unreachable.
-    researchModel: optional("ANTHROPIC_RESEARCH_MODEL", "claude-haiku-4-5"),
-    builderModel: optional("ANTHROPIC_BUILDER_MODEL", "claude-haiku-4-5"),
+    // gateway rejects the undated alias, so the fallback carries the dated id
+    // too; see mirenta-managed-agents-unreachable.
+    researchModel: optional("ANTHROPIC_RESEARCH_MODEL", "claude-haiku-4-5-20251001"),
+    builderModel: optional("ANTHROPIC_BUILDER_MODEL", "claude-haiku-4-5-20251001"),
     apiMode: optional("ANTHROPIC_API_MODE", "realtime"),
   },
   exa: {
@@ -141,7 +151,11 @@ export const config: Config = Object.freeze({
   worker: {
     maxJobAttempts: intOptional("MAX_JOB_ATTEMPTS", 5),
     claimBatchSize: intOptional("WORKER_CLAIM_BATCH_SIZE", 10),
-    leaseSeconds: intOptional("WORKER_LEASE_SECONDS", 300),
+    // The in-process agent loop (D45) makes a stage long-running, unlike the
+    // start/poll/collect model the 300s default was sized for. Set the lease
+    // above the worst-case two-stage runtime so a second tick never re-claims a
+    // job mid-run and pays for the agent loop twice.
+    leaseSeconds: intOptional("WORKER_LEASE_SECONDS", 900),
     pollIntervalMs: intOptional("WORKER_POLL_INTERVAL_MS", 5000),
   },
   agents: {
@@ -154,5 +168,8 @@ export const config: Config = Object.freeze({
   },
   gateway: {
     port: intOptional("PORT", 8080),
+    allowDevOrgHeader:
+      boolOptional("MIRENTA_ALLOW_DEV_ORG_HEADER", false) &&
+      process.env.NODE_ENV !== "production",
   },
 });

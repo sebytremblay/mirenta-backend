@@ -140,21 +140,6 @@ export async function getJob(orgId: string, jobId: string): Promise<Job | null> 
   return res.data as Job | null;
 }
 
-// Find an in-flight job for a lead, used by the submission-time dedupe (D34).
-export async function findActiveJobForLead(orgId: string, leadId: string): Promise<Job | null> {
-  const res = await db()
-    .from("jobs")
-    .select("*")
-    .eq("org_id", orgId)
-    .eq("lead_id", leadId)
-    .in("status", ["pending", "researching", "building", "publishing", "done"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (res.error) throw new Error(`findActiveJobForLead: ${res.error.message}`);
-  return res.data as Job | null;
-}
-
 // Submission-time dedupe (D34): the most recent active or done job belonging to
 // any lead in this org that carries the given email. Joins jobs to leads so a
 // double-submit of the same email reuses the existing job rather than spending

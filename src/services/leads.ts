@@ -10,7 +10,7 @@ import {
   getLead,
   insertLead,
 } from "../db/client.ts";
-import type { Job, JobStatus, LeadInput } from "../domain/entities.ts";
+import type { JobStatus, LeadInput } from "../domain/entities.ts";
 import { isProfileComplete, missingRequiredFields } from "./personalization.ts";
 import { getProfile } from "./personalization.ts";
 
@@ -72,6 +72,20 @@ export async function submit(orgId: string, req: SubmitRequest): Promise<SubmitR
   const map: Record<string, string> = {};
 
   for (const input of leads) {
+    // Submission-time dedupe on (org_id, email): if this email already has an
+    // active or completed job, reuse that job and its existing lead rather than
+    // spending twice (D34). Check before inserting so a dedupe hit creates no
+    // orphan lead row; the map keys the existing lead to its existing job, so
+    // the client polls a real job. A lead with no email always gets a fresh job
+    // (nothing to dedupe on).
+    if (isNonEmpty(input.email)) {
+      const existing = await findActiveJobByEmail(orgId, input.email);
+      if (existing) {
+        map[existing.lead_id] = existing.id;
+        continue;
+      }
+    }
+
     const lead = await insertLead({
       org_id: orgId,
       batch_id: batch.id,
@@ -83,18 +97,7 @@ export async function submit(orgId: string, req: SubmitRequest): Promise<SubmitR
       email: input.email ?? null,
       custom_fields: input.custom_fields ?? null,
     });
-
-    // Submission-time dedupe on (org_id, email): if this email already has an
-    // active or completed job, reuse it rather than spending twice (D34). A lead
-    // with no email always gets a fresh job (nothing to dedupe on). The dedupe
-    // checks jobs created before this lead row, so the fresh insert never matches
-    // itself (it has no job yet). Map the new lead to the reused job id.
-    let job: Job | null = null;
-    if (isNonEmpty(input.email)) {
-      job = await findActiveJobByEmail(orgId, input.email);
-    }
-    if (!job) job = await createJob({ org_id: orgId, lead_id: lead.id, batch_id: batch.id });
-
+    const job = await createJob({ org_id: orgId, lead_id: lead.id, batch_id: batch.id });
     map[lead.id] = job.id;
   }
 

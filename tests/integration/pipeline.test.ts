@@ -72,7 +72,7 @@ test("guarded transition advances only from the expected status", async () => {
   assert.equal((await getJob(orgId, job.id))!.status, "researching");
 });
 
-test("submission-time dedupe reuses a job for the same email", async () => {
+test("submission-time dedupe reuses a job for the same email without orphaning a lead", async () => {
   const email = `dupe-${Date.now()}@plexus.com`;
   const first = await submit(orgId, {
     leads: [{ first_name: "E", last_name: "F", company: "Plexus", email }],
@@ -80,9 +80,15 @@ test("submission-time dedupe reuses a job for the same email", async () => {
   const second = await submit(orgId, {
     leads: [{ first_name: "E", last_name: "F", company: "Plexus", email }],
   });
-  const firstJob = Object.values(first.map)[0];
-  const secondJob = Object.values(second.map)[0];
+  const [firstLead, firstJob] = Object.entries(first.map)[0]!;
+  const [secondLead, secondJob] = Object.entries(second.map)[0]!;
   assert.equal(secondJob, firstJob, "the second submit reuses the first job (D34)");
+  // The dedupe maps back to the original lead, not a fresh orphan row.
+  assert.equal(secondLead, firstLead, "dedupe maps the existing lead, no orphan");
+
+  // The second submit created no extra lead row for this email.
+  const leads = await db().from("leads").select("id").eq("org_id", orgId).eq("email", email);
+  assert.equal(leads.data!.length, 1, "exactly one lead row exists for the deduped email");
 });
 
 test("regenerate forces a fresh job bypassing dedupe", async () => {

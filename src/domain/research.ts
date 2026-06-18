@@ -133,14 +133,34 @@ export const RESEARCH_TOOL_SCHEMA = {
   required: ["vertical", "account", "executives", "quotes", "extension"],
 } as const;
 
+// Thrown when a research payload fails structural validation. The worker treats
+// this as a permanent failure (a retry repeats the same malformed output), so it
+// classifies on instanceof rather than matching error-message text.
+export class ResearchSchemaError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ResearchSchemaError";
+  }
+}
+
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((v) => typeof v === "string");
 }
 
 // Structural validation in code. The research stage rejects a malformed object
 // rather than persisting it (D36 keeps no quality bar, but a schema-valid object
-// is still required before Build). Returns the normalized object or throws.
+// is still required before Build). Returns the normalized object or throws a
+// ResearchSchemaError, which the worker classifies as a permanent failure.
 export function validateResearch(raw: unknown): ResearchObject {
+  try {
+    return validateResearchInner(raw);
+  } catch (err) {
+    if (err instanceof ResearchSchemaError) throw err;
+    throw new ResearchSchemaError((err as Error).message);
+  }
+}
+
+function validateResearchInner(raw: unknown): ResearchObject {
   if (typeof raw !== "object" || raw === null) {
     throw new Error("research payload is not an object");
   }
