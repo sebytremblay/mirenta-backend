@@ -1,0 +1,112 @@
+// Smoke test for the research agent: run a real lead through the full loop
+// and verify the output shape. This makes real Anthropic API and Exa calls
+// (a few cents per run), so it is a live integration test, not a unit test.
+//
+// Run: timeout 240 node scripts/smoke-research.ts
+
+import { runResearch } from "../src/agents/research.ts";
+import { MVP_VERTICAL } from "../src/domain/research.ts";
+
+const lead = {
+  first_name: "Jordan",
+  last_name: "Avery",
+  role: "VP of IT",
+  company: "Plexus Corp",
+  website_url: "https://www.plexus.com",
+};
+
+const profile = {
+  company_name: "Salesforce",
+  product_name: "Agentforce for IT Service and HR Service",
+  value_prop:
+    "AI agents that deflect IT and HR support volume across the enterprise",
+};
+
+console.log(`Starting research for ${lead.company}...`);
+console.log();
+
+try {
+  const result = await runResearch({
+    lead,
+    profile,
+    onStep: (s) => console.log(`  [${s.phase}] ${s.detail}`),
+  });
+
+  console.log();
+  console.log("=== RESEARCH RESULT ===");
+  console.log();
+  console.log(`Vertical: ${result.vertical}`);
+  console.log(`Account summary: ${result.account.summary.slice(0, 100)}...`);
+  console.log(`Recent moves: ${result.account.recent_moves.length} items`);
+  console.log(
+    `Self-description: ${result.account.self_description_language.slice(0, 80)}...`,
+  );
+  console.log();
+  console.log(`Executives: ${result.executives.length}`);
+  for (const exec of result.executives) {
+    console.log(`  - ${exec.name}, ${exec.title}`);
+  }
+  console.log();
+  console.log(`Quotes: ${result.quotes.length}`);
+  for (const quote of result.quotes) {
+    console.log(
+      `  - "${quote.text.slice(0, 60)}..." (${quote.speaker}, verified: ${quote.verified})`,
+    );
+  }
+  console.log();
+  console.log(`Domains: ${result.extension.domains.join(", ")}`);
+  console.log(`Priorities: ${result.extension.priorities.length}`);
+  for (const pri of result.extension.priorities) {
+    console.log(`  - ${pri.domain}: ${pri.pov.slice(0, 60)}...`);
+  }
+  console.log();
+  console.log(
+    `ROI inputs: ${result.extension.roi_inputs.total_employees} employees`,
+  );
+  console.log(`  IT staff: ${result.extension.roi_inputs.it_staff}`);
+  console.log(`  HR staff: ${result.extension.roi_inputs.hr_staff}`);
+  console.log(`  Estimated: ${result.extension.roi_inputs.estimated}`);
+  console.log();
+
+  // Assertions
+  const checks = [
+    {
+      name: "has at least one executive",
+      pass: result.executives.length >= 1,
+    },
+    {
+      name: "total_employees > 0",
+      pass: result.extension.roi_inputs.total_employees > 0,
+    },
+    { name: "vertical is MVP_VERTICAL", pass: result.vertical === MVP_VERTICAL },
+    {
+      name: "has account summary",
+      pass: result.account.summary.length > 0,
+    },
+  ];
+
+  console.log("=== CHECKS ===");
+  let allPass = true;
+  for (const check of checks) {
+    console.log(`  ${check.pass ? "✓" : "✗"} ${check.name}`);
+    if (!check.pass) allPass = false;
+  }
+  console.log();
+
+  if (allPass) {
+    console.log("SMOKE RESEARCH: PASS");
+  } else {
+    console.log("SMOKE RESEARCH: FAIL (assertion failed)");
+    process.exitCode = 1;
+  }
+} catch (e) {
+  console.error();
+  console.error("SMOKE RESEARCH: FAIL");
+  console.error(
+    `  ${(e as Error).constructor.name}: ${(e as Error).message}`,
+  );
+  if ((e as Error).stack) {
+    console.error((e as Error).stack);
+  }
+  process.exitCode = 1;
+}

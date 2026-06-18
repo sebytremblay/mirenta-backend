@@ -88,6 +88,11 @@ export interface Config {
     readonly leaseSeconds: number;
     readonly pollIntervalMs: number;
   };
+  readonly agents: {
+    readonly researchMaxTurns: number;
+    readonly researchMaxTokens: number;
+    readonly builderMaxTokens: number;
+  };
   readonly gateway: {
     readonly port: number;
   };
@@ -138,6 +143,14 @@ export const config: Config = Object.freeze({
     claimBatchSize: intOptional("WORKER_CLAIM_BATCH_SIZE", 10),
     leaseSeconds: intOptional("WORKER_LEASE_SECONDS", 300),
     pollIntervalMs: intOptional("WORKER_POLL_INTERVAL_MS", 5000),
+  },
+  agents: {
+    // The Plexus sample lead runs ~21 turns (research-agent-design.md), so the
+    // ceiling sits above that to avoid forcing emit_research before the loop
+    // finishes its phases and dropping fields.
+    researchMaxTurns: intOptional("RESEARCH_MAX_TURNS", 28),
+    researchMaxTokens: intOptional("RESEARCH_MAX_TOKENS", 8000),
+    builderMaxTokens: intOptional("BUILDER_MAX_TOKENS", 8000),
   },
   gateway: {
     port: intOptional("PORT", 8080),

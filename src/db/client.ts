@@ -155,6 +155,27 @@ export async function findActiveJobForLead(orgId: string, leadId: string): Promi
   return res.data as Job | null;
 }
 
+// Submission-time dedupe (D34): the most recent active or done job belonging to
+// any lead in this org that carries the given email. Joins jobs to leads so a
+// double-submit of the same email reuses the existing job rather than spending
+// twice. Returns null when no such job exists.
+export async function findActiveJobByEmail(orgId: string, email: string): Promise<Job | null> {
+  const res = await db()
+    .from("jobs")
+    .select("*, leads!inner(email)")
+    .eq("org_id", orgId)
+    .eq("leads.email", email)
+    .in("status", ["pending", "researching", "building", "publishing", "done"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (res.error) throw new Error(`findActiveJobByEmail: ${res.error.message}`);
+  if (!res.data) return null;
+  // Strip the joined leads column the embed adds; callers want a plain Job.
+  const { leads: _embedded, ...job } = res.data as Job & { leads?: unknown };
+  return job as Job;
+}
+
 // Claim due jobs atomically through the SECURITY DEFINER RPC (0002_claim_jobs).
 export async function claimJobs(batchSize: number, leaseSeconds: number): Promise<Job[]> {
   const res = await db().rpc("claim_jobs", {
