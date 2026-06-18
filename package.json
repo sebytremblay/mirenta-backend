@@ -10,8 +10,8 @@
   "packageManager": "pnpm@11.5.1",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test --test-concurrency=1 tests/",
-    "test:unit": "node --test tests/unit/",
+    "test": "node --test 'tests/unit/*.test.ts'",
+    "test:integration": "node --test --test-concurrency=1 'tests/integration/*.test.ts'",
     "smoke:db": "node scripts/smoke-db.ts",
     "gateway": "node src/gateway/server.ts",
     "worker": "node src/worker/run.ts",
