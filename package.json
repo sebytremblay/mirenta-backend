@@ -9,12 +9,18 @@
   },
   "packageManager": "pnpm@11.5.1",
   "scripts": {
-    "preflight": "node scripts/preflight.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --test-concurrency=1 tests/",
+    "test:unit": "node --test tests/unit/",
+    "smoke:db": "node scripts/smoke-db.ts",
+    "gateway": "node src/gateway/server.ts",
+    "worker": "node src/worker/run.ts",
+    "pipeline": "node scripts/run-pipeline.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",
-    "@aws-sdk/client-s3": "^3.717.0"
+    "@aws-sdk/client-s3": "^3.717.0",
+    "@supabase/supabase-js": "^2.108.2"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
