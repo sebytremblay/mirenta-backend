@@ -97,8 +97,6 @@ export interface Config {
     readonly pollIntervalMs: number;
   };
   readonly agents: {
-    readonly researchMaxTurns: number;
-    readonly researchMaxTokens: number;
     readonly builderMaxTokens: number;
   };
   readonly gateway: {
@@ -143,8 +141,13 @@ export const config: Config = Object.freeze({
     // polluting shell does not set it. See D50 and [[mirenta-managed-agents-reachable]].
     baseUrl: optional("MIRENTA_ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
     // Models pin to the dated Haiku id for the build (D47), set by the founder
-    // to avoid burning tokens before the system proves out end to end. Restoring
-    // the D35 Sonnet/Opus tiers is a config change, not a code change.
+    // to avoid burning tokens before the system proves out end to end.
+    // researchModel bakes onto the PERSISTENT Managed Agents agent at
+    // provisioning time, so changing it here requires re-running
+    // scripts/provision-managed-agents.ts to take effect; the live agent keeps
+    // its old model until then. builderModel reads at runtime, so it takes
+    // effect on the next build. Restoring the D35 tiers is config plus a
+    // re-provision for research, config alone for the builder.
     researchModel: optional("ANTHROPIC_RESEARCH_MODEL", "claude-haiku-4-5-20251001"),
     builderModel: optional("ANTHROPIC_BUILDER_MODEL", "claude-haiku-4-5-20251001"),
     apiMode: optional("ANTHROPIC_API_MODE", "realtime"),
@@ -173,19 +176,15 @@ export const config: Config = Object.freeze({
   worker: {
     maxJobAttempts: intOptional("MAX_JOB_ATTEMPTS", 5),
     claimBatchSize: intOptional("WORKER_CLAIM_BATCH_SIZE", 10),
-    // The in-process agent loop (D45) makes a stage long-running, unlike the
-    // start/poll/collect model the 300s default was sized for. Set the lease
-    // above the worst-case two-stage runtime so a second tick never re-claims a
-    // job mid-run and pays for the agent loop twice.
+    // The worker holds the research Managed Agents session open synchronously
+    // within a tick (D50), so the lease must exceed the worst-case research plus
+    // build runtime. Set it well above the research timeout
+    // (leaseSeconds-60 in research.ts) so a second tick never re-claims a job
+    // mid-run and starts a duplicate session.
     leaseSeconds: intOptional("WORKER_LEASE_SECONDS", 900),
     pollIntervalMs: intOptional("WORKER_POLL_INTERVAL_MS", 5000),
   },
   agents: {
-    // The Plexus sample lead runs ~21 turns (research-agent-design.md), so the
-    // ceiling sits above that to avoid forcing emit_research before the loop
-    // finishes its phases and dropping fields.
-    researchMaxTurns: intOptional("RESEARCH_MAX_TURNS", 28),
-    researchMaxTokens: intOptional("RESEARCH_MAX_TOKENS", 8000),
     builderMaxTokens: intOptional("BUILDER_MAX_TOKENS", 8000),
   },
   gateway: {

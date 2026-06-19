@@ -1,6 +1,11 @@
-// Exa search and content fetch behind a thin abstraction (D6). The agent loop
-// calls these from inside its tools. The abstraction keeps the built-in web
-// tools available as a later fallback without rewriting the loop.
+// Exa search and content fetch behind a thin abstraction (D6).
+//
+// Under D50 the Research Agent reaches Exa through its HOSTED MCP server
+// server-side, so nothing in the live path imports this module today. It stays
+// as the seam for the D37-strict fallback: if prompt-level quote verification
+// proves insufficient, the worker can register Exa as a custom client-side tool
+// and run these calls host-side, restoring the code-enforced VERIFICATION_FAILED
+// signal. Kept deliberately rather than deleted; see D50's notable rationale.
 
 import { config } from "../config/env.ts";
 

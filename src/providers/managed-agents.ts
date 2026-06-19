@@ -13,6 +13,11 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config/env.ts";
+import { AgentRefusalError } from "./anthropic.ts";
+
+// Re-export so the research path and the builder path share one refusal type.
+// Both mean the same thing to the worker: a refusal is a permanent failure.
+export { AgentRefusalError };
 
 let client: Anthropic | null = null;
 
@@ -32,14 +37,31 @@ export function managedAgentsClient(): Anthropic {
   return client;
 }
 
-// Thrown when the agent refuses the request. Permanent: a retry repeats it.
-export class AgentRefusalError extends Error {}
 // Thrown when the session terminates or stalls without emitting a result.
+// Transient: the worker retries via the lease.
 export class AgentSessionError extends Error {}
 
 export interface ManagedSessionStep {
   kind: "text" | "search" | "final" | "error" | "status";
   detail: string;
+}
+
+// How the drain loop reacts to a session.status_idle event. Pure so the
+// branch logic (the load-bearing transient/permanent split) is unit-testable
+// without a live session.
+//   "return"   -> the result is in hand; finish the run
+//   "refusal"  -> the agent refused; permanent failure
+//   "wait"     -> the session parks on us with no result yet; keep draining
+//   "error"    -> terminal idle with no result; transient session failure
+export type IdleAction = "return" | "refusal" | "wait" | "error";
+
+export function classifyIdle(stop: string | undefined, hasResult: boolean): IdleAction {
+  if (stop === "refusal") return "refusal";
+  if (hasResult) return "return";
+  // No result yet. requires_action means the session waits on a client event,
+  // so keep draining; any other terminal idle (end_turn, retries_exhausted)
+  // ended the turn without emitting the final tool, which is a session failure.
+  return stop === "requires_action" ? "wait" : "error";
 }
 
 export interface RunManagedSessionOptions {
@@ -49,7 +71,7 @@ export interface RunManagedSessionOptions {
   // The custom tool whose input carries the structured result and ends the run.
   finalToolName: string;
   // Hard wall-clock ceiling. The SSE iterator blocks when no events arrive, so a
-  // stuck session must be abortable. Defaults to the worker lease minus a margin.
+  // stuck session needs an abort. Defaults to the worker lease minus a margin.
   timeoutMs?: number;
   onStep?: (step: ManagedSessionStep) => void;
 }
@@ -76,12 +98,20 @@ export async function runManagedSession(
     title: "mirenta research",
   });
 
-  // Hard guard: abort the stream if the session stalls. The async iterator would
-  // otherwise block forever when the session goes idle waiting on nothing.
+  // Hard guard: abort the stream if the session stalls. The async iterator
+  // blocks when no events arrive, so a stuck session needs a wall-clock ceiling.
+  // The SDK swallows the abort and ends the iterator cleanly (it does not throw),
+  // so track the timeout with a flag and report it after the loop ends.
   const ac = new AbortController();
   const timeoutMs = opts.timeoutMs ?? 600_000;
-  const guard = setTimeout(() => ac.abort(), timeoutMs);
+  let timedOut = false;
+  const guard = setTimeout(() => {
+    timedOut = true;
+    ac.abort();
+  }, timeoutMs);
 
+  let cleanExit = false;
+  let result: Record<string, unknown> | null = null;
   try {
     // Stream-first, then kick off, so no early events are missed (Pattern 7).
     const stream = await c.beta.sessions.events.stream(session.id, undefined, {
@@ -90,8 +120,6 @@ export async function runManagedSession(
     await c.beta.sessions.events.send(session.id, {
       events: [{ type: "user.message", content: [{ type: "text", text: opts.kickoff }] }],
     });
-
-    let result: Record<string, unknown> | null = null;
 
     for await (const event of stream) {
       switch (event.type) {
@@ -104,21 +132,23 @@ export async function runManagedSession(
           opts.onStep?.({ kind: "search", detail: nameOf(event) });
           break;
         case "agent.custom_tool_use": {
+          // Harvest the final tool's input as the result. Acknowledge every
+          // custom tool so the session never parks waiting on us: an unexpected
+          // tool gets a result and the loop keeps draining rather than stalling
+          // to the timeout. Only the final tool sets the return value.
           if (nameOf(event) === opts.finalToolName) {
-            // Harvest the structured object. Acknowledge so the session can
-            // finish cleanly rather than parking on us.
             result = (event as { input?: Record<string, unknown> }).input ?? {};
             opts.onStep?.({ kind: "final", detail: opts.finalToolName });
-            await c.beta.sessions.events.send(session.id, {
-              events: [
-                {
-                  type: "user.custom_tool_result",
-                  custom_tool_use_id: (event as { id: string }).id,
-                  content: [{ type: "text", text: "Recorded." }],
-                },
-              ],
-            });
           }
+          await c.beta.sessions.events.send(session.id, {
+            events: [
+              {
+                type: "user.custom_tool_result",
+                custom_tool_use_id: (event as { id: string }).id,
+                content: [{ type: "text", text: "Recorded." }],
+              },
+            ],
+          });
           break;
         }
         case "session.error":
@@ -127,43 +157,51 @@ export async function runManagedSession(
         case "session.status_idle": {
           const stop = (event as { stop_reason?: { type?: string } }).stop_reason?.type;
           opts.onStep?.({ kind: "status", detail: `idle:${stop ?? "?"}` });
-          if (stop === "refusal") {
+          const action = classifyIdle(stop, result !== null);
+          if (action === "refusal") {
             throw new AgentRefusalError("agent refused the research request");
           }
-          // requires_action means the session waits on us. If we already have the
-          // result we acknowledged it above and can stop; otherwise keep draining
-          // (a confirmation we do not expect would surface as a stall the guard
-          // catches). Any other terminal idle ends the run.
-          if (stop === "requires_action") {
-            if (result) return result;
-            break;
+          if (action === "return") {
+            cleanExit = true;
+            return result as Record<string, unknown>;
           }
-          // end_turn or retries_exhausted: terminal.
-          if (result) return result;
+          if (action === "wait") break; // session waits on a client event; keep draining
+          // "error": terminal idle (end_turn, retries_exhausted) with no result.
           throw new AgentSessionError(`session idle (${stop}) without emitting ${opts.finalToolName}`);
         }
         case "session.status_terminated":
           opts.onStep?.({ kind: "status", detail: "terminated" });
-          if (result) return result;
+          if (result) {
+            cleanExit = true;
+            return result;
+          }
           throw new AgentSessionError("session terminated without emitting a result");
       }
     }
 
-    if (result) return result;
-    throw new AgentSessionError("event stream ended without a result");
-  } catch (err) {
-    if ((err as Error).name === "AbortError") {
-      throw new AgentSessionError(`research session exceeded ${timeoutMs}ms`);
+    // The iterator ended without a terminal idle. A fired guard means the
+    // wall-clock ceiling aborted it; otherwise the stream closed on its own.
+    if (timedOut) throw new AgentSessionError(`research session exceeded ${timeoutMs}ms`);
+    if (result) {
+      cleanExit = true;
+      return result;
     }
-    throw err;
+    throw new AgentSessionError("event stream ended without a result");
   } finally {
     clearTimeout(guard);
-    // Best-effort cleanup. A leaked session is harmless but untidy; never let a
-    // cleanup error mask the real outcome.
+    // Best-effort cleanup. A still-running session rejects delete (400), so
+    // interrupt it first on any non-clean exit (timeout, stall, error). Never
+    // let a cleanup failure mask the real outcome, but surface it so a leaked
+    // session is observable rather than silent.
     try {
+      if (!cleanExit) {
+        await c.beta.sessions.events
+          .send(session.id, { events: [{ type: "user.interrupt" }] })
+          .catch(() => {});
+      }
       await c.beta.sessions.delete(session.id);
-    } catch {
-      // ignore
+    } catch (err) {
+      opts.onStep?.({ kind: "error", detail: `session cleanup failed: ${(err as Error).message}` });
     }
   }
 }

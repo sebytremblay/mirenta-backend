@@ -8,10 +8,18 @@
 //   ANTHROPIC_RESEARCH_AGENT_ID  — the persistent research agent definition
 //   ANTHROPIC_EXA_VAULT_ID       — the vault holding the Exa MCP credential
 //
-// It is idempotent at the resource level: pass an existing agent id via
-// ANTHROPIC_RESEARCH_AGENT_ID to update that agent in place (a new version)
-// rather than creating a duplicate. Environments and vaults are created fresh
-// only when their ids are absent.
+// Re-run this whenever the agent definition changes, including the research
+// model: ANTHROPIC_RESEARCH_MODEL bakes onto the persistent agent here, so a
+// change to that env var has no effect until this script re-provisions the
+// agent. The builder model (ANTHROPIC_BUILDER_MODEL) reads at runtime and needs
+// no re-provision.
+//
+// Idempotency: pass the existing ids back through .env to reuse and update them.
+// With ANTHROPIC_RESEARCH_AGENT_ID set, the agent updates in place (a new
+// version) rather than duplicating. With ANTHROPIC_ENVIRONMENT_ID and
+// ANTHROPIC_EXA_VAULT_ID set, those reuse rather than recreate. Running with any
+// id blank creates a fresh resource and orphans the prior one, so always paste
+// the printed ids into .env before re-running.
 //
 // Run: node scripts/provision-managed-agents.ts
 // Tear down a set of ids:  node scripts/provision-managed-agents.ts --teardown

@@ -29,10 +29,9 @@ import { getProfile } from "../services/personalization.ts";
 import { runResearch } from "../agents/research.ts";
 import { buildSite } from "../agents/builder.ts";
 import { publishSite } from "../providers/storage.ts";
+// One refusal type covers both paths: the builder (Messages API) and research
+// (Managed Agents) share it. A refusal is always a permanent failure.
 import { AgentRefusalError } from "../providers/anthropic.ts";
-// Research runs on Managed Agents and throws its own refusal type; alias it so
-// the classification below treats both refusal sources identically.
-import { AgentRefusalError as ManagedAgentRefusalError } from "../providers/managed-agents.ts";
 import { validateResearch, ResearchSchemaError, type ResearchObject } from "../domain/research.ts";
 import type { Job, JobStatus } from "../domain/entities.ts";
 
@@ -64,10 +63,7 @@ export async function runTick(log: TickLogger = noopLog): Promise<TickResult> {
         result.details.push({ jobId: job.id, from: job.status, to });
       }
     } catch (err) {
-      const permanent =
-        err instanceof PermanentStageError ||
-        err instanceof AgentRefusalError ||
-        err instanceof ManagedAgentRefusalError;
+      const permanent = err instanceof PermanentStageError || err instanceof AgentRefusalError;
       const reason = (err as Error).message;
       if (permanent || job.attempts >= config.worker.maxJobAttempts) {
         await failJob(job, reason);
@@ -119,7 +115,7 @@ async function advance(job: Job, log: TickLogger): Promise<string | null> {
   }
 }
 
-// Research stage: run the in-process research loop, persist the object, advance
+// Research stage: drive the Managed Agents research session, persist the object, advance
 // to building. Idempotent: re-running inserts a fresh research row and the
 // guarded transition only fires from the claimed status.
 async function researchStage(job: Job, log: TickLogger): Promise<string | null> {
@@ -151,7 +147,7 @@ async function researchStage(job: Job, log: TickLogger): Promise<string | null> 
     // Everything else (session timeout, rate limit, network, a stalled session)
     // is transient and retried via the lease. runResearch validates before
     // returning, so a schema error surfaces here as a typed ResearchSchemaError.
-    if (err instanceof AgentRefusalError || err instanceof ManagedAgentRefusalError) throw err;
+    if (err instanceof AgentRefusalError) throw err;
     if (err instanceof ResearchSchemaError) {
       throw new PermanentStageError(`research validation failed: ${err.message}`);
     }
