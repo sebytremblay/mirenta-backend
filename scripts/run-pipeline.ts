@@ -7,6 +7,8 @@
 // Target persona: a Salesforce account executive selling Agentforce for IT
 // Service and HR Service into Plexus Corp (the design's reference vertical).
 
+import { setTimeout as sleep } from "node:timers/promises";
+
 import { db, createOrganization } from "../src/db/client.ts";
 import { saveProfile } from "../src/services/personalization.ts";
 import { submit, jobStatus } from "../src/services/leads.ts";
@@ -19,10 +21,6 @@ const log: TickLogger = (msg, meta) => {
   const line = meta ? `${msg} ${JSON.stringify(meta)}` : msg;
   console.log(`  [worker] ${line}`);
 };
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
 
 try {
   console.log("=== 1. Seed org + product profile (onboarding) ===");

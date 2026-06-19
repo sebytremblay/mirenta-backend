@@ -3,6 +3,8 @@
 // scheduler, so a Supabase scheduled function or pg_cron host can replace this
 // loop later (D32 stays open) without touching the stage logic.
 
+import { setTimeout as sleep } from "node:timers/promises";
+
 import { config } from "../config/env.ts";
 import { runTick, type TickLogger } from "./tick.ts";
 
@@ -37,10 +39,6 @@ async function loop(): Promise<void> {
     await sleep(config.worker.pollIntervalMs);
   }
   log("worker stopped");
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

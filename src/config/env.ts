@@ -3,40 +3,23 @@
 // rather than touching process.env directly, so a missing key fails loudly at
 // startup instead of deep inside a stage.
 
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const backendRoot = resolve(here, "..", "..");
 
-// Minimal .env loader. Node has no built-in dotenv and the project keeps deps
-// lean. Values already present in process.env win, so deploys can override.
-function loadDotEnv(): void {
-  let raw: string;
-  try {
-    raw = readFileSync(resolve(backendRoot, ".env"), "utf8");
-  } catch {
-    return; // No .env file; rely on the ambient environment.
-  }
-  for (const line of raw.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eq = trimmed.indexOf("=");
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    let value = trimmed.slice(eq + 1).trim();
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1);
-    }
-    if (process.env[key] === undefined) process.env[key] = value;
-  }
+// Load .env through the Node built-in (the >=22.18 engines floor pins it well
+// past its 20.12 introduction). Node needs no separate dotenv dependency and
+// the project keeps deps lean. loadEnvFile leaves keys already present in
+// process.env untouched, so ambient values win and deploys override the file.
+// A missing file is fine; rethrow any other error so a permission or parse
+// failure fails loud at startup rather than starting with a half-loaded config.
+try {
+  process.loadEnvFile(resolve(backendRoot, ".env"));
+} catch (err) {
+  if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
 }
-
-loadDotEnv();
 
 function required(key: string): string {
   const value = process.env[key];
