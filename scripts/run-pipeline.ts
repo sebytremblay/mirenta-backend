@@ -1,8 +1,8 @@
 // End-to-end pipeline runner: the goal proof. Seeds an org and product profile,
 // submits one lead through the Lead Service, drives the worker tick loop until
 // the job reaches done or failed, then fetches the published S3 URL and confirms
-// it renders. Exercises the real pipeline against the live gateway, Exa, Supabase,
-// and S3. Run: node scripts/run-pipeline.ts
+// it renders. Exercises the real pipeline against Claude Managed Agents (research),
+// the Messages API (build), Exa, Supabase, and S3. Run: node scripts/run-pipeline.ts
 //
 // Target persona: a Salesforce account executive selling Agentforce for IT
 // Service and HR Service into Plexus Corp (the design's reference vertical).

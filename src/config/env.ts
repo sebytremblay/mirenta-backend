@@ -64,10 +64,18 @@ function intOptional(key: string, fallback: number): number {
 export interface Config {
   readonly anthropic: {
     readonly apiKey: string;
-    readonly baseUrl: string | undefined;
+    readonly baseUrl: string;
     readonly researchModel: string;
     readonly builderModel: string;
     readonly apiMode: string;
+  };
+  readonly managedAgents: {
+    // Persistent Managed Agents resources, provisioned once by
+    // scripts/provision-managed-agents.ts and referenced by id at runtime (D50).
+    readonly environmentId: string;
+    readonly researchAgentId: string;
+    readonly exaVaultId: string;
+    readonly exaMcpUrl: string;
   };
   readonly exa: {
     readonly apiKey: string;
@@ -125,13 +133,27 @@ const s3Region = optional("AWS_REGION", optional("S3_REGION", "us-west-1"));
 export const config: Config = Object.freeze({
   anthropic: {
     apiKey: required("ANTHROPIC_API_KEY"),
-    baseUrl: process.env.ANTHROPIC_BASE_URL || undefined,
-    // Models pin to the dated Haiku id for the build (D47). The Salesforce
-    // gateway rejects the undated alias, so the fallback carries the dated id
-    // too; see mirenta-managed-agents-unreachable.
+    // Pin to the first-party Anthropic API. The dev shell exports a Salesforce
+    // gateway URL in ANTHROPIC_BASE_URL (plus an ANTHROPIC_AUTH_TOKEN) that the
+    // SDK inherits from the ambient environment by default. That gateway is a
+    // browser-auth proxy that 401s the Managed Agents endpoints, which is what
+    // misled a prior session into declaring Managed Agents unreachable (D45).
+    // We deliberately do NOT read ANTHROPIC_BASE_URL: a backend-namespaced
+    // MIRENTA_ANTHROPIC_BASE_URL override exists for a real proxy, and the
+    // polluting shell does not set it. See D50 and [[mirenta-managed-agents-reachable]].
+    baseUrl: optional("MIRENTA_ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
+    // Models pin to the dated Haiku id for the build (D47), set by the founder
+    // to avoid burning tokens before the system proves out end to end. Restoring
+    // the D35 Sonnet/Opus tiers is a config change, not a code change.
     researchModel: optional("ANTHROPIC_RESEARCH_MODEL", "claude-haiku-4-5-20251001"),
     builderModel: optional("ANTHROPIC_BUILDER_MODEL", "claude-haiku-4-5-20251001"),
     apiMode: optional("ANTHROPIC_API_MODE", "realtime"),
+  },
+  managedAgents: {
+    environmentId: optional("ANTHROPIC_ENVIRONMENT_ID", ""),
+    researchAgentId: optional("ANTHROPIC_RESEARCH_AGENT_ID", ""),
+    exaVaultId: optional("ANTHROPIC_EXA_VAULT_ID", ""),
+    exaMcpUrl: optional("EXA_MCP_URL", "https://mcp.exa.ai/mcp"),
   },
   exa: {
     apiKey: required("EXA_API_KEY"),

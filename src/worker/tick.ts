@@ -1,19 +1,21 @@
 // The worker tick. Claims due jobs and advances each by a single stage
 // transition (mvp-pipeline-architecture Job Lifecycle / Durability Layer).
 //
-// Managed Agents is unreachable, so each agent stage runs the loop in-process to
-// completion within the lease (D45): the start/poll/collect split collapses into
-// one synchronous stage call. The durability layer is unchanged — guarded
+// Research runs on Claude Managed Agents (D50): Anthropic holds the agent loop,
+// and the worker drives one session synchronously within the lease (open, kick
+// off, drain to the emit_research result, collect). The build stage runs a
+// one-shot Messages API call. The durability layer is unchanged — guarded
 // transitions, a lease, the attempt ceiling, and transient/permanent error
-// classification still bound the loop.
+// classification still bound each stage.
 //
-// Stage mapping under the in-process loop:
-//   pending  -> run research, persist it            -> building
-//   building -> build the page, upload to S3        -> done
-// The documented `researching` and `publishing` states were resting points for
-// the async session poll, which no longer exists; the build-and-publish step is
-// one durable transition because the deterministic S3 key makes the upload
-// idempotent, so no rendered HTML needs to survive between ticks.
+// Stage mapping:
+//   pending  -> run the research session, persist it -> building
+//   building -> build the page, upload to S3         -> done
+// The documented `researching` and `publishing` states are crash-recovery
+// resting points; the build-and-publish step is one durable transition because
+// the deterministic S3 key makes the upload idempotent, so no rendered HTML
+// needs to survive between ticks. A full webhook-driven start/poll/collect split
+// (so the tick does not hold the session open) is a documented fast-follow.
 
 import { config } from "../config/env.ts";
 import {
@@ -28,6 +30,9 @@ import { runResearch } from "../agents/research.ts";
 import { buildSite } from "../agents/builder.ts";
 import { publishSite } from "../providers/storage.ts";
 import { AgentRefusalError } from "../providers/anthropic.ts";
+// Research runs on Managed Agents and throws its own refusal type; alias it so
+// the classification below treats both refusal sources identically.
+import { AgentRefusalError as ManagedAgentRefusalError } from "../providers/managed-agents.ts";
 import { validateResearch, ResearchSchemaError, type ResearchObject } from "../domain/research.ts";
 import type { Job, JobStatus } from "../domain/entities.ts";
 
@@ -59,7 +64,10 @@ export async function runTick(log: TickLogger = noopLog): Promise<TickResult> {
         result.details.push({ jobId: job.id, from: job.status, to });
       }
     } catch (err) {
-      const permanent = err instanceof PermanentStageError || err instanceof AgentRefusalError;
+      const permanent =
+        err instanceof PermanentStageError ||
+        err instanceof AgentRefusalError ||
+        err instanceof ManagedAgentRefusalError;
       const reason = (err as Error).message;
       if (permanent || job.attempts >= config.worker.maxJobAttempts) {
         await failJob(job, reason);
@@ -140,14 +148,14 @@ async function researchStage(job: Job, log: TickLogger): Promise<string | null> 
     });
   } catch (err) {
     // A refusal or a schema-invalid result is permanent: a retry repeats it.
-    // Everything else (timeout, rate limit, network) is transient and retried
-    // via the lease. runResearch validates before returning, so a schema error
-    // surfaces here as a typed ResearchSchemaError, classified on instanceof.
-    if (err instanceof AgentRefusalError) throw err;
+    // Everything else (session timeout, rate limit, network, a stalled session)
+    // is transient and retried via the lease. runResearch validates before
+    // returning, so a schema error surfaces here as a typed ResearchSchemaError.
+    if (err instanceof AgentRefusalError || err instanceof ManagedAgentRefusalError) throw err;
     if (err instanceof ResearchSchemaError) {
       throw new PermanentStageError(`research validation failed: ${err.message}`);
     }
-    throw err; // transient
+    throw err; // transient (includes AgentSessionError: timeout, stall, terminate)
   }
 
   const row = await insertResearch({ job_id: job.id, org_id: job.org_id, payload: research });
