@@ -42,12 +42,31 @@ export interface ResearchAccount {
   self_description_language: string;
 }
 
+// The prospect's own visual identity, extracted by the Research Agent from the
+// prospect site so the Website Builder renders a page that genuinely wears the
+// prospect's brand (D48). Every field is optional: a thin or unreachable site
+// yields a partial object, and the builder falls back token by token to the
+// seller brand and then to house defaults. Colors are six-digit hex; logo and
+// favicon are absolute https URLs (https avoids mixed-content on the public
+// https page). The builder sanitizes font_family before it reaches the
+// stylesheet, since the prospect site is untrusted input.
+export interface ProspectBrand {
+  primary_color?: string;
+  accent_color?: string;
+  background_color?: string;
+  text_color?: string;
+  font_family?: string;
+  logo_url?: string;
+  favicon_url?: string;
+}
+
 export interface ResearchObject {
   vertical: string; // "salesforce_employee_service" for the MVP
   account: ResearchAccount;
   executives: Executive[];
   quotes: Quote[];
   extension: ResearchExtension;
+  brand?: ProspectBrand; // optional; absent when the site yields no usable brand
 }
 
 // The MVP one-pager template holds six executive slots and the two HR/ITSM
@@ -129,6 +148,20 @@ export const RESEARCH_TOOL_SCHEMA = {
       },
       required: ["domains", "priorities", "roi_inputs"],
     },
+    brand: {
+      type: "object",
+      description:
+        "The prospect company's own visual identity, read from their website: brand colors, primary font, and absolute URLs for their logo and favicon. Omit any field you cannot source confidently from the prospect site.",
+      properties: {
+        primary_color: { type: "string", description: "Primary brand color as #RRGGBB hex" },
+        accent_color: { type: "string", description: "Secondary or accent color as #RRGGBB hex" },
+        background_color: { type: "string", description: "Page background color as #RRGGBB hex" },
+        text_color: { type: "string", description: "Body text color as #RRGGBB hex" },
+        font_family: { type: "string", description: "Primary typeface name the site uses" },
+        logo_url: { type: "string", description: "Absolute https URL to the prospect's logo image" },
+        favicon_url: { type: "string", description: "Absolute https URL to the prospect's favicon" },
+      },
+    },
   },
   required: ["vertical", "account", "executives", "quotes", "extension"],
 } as const;
@@ -145,6 +178,42 @@ export class ResearchSchemaError extends Error {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((v) => typeof v === "string");
+}
+
+const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
+
+// Normalize the optional prospect brand. This never throws: the brand is a
+// best-effort enrichment, so a malformed field drops to undefined and the
+// builder falls back rather than failing the whole research object (backlog #9
+// keeps no quality gate). Colors must be six-digit hex; asset URLs must be
+// https to avoid mixed-content on the public https page; font_family carries
+// through trimmed and length-capped, and the builder sanitizes it for CSS.
+function normalizeProspectBrand(raw: unknown): ProspectBrand | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const b = raw as Record<string, unknown>;
+  const color = (v: unknown): string | undefined =>
+    typeof v === "string" && HEX_COLOR.test(v) ? v : undefined;
+  const httpsUrl = (v: unknown): string | undefined =>
+    typeof v === "string" && /^https:\/\//.test(v) ? v : undefined;
+
+  const brand: ProspectBrand = {};
+  const primary = color(b.primary_color);
+  if (primary) brand.primary_color = primary;
+  const accent = color(b.accent_color);
+  if (accent) brand.accent_color = accent;
+  const background = color(b.background_color);
+  if (background) brand.background_color = background;
+  const text = color(b.text_color);
+  if (text) brand.text_color = text;
+  if (typeof b.font_family === "string" && b.font_family.trim() !== "") {
+    brand.font_family = b.font_family.trim().slice(0, 120);
+  }
+  const logo = httpsUrl(b.logo_url);
+  if (logo) brand.logo_url = logo;
+  const favicon = httpsUrl(b.favicon_url);
+  if (favicon) brand.favicon_url = favicon;
+
+  return Object.keys(brand).length > 0 ? brand : undefined;
 }
 
 // Structural validation in code. The research stage rejects a malformed object
@@ -240,6 +309,8 @@ function validateResearchInner(raw: unknown): ResearchObject {
     estimated: roi.estimated === true,
   };
 
+  const brand = normalizeProspectBrand(r.brand);
+
   return {
     vertical: r.vertical,
     account: {
@@ -250,5 +321,6 @@ function validateResearchInner(raw: unknown): ResearchObject {
     executives,
     quotes,
     extension: { domains: ext.domains, priorities, roi_inputs: roiInputs },
+    ...(brand ? { brand } : {}),
   };
 }

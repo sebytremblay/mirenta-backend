@@ -79,3 +79,65 @@ test("rejects a non-object payload", () => {
   assert.throws(() => validateResearch(null), /not an object/);
   assert.throws(() => validateResearch("nope"), /not an object/);
 });
+
+// Prospect brand tokens (D48). The brand is optional and never throws: a
+// malformed field drops so the builder falls back rather than failing the job.
+
+test("omits brand when absent", () => {
+  const r = validateResearch(validPayload());
+  assert.equal(r.brand, undefined);
+});
+
+test("passes through a well-formed brand", () => {
+  const p = validPayload();
+  (p as Record<string, unknown>).brand = {
+    primary_color: "#1A2B3C",
+    accent_color: "#ffffff",
+    font_family: "Inter",
+    logo_url: "https://acme.example/logo.svg",
+    favicon_url: "https://acme.example/favicon.ico",
+  };
+  const r = validateResearch(p);
+  assert.equal(r.brand?.primary_color, "#1A2B3C");
+  assert.equal(r.brand?.font_family, "Inter");
+  assert.equal(r.brand?.logo_url, "https://acme.example/logo.svg");
+});
+
+test("drops invalid hex colors but keeps valid ones", () => {
+  const p = validPayload();
+  (p as Record<string, unknown>).brand = {
+    primary_color: "#123456",
+    accent_color: "red", // not hex
+    background_color: "#fff", // three-digit, rejected
+  };
+  const r = validateResearch(p);
+  assert.equal(r.brand?.primary_color, "#123456");
+  assert.equal(r.brand?.accent_color, undefined);
+  assert.equal(r.brand?.background_color, undefined);
+});
+
+test("drops non-https asset URLs", () => {
+  const p = validPayload();
+  (p as Record<string, unknown>).brand = {
+    logo_url: "http://acme.example/logo.png", // not https
+    favicon_url: "https://acme.example/favicon.ico",
+  };
+  const r = validateResearch(p);
+  assert.equal(r.brand?.logo_url, undefined);
+  assert.equal(r.brand?.favicon_url, "https://acme.example/favicon.ico");
+});
+
+test("drops an all-invalid brand to undefined", () => {
+  const p = validPayload();
+  (p as Record<string, unknown>).brand = { primary_color: "blue", logo_url: "ftp://x" };
+  const r = validateResearch(p);
+  assert.equal(r.brand, undefined);
+});
+
+test("a malformed brand does not fail the whole object", () => {
+  const p = validPayload();
+  (p as Record<string, unknown>).brand = "not an object";
+  const r = validateResearch(p);
+  assert.equal(r.brand, undefined);
+  assert.equal(r.executives.length, 1); // rest of the object still validates
+});

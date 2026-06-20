@@ -3,9 +3,15 @@
 // The builder uses generateStructured to produce PROSE CONTENT as a validated
 // object, then assembles the final HTML deterministically in TypeScript. This
 // keeps the markup structure reliable and self-contained. The model generates
-// headline, account narrative, executive blurbs, and POV sections — deterministic
-// code weaves them together with computed ROI data, verified quotes, and inline
-// styles. All CSS lives in a <style> tag; no external build step or assets.
+// headline, account narrative, executive blurbs, and POV sections. Deterministic
+// code weaves them together with computed ROI data and verified quotes.
+//
+// The page wears the prospect's own brand (D48). The Research Agent extracts the
+// prospect's colors, font, logo, and favicon into research.brand; assembly maps
+// them onto a per-lead CSS custom-property block (see brand-tokens.ts) and falls
+// back token by token to the seller brand and then to house defaults. All CSS
+// lives in one <style> tag, so the page stays a single self-contained object
+// with no per-lead build step.
 //
 // The ROI model is computed with computeRoi from src/domain/roi.ts. The model
 // does NOT invent ROI numbers. The page shows the three scenarios (conservative,
@@ -19,6 +25,12 @@ import { generateStructured } from "../providers/anthropic.ts";
 import { computeRoi, formatDollars, type RoiModel } from "../domain/roi.ts";
 import type { ResearchObject } from "../domain/research.ts";
 import type { ProductProfile } from "../domain/entities.ts";
+import {
+  deriveTokens,
+  renderTokenBlock,
+  resolveLogoUrl,
+  resolveFaviconHref,
+} from "./brand-tokens.ts";
 
 // The input to buildSite matches the contract specified in the task.
 export interface BuildSiteInput {
@@ -115,10 +127,6 @@ function escapeHtml(raw: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function stripTrailingSlash(url: string): string {
-  return url.replace(/\/+$/, "");
-}
-
 // The CTA target. The MVP page carries no form, so the button links to the
 // prospect's own site when known, else to the top of this page, rather than a
 // dead in-page anchor.
@@ -126,87 +134,6 @@ function ctaHref(profile: ProductProfile): string {
   const link = profile.brand?.["cta_url"];
   if (typeof link === "string" && /^https?:\/\//.test(link)) return link;
   return "#top";
-}
-
-// Derive a brand accent color from the profile or use a sensible default.
-function deriveAccentColor(profile: ProductProfile): string {
-  const supplied = profile.brand?.primary_color;
-  if (supplied && /^#[0-9A-Fa-f]{6}$/.test(supplied)) return supplied;
-  // Salesforce blue as the house default.
-  return "#0176d3";
-}
-
-// Construct the system prompt that enforces the house writing style and guides
-// the model to produce page copy aligned with the research.
-function buildSystemPrompt(): string {
-  return `You are a website content generator for personalized sales one-pagers.
-
-HOUSE WRITING STYLE (enforce strictly):
-- No contractions
-- Active voice
-- Present tense
-- Strong verbs
-- No weak openers ("there is", "it is")
-- No em dashes
-- No AI filler words: delve, leverage, robust, seamless, unlock, transformative, etc.
-
-Your output is prose only. Do not write HTML. The assembly layer combines your content with computed ROI data, the researched domain priorities, and verified quotes.
-
-Produce clear, confident, executive-ready copy that ties the prospect company's priorities to the seller's platform.`;
-}
-
-// Construct the user prompt that provides the research context and the lead info.
-function buildUserPrompt(input: BuildSiteInput, roi: RoiModel): string {
-  const { lead, profile, research } = input;
-  const fullName = `${lead.first_name} ${lead.last_name}`;
-  const rolePhrase = lead.role ? ` (${lead.role})` : "";
-
-  // Serialize executives for the model.
-  const execLines = research.executives
-    .map((e) => `- ${e.name}, ${e.title}: ${e.profile}`)
-    .join("\n");
-
-  // Serialize domain priorities.
-  const domainLines = research.extension.priorities
-    .map((p) => `- ${p.domain}: ${p.pov}`)
-    .join("\n");
-
-  // Serialize verified quotes only.
-  const verifiedQuotes = research.quotes.filter((q) => q.verified);
-  const quoteLines =
-    verifiedQuotes.length > 0
-      ? verifiedQuotes.map((q) => `- "${q.text}" — ${q.speaker}`).join("\n")
-      : "None available.";
-
-  const recentMoves =
-    research.account.recent_moves.length > 0
-      ? research.account.recent_moves.map((m) => `- ${m}`).join("\n")
-      : "None noted.";
-
-  return `Lead: ${fullName}${rolePhrase} at ${lead.company}.
-
-Seller: ${profile.company_name} / ${profile.product_name}.
-Value proposition: ${profile.value_prop}
-${profile.positioning ? `Positioning: ${profile.positioning}` : ""}
-
-Account summary: ${research.account.summary}
-How they describe themselves: ${research.account.self_description_language}
-
-Recent moves:
-${recentMoves}
-
-Executives:
-${execLines}
-
-Domain priorities (${research.extension.domains.join(", ")}):
-${domainLines}
-
-Verified quotes:
-${quoteLines}
-
-Business value: The expected ROI is ${formatDollars(roi.headlineNetAnnualSavings)} net annual savings.
-
-Generate the page copy: a headline, a subhead, an account narrative that reflects the recent moves and the way they describe themselves, a short intro for each named executive that ties them to the seller's platform, and a CTA. The domain priority sections are rendered separately from the research, so do not write those.`;
 }
 
 // Render the executive cards section.
@@ -315,21 +242,19 @@ function assembleHtml(
   roi: RoiModel,
 ): string {
   const { lead, profile, research } = input;
-  const accentColor = deriveAccentColor(profile);
+  const brand = research.brand;
+  const tokens = deriveTokens(profile, brand);
 
-  // Brand assets. D42 calls for the prospect's real logo and favicon. Use the
-  // seller-supplied brand.logo_url when present; otherwise fall back to a clean
-  // text wordmark rather than guessing an asset path that will not resolve. The
-  // favicon points at the prospect's own site root, which most sites serve.
-  const faviconLink =
-    lead.website_url && /^https?:\/\//.test(lead.website_url)
-      ? `<link rel="icon" href="${escapeHtml(stripTrailingSlash(lead.website_url))}/favicon.ico">`
-      : "";
-  const logoUrl = profile.brand?.logo_url;
-  const logoMarkup =
-    typeof logoUrl === "string" && /^https?:\/\//.test(logoUrl)
-      ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(lead.company)}" class="logo">`
-      : "";
+  // Brand assets (D48). Wear the prospect's own brand: prefer the prospect logo
+  // and favicon the Research Agent extracted from the prospect site, then fall
+  // back to the seller-supplied logo and the prospect site's /favicon.ico, then
+  // to a clean text wordmark when no logo resolves.
+  const faviconHref = resolveFaviconHref(lead.website_url, brand);
+  const faviconLink = faviconHref ? `<link rel="icon" href="${escapeHtml(faviconHref)}">` : "";
+  const logoUrl = resolveLogoUrl(profile, brand);
+  const logoMarkup = logoUrl
+    ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(lead.company)}" class="logo">`
+    : "";
 
   const ctaText = profile.cta_text || "Start the conversation";
 
@@ -341,16 +266,17 @@ function assembleHtml(
   <title>${escapeHtml(lead.company)} + ${escapeHtml(profile.company_name)}</title>
   ${faviconLink}
   <style>
+    ${renderTokenBlock(tokens)}
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-family: var(--font-sans);
       line-height: 1.6;
-      color: #333;
-      background: #f9f9f9;
+      color: var(--text);
+      background: var(--bg);
     }
     header {
-      background: ${accentColor};
-      color: #fff;
+      background: var(--brand);
+      color: var(--brand-fg);
       padding: 2rem;
       text-align: center;
     }
@@ -361,7 +287,7 @@ function assembleHtml(
       max-width: 1200px;
       margin: 0 auto;
       padding: 2rem;
-      background: #fff;
+      background: var(--surface);
     }
     section {
       margin-bottom: 3rem;
@@ -369,7 +295,7 @@ function assembleHtml(
     h2 {
       font-size: 1.8rem;
       margin-bottom: 1rem;
-      color: ${accentColor};
+      color: var(--brand);
     }
     h3 {
       font-size: 1.3rem;
@@ -388,47 +314,47 @@ function assembleHtml(
       gap: 1.5rem;
     }
     .executive-card {
-      border: 1px solid #e0e0e0;
-      border-radius: 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
       padding: 1.5rem;
-      background: #fafafa;
+      background: var(--surface-muted);
     }
     .executive-card .title {
       font-weight: 600;
-      color: #666;
+      color: var(--muted);
     }
     .executive-card .owns {
       font-style: italic;
-      color: #888;
+      color: var(--muted);
       font-size: 0.9rem;
     }
     .domain-section {
-      border-left: 4px solid ${accentColor};
+      border-left: 4px solid var(--accent);
       padding-left: 1.5rem;
       margin-bottom: 2rem;
     }
     .domain-section .why-now {
-      color: #555;
+      color: var(--muted);
       font-size: 0.95rem;
     }
     .quotes blockquote {
-      border-left: 4px solid #ddd;
+      border-left: 4px solid var(--border);
       padding-left: 1rem;
       margin: 1rem 0;
       font-style: italic;
-      color: #555;
+      color: var(--muted);
     }
     .quotes cite {
       display: block;
       margin-top: 0.5rem;
       font-style: normal;
       font-weight: 600;
-      color: #333;
+      color: var(--text);
     }
     .roi {
-      background: #f0f8ff;
+      background: var(--brand-tint);
       padding: 2rem;
-      border-radius: 8px;
+      border-radius: var(--radius);
     }
     .roi-headline {
       font-size: 1.3rem;
@@ -440,55 +366,55 @@ function assembleHtml(
       gap: 1.5rem;
     }
     .roi-card {
-      background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
       padding: 1.5rem;
       text-align: center;
     }
     .roi-value {
       font-size: 2rem;
       font-weight: 700;
-      color: ${accentColor};
+      color: var(--brand);
       margin: 0.5rem 0;
     }
     .roi-label {
       font-size: 0.9rem;
-      color: #666;
+      color: var(--muted);
       margin-bottom: 0.5rem;
     }
     .roi-percent {
       font-size: 1.1rem;
       font-weight: 600;
-      color: #333;
+      color: var(--text);
     }
     .roi-footnote {
       font-size: 0.85rem;
-      color: #888;
+      color: var(--muted);
       margin-top: 1rem;
     }
     .cta {
-      background: ${accentColor};
-      color: #fff;
+      background: var(--brand);
+      color: var(--brand-fg);
       padding: 2rem;
-      border-radius: 8px;
+      border-radius: var(--radius);
       text-align: center;
     }
-    .cta h2 { color: #fff; margin-bottom: 1rem; }
+    .cta h2 { color: var(--brand-fg); margin-bottom: 1rem; }
     .cta p { margin-bottom: 1.5rem; }
     .cta a {
       display: inline-block;
-      background: #fff;
-      color: ${accentColor};
+      background: var(--surface);
+      color: var(--brand);
       padding: 0.75rem 2rem;
-      border-radius: 4px;
+      border-radius: var(--radius);
       text-decoration: none;
       font-weight: 600;
     }
     footer {
       text-align: center;
       padding: 2rem;
-      color: #888;
+      color: var(--muted);
       font-size: 0.85rem;
     }
   </style>
@@ -529,6 +455,79 @@ function assembleHtml(
 </html>`;
 
   return html;
+}
+
+// Construct the system prompt that enforces the house writing style and guides
+// the model to produce page copy aligned with the research.
+function buildSystemPrompt(): string {
+  return `You are a website content generator for personalized sales one-pagers.
+
+HOUSE WRITING STYLE (enforce strictly):
+- No contractions
+- Active voice
+- Present tense
+- Strong verbs
+- No weak openers ("there is", "it is")
+- No em dashes
+- No AI filler words: delve, leverage, robust, seamless, unlock, transformative, etc.
+
+Your output is prose only. Do not write HTML. The assembly layer combines your content with computed ROI data, the researched domain priorities, and verified quotes.
+
+Produce clear, confident, executive-ready copy that ties the prospect company's priorities to the seller's platform.`;
+}
+
+// Construct the user prompt that provides the research context and the lead info.
+function buildUserPrompt(input: BuildSiteInput, roi: RoiModel): string {
+  const { lead, profile, research } = input;
+  const fullName = `${lead.first_name} ${lead.last_name}`;
+  const rolePhrase = lead.role ? ` (${lead.role})` : "";
+
+  // Serialize executives for the model.
+  const execLines = research.executives
+    .map((e) => `- ${e.name}, ${e.title}: ${e.profile}`)
+    .join("\n");
+
+  // Serialize domain priorities.
+  const domainLines = research.extension.priorities
+    .map((p) => `- ${p.domain}: ${p.pov}`)
+    .join("\n");
+
+  // Serialize verified quotes only.
+  const verifiedQuotes = research.quotes.filter((q) => q.verified);
+  const quoteLines =
+    verifiedQuotes.length > 0
+      ? verifiedQuotes.map((q) => `- "${q.text}" — ${q.speaker}`).join("\n")
+      : "None available.";
+
+  const recentMoves =
+    research.account.recent_moves.length > 0
+      ? research.account.recent_moves.map((m) => `- ${m}`).join("\n")
+      : "None noted.";
+
+  return `Lead: ${fullName}${rolePhrase} at ${lead.company}.
+
+Seller: ${profile.company_name} / ${profile.product_name}.
+Value proposition: ${profile.value_prop}
+${profile.positioning ? `Positioning: ${profile.positioning}` : ""}
+
+Account summary: ${research.account.summary}
+How they describe themselves: ${research.account.self_description_language}
+
+Recent moves:
+${recentMoves}
+
+Executives:
+${execLines}
+
+Domain priorities (${research.extension.domains.join(", ")}):
+${domainLines}
+
+Verified quotes:
+${quoteLines}
+
+Business value: The expected ROI is ${formatDollars(roi.headlineNetAnnualSavings)} net annual savings.
+
+Generate the page copy: a headline, a subhead, an account narrative that reflects the recent moves and the way they describe themselves, a short intro for each named executive that ties them to the seller's platform, and a CTA. The domain priority sections are rendered separately from the research, so do not write those.`;
 }
 
 // Main export: buildSite receives the lead, profile, and research, and returns

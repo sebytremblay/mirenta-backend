@@ -1,7 +1,8 @@
 // Research Agent: the front stage of the Mirenta pipeline. Takes one lead and
 // produces the structured research object the Website Builder consumes. Runs a
 // multi-phase search loop: account research + domain priorities, executive
-// discovery, quote capture with verification, and ROI volume inputs.
+// discovery, quote capture with verification, ROI volume inputs, and prospect
+// brand capture (D48).
 //
 // Anthropic holds the loop (D50). The agent runs as a Claude Managed Agents
 // session: the persistent agent definition carries the phase methodology, the
@@ -48,7 +49,7 @@ export function buildAgentSystemPrompt(): string {
 
 For each lead, research the prospect's company and produce a structured research object for a one-pager website. The target vertical is ${MVP_VERTICAL}, focusing on ${MVP_DOMAINS.join(" and ")} domains.
 
-# Four Research Phases
+# Five Research Phases
 
 Execute these phases in order. Use the Exa web search tools to gather facts, then call ${EMIT_RESEARCH_TOOL} exactly once with your final structured result.
 
@@ -83,6 +84,16 @@ Gather headcount for the company:
 
 Use actual counts when you find them in job postings, org charts, or releases, and set estimated: false. Otherwise estimate and flag it.
 
+## Phase 5: Brand Capture
+
+Read the prospect company's own website and capture its visual identity so the one-pager wears the prospect's brand, not a generic template. Populate the brand object:
+- primary_color, accent_color, background_color, text_color: the company's brand colors as #RRGGBB hex, read from their site's headers, buttons, and headings.
+- font_family: the primary typeface the site uses for headings or body.
+- logo_url: an absolute https URL to the company's logo image.
+- favicon_url: an absolute https URL to the company's favicon.
+
+Source every value from the prospect's real site. Omit any field you cannot confirm rather than guessing; a missing field falls back cleanly downstream. Provide absolute https URLs only, since the page serves over https.
+
 # Writing Style
 
 All prose fields (summary, profiles, POV, why_now) follow the house style:
@@ -94,7 +105,7 @@ All prose fields (summary, profiles, POV, why_now) follow the house style:
 
 # Output
 
-Call ${EMIT_RESEARCH_TOOL} exactly once when all four phases finish. The vertical is "${MVP_VERTICAL}" and the domains are ${JSON.stringify(MVP_DOMAINS)}. Produce a complete, high-quality object the downstream builder can trust. Be thorough, search liberally, and verify every quote.`;
+Call ${EMIT_RESEARCH_TOOL} exactly once when all five phases finish. The vertical is "${MVP_VERTICAL}" and the domains are ${JSON.stringify(MVP_DOMAINS)}. Produce a complete, high-quality object the downstream builder can trust, including the prospect brand tokens from Phase 5. Be thorough, search liberally, and verify every quote.`;
 }
 
 // Build the lead-specific kickoff message. This varies per lead, so it stays out
