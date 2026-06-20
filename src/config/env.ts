@@ -168,7 +168,12 @@ export const config: Config = Object.freeze({
     pollIntervalMs: intOptional("WORKER_POLL_INTERVAL_MS", 5000),
   },
   agents: {
-    builderMaxTokens: intOptional("BUILDER_MAX_TOKENS", 8000),
+    // The builder now emits the entire self-contained HTML document, not just
+    // prose the assembler welds in (D9). The gold sample runs near 30KB, so the
+    // ceiling rises well past the old prose-only 8000. 16000 covers a succinct
+    // sample-grade page with headroom; raise it via the env var if pages truncate
+    // (the builder treats a max_tokens stop as a transient, lease-retried fault).
+    builderMaxTokens: intOptional("BUILDER_MAX_TOKENS", 16000),
   },
   gateway: {
     port: intOptional("PORT", 8080),

@@ -19,6 +19,59 @@ const HOUSE_NEUTRAL = "#1a1a2e";
 const SYSTEM_FONT =
   `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
 
+// Internal allow-list for Google Fonts. Each entry carries the proper-cased
+// display name and the CSS2 family= query spec (spaces encoded as +, weight
+// axis appended). Only fonts in this list produce a stylesheet href; raw user
+// input never enters a URL.
+interface FontEntry {
+  displayName: string;
+  spec: string;
+}
+
+const GOOGLE_FONT_ALLOW_LIST: Record<string, FontEntry> = {
+  "oswald":            { displayName: "Oswald",          spec: "Oswald:wght@600;700" },
+  "montserrat":        { displayName: "Montserrat",       spec: "Montserrat:wght@600;700" },
+  "poppins":           { displayName: "Poppins",          spec: "Poppins:wght@600;700" },
+  "roboto":            { displayName: "Roboto",           spec: "Roboto:wght@400;700" },
+  "roboto condensed":  { displayName: "Roboto Condensed", spec: "Roboto+Condensed:wght@600;700" },
+  "inter":             { displayName: "Inter",            spec: "Inter:wght@600;700" },
+  "lato":              { displayName: "Lato",             spec: "Lato:wght@700" },
+  "open sans":         { displayName: "Open Sans",        spec: "Open+Sans:wght@600;700" },
+  "raleway":           { displayName: "Raleway",          spec: "Raleway:wght@600;700" },
+  "playfair display":  { displayName: "Playfair Display", spec: "Playfair+Display:wght@600;700" },
+  "bebas neue":        { displayName: "Bebas Neue",       spec: "Bebas+Neue" },
+  "anton":             { displayName: "Anton",            spec: "Anton" },
+  "teko":              { displayName: "Teko",             spec: "Teko:wght@600;700" },
+  "rubik":             { displayName: "Rubik",            spec: "Rubik:wght@600;700" },
+  "archivo":           { displayName: "Archivo",          spec: "Archivo:wght@600;700" },
+  "barlow":            { displayName: "Barlow",           spec: "Barlow:wght@600;700" },
+  "work sans":         { displayName: "Work Sans",        spec: "Work+Sans:wght@600;700" },
+  "source sans 3":     { displayName: "Source Sans 3",    spec: "Source+Sans+3:wght@600;700" },
+  "nunito":            { displayName: "Nunito",           spec: "Nunito:wght@700" },
+  "merriweather":      { displayName: "Merriweather",     spec: "Merriweather:wght@700" },
+};
+
+// Normalize a raw font-family string to the allow-list lookup key: take the
+// first family in the comma list, strip surrounding quotes and whitespace, and
+// lowercase. Returns undefined when the input is not a string.
+function normalizeFontKey(raw: string | undefined): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  return raw.split(",")[0]!.replace(/^[\s'"]+|[\s'"]+$/g, "").toLowerCase();
+}
+
+// Resolve a Google Fonts CSS2 stylesheet href for the given font family. Only
+// fonts in the internal allow-list produce a URL; unrecognized families return
+// undefined. The URL always uses https://fonts.googleapis.com/css2 with
+// display=swap, which the page validator permits (it allow-lists
+// fonts.googleapis.com and fonts.gstatic.com).
+export function resolveGoogleFontHref(fontFamily: string | undefined): string | undefined {
+  const key = normalizeFontKey(fontFamily);
+  if (key === undefined) return undefined;
+  const entry = GOOGLE_FONT_ALLOW_LIST[key];
+  if (!entry) return undefined;
+  return `https://fonts.googleapis.com/css2?family=${entry.spec}&display=swap`;
+}
+
 export interface PageTokens {
   brand: string;
   brandForeground: string;
@@ -32,6 +85,7 @@ export interface PageTokens {
   radius: string;
   brandTint: string;
   font: string;
+  fontDisplay: string;
 }
 
 // Pick a readable foreground (near-black or white) for text laid over the given
@@ -87,6 +141,10 @@ export function deriveTokens(
   const bg = brand?.background_color || "#f7f8fa";
   const text = brand?.text_color || "#1a1a1a";
 
+  const font = sanitizeFontFamily(brand?.font_family);
+  const fontEntry = GOOGLE_FONT_ALLOW_LIST[normalizeFontKey(brand?.font_family) ?? ""];
+  const fontDisplay = fontEntry ? `"${fontEntry.displayName}", ${SYSTEM_FONT}` : font;
+
   return {
     brand: primary,
     brandForeground: readableOn(primary),
@@ -99,7 +157,8 @@ export function deriveTokens(
     border: "#e4e4e7",
     radius: "10px",
     brandTint: tint(primary, 0.06),
-    font: sanitizeFontFamily(brand?.font_family),
+    font,
+    fontDisplay,
   };
 }
 
@@ -120,6 +179,7 @@ export function renderTokenBlock(t: PageTokens): string {
       --radius: ${t.radius};
       --brand-tint: ${t.brandTint};
       --font-sans: ${t.font};
+      --font-display: ${t.fontDisplay};
     }`;
 }
 

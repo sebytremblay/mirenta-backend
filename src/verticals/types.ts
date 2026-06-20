@@ -29,13 +29,35 @@ export interface ValueScenario {
   secondary?: string; // optional second metric, e.g. "320% ROI"
 }
 
+// One headline metric tile in the business case (e.g. "Expected ROI" -> "156%").
+// Both fields are display-ready strings; the value model formats every figure so
+// the builder renders verbatim and the page validator can confirm presence.
+export interface ValueMetric {
+  label: string; // what the figure means, e.g. "Payback period"
+  value: string; // the formatted figure, e.g. "4.9 mo", "$10.1M", "156%"
+}
+
+// A cumulative projection the builder draws as a chart. Each point carries the
+// raw numeric `value` (so the builder can scale the chart geometry) and the
+// pre-formatted `display` string (so labels render verbatim and stay auditable).
+export interface ValueProjection {
+  label: string; // chart caption, e.g. "Cumulative net cash flow"
+  unit: string; // the series unit, e.g. "USD"
+  series: { period: string; value: number; display: string }[];
+}
+
 // The vertical-neutral business-value block the builder renders. A value model
-// computes this deterministically; the model never invents the numbers.
+// computes this deterministically; the model never invents the numbers. The
+// optional `metrics` and `projection` let a vertical opt into a richer ROI
+// section (headline tiles and a cumulative chart) without changing the seam; a
+// vertical that omits them still renders the headline and scenario cards.
 export interface ValueResult {
   sectionTitle: string; // e.g. "Business Value"
   headline: { label: string; value: string };
   scenarios: ValueScenario[];
   footnote?: string;
+  metrics?: ValueMetric[];
+  projection?: ValueProjection;
 }
 
 // The pluggable value/ROI model for one vertical (replaces the hardcoded

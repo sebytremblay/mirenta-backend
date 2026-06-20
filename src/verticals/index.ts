@@ -6,7 +6,15 @@
 import { employeeServiceVertical } from "./employee-service.ts";
 import type { VerticalSpec } from "./types.ts";
 
-export type { ValidatedInputs, ValueModel, ValueResult, ValueScenario, VerticalSpec } from "./types.ts";
+export type {
+  ValidatedInputs,
+  ValueMetric,
+  ValueModel,
+  ValueProjection,
+  ValueResult,
+  ValueScenario,
+  VerticalSpec,
+} from "./types.ts";
 
 // The vertical a profile defaults to when none is set. The MVP ships the
 // employee-service vertical, so the profile column and the schema migration both

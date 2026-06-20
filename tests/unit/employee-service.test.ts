@@ -68,3 +68,63 @@ test("zero employees yields a defined result without throwing", () => {
   const result = valueModel.compute(v);
   assert.equal(result.scenarios.length, 3);
 });
+
+// Metrics and projection: derived expectations for 20000 employees (plexusInputs).
+//   expectedGross = 4,400,000 * 0.55 + 2,880,000 * 0.60 = 4,148,000
+//   expectedNet   = 4,148,000 - 1,500,000 = 2,648,000
+//   firstYearCost = 1,500,000 + 200,000   = 1,700,000
+//   ROI           = round(2,648,000 / 1,700,000 * 100) = 156%
+//   Payback       = 1,700,000 / (4,148,000 / 12)      = 4.9 mo
+//   Cumulative cash flows: 374000, 2192400, 4840400, 7488400, 10136400
+//   NPV at 8%: ~7,754,682
+
+test("metrics pins Expected ROI for plexus inputs", () => {
+  const result = valueModel.compute(plexusInputs());
+  const roi = result.metrics?.find((m) => m.label === "Expected ROI");
+  assert.equal(roi?.value, "156%");
+});
+
+test("metrics pins Payback period for plexus inputs", () => {
+  const result = valueModel.compute(plexusInputs());
+  const payback = result.metrics?.find((m) => m.label === "Payback period");
+  assert.equal(payback?.value, "4.9 mo");
+});
+
+test("metrics pins 5-year net savings for plexus inputs", () => {
+  const result = valueModel.compute(plexusInputs());
+  const savings = result.metrics?.find((m) => m.label === "5-year net savings");
+  assert.equal(savings?.value, "$10.1M");
+});
+
+test("metrics pins NPV at 8 percent for plexus inputs", () => {
+  const result = valueModel.compute(plexusInputs());
+  const npv = result.metrics?.find((m) => m.label === "NPV at 8 percent");
+  assert.equal(npv?.value, "$7.8M");
+});
+
+test("projection series has 5 points with correct periods", () => {
+  const result = valueModel.compute(plexusInputs());
+  assert.equal(result.projection?.series.length, 5);
+  assert.deepEqual(
+    result.projection?.series.map((p) => p.period),
+    ["Year 1", "Year 2", "Year 3", "Year 4", "Year 5"],
+  );
+});
+
+test("projection series display values match cumulative targets", () => {
+  const result = valueModel.compute(plexusInputs());
+  assert.deepEqual(
+    result.projection?.series.map((p) => p.display),
+    ["$374K", "$2.2M", "$4.8M", "$7.5M", "$10.1M"],
+  );
+});
+
+test("zero employees does not throw and produces metrics and 5-point projection", () => {
+  const v = valueModel.validateInputs({ total_employees: 0 }, false);
+  const result = valueModel.compute(v);
+  assert.ok(Array.isArray(result.metrics));
+  assert.equal(result.projection?.series.length, 5);
+  // Payback must not produce Infinity or NaN.
+  const payback = result.metrics?.find((m) => m.label === "Payback period");
+  assert.ok(payback?.value !== "Infinity mo" && payback?.value !== "NaN mo");
+});

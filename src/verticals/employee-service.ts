@@ -41,6 +41,10 @@ const SCENARIOS: DeflectionScenario[] = [
 const ANNUAL_LICENSE = 1_500_000;
 const IMPLEMENTATION = 200_000;
 
+// Adoption ramp over the 5-year projection: 50% in year 1, 80% in year 2,
+// full utilization from year 3 onward. Each coefficient scales expectedGross.
+const ADOPTION = [0.5, 0.8, 1.0, 1.0, 1.0];
+
 function round(n: number): number {
   return Math.round(n);
 }
@@ -90,6 +94,38 @@ function compute(inputs: ValidatedInputs): ValueResult {
     itAnnualCost * SCENARIOS[1]!.itDeflection + hrAnnualCost * SCENARIOS[1]!.hrDeflection;
   const expectedNet = round(expectedGross - ANNUAL_LICENSE);
 
+  // Payback: total first-year investment divided by monthly gross savings.
+  // Guard against zero headcount: expectedGross of 0 produces Infinity otherwise.
+  const paybackValue =
+    expectedGross > 0
+      ? `${(firstYearCost / (expectedGross / 12)).toFixed(1)} mo`
+      : "n/a";
+
+  // Annual cash flows follow the adoption ramp; year 1 absorbs the implementation fee.
+  const annualCashFlows = ADOPTION.map((ramp, i) => {
+    const yearNumber = i + 1;
+    return ramp * expectedGross - ANNUAL_LICENSE - (yearNumber === 1 ? IMPLEMENTATION : 0);
+  });
+
+  // Cumulative series: each point sums all flows up to and including that year.
+  let runningTotal = 0;
+  const series = annualCashFlows.map((flow, i) => {
+    runningTotal += flow;
+    const rounded = round(runningTotal);
+    return {
+      period: `Year ${i + 1}`,
+      value: rounded,
+      display: formatDollars(rounded),
+    };
+  });
+
+  const cumulative5 = runningTotal;
+
+  // NPV at 8%: discount each year's cash flow back to present value, then round.
+  const npv = round(
+    annualCashFlows.reduce((sum, flow, i) => sum + flow / 1.08 ** (i + 1), 0),
+  );
+
   return {
     sectionTitle: "Business Value",
     headline: { label: "Expected net annual savings", value: formatDollars(expectedNet) },
@@ -97,6 +133,17 @@ function compute(inputs: ValidatedInputs): ValueResult {
     footnote: inputs.estimated
       ? "Staff counts estimated from industry benchmarks."
       : undefined,
+    metrics: [
+      { label: "Expected ROI", value: `${round(expectedNet / firstYearCost * 100)}%` },
+      { label: "Payback period", value: paybackValue },
+      { label: "5-year net savings", value: formatDollars(round(cumulative5)) },
+      { label: "NPV at 8 percent", value: formatDollars(npv) },
+    ],
+    projection: {
+      label: "Cumulative net cash flow",
+      unit: "USD",
+      series,
+    },
   };
 }
 

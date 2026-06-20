@@ -14,6 +14,7 @@ import {
   renderTokenBlock,
   resolveLogoUrl,
   resolveFaviconHref,
+  resolveGoogleFontHref,
 } from "../../src/agents/brand-tokens.ts";
 import type { ProductProfile } from "../../src/domain/entities.ts";
 import type { ProspectBrand } from "../../src/domain/research.ts";
@@ -137,4 +138,39 @@ test("resolveFaviconHref prefers the captured favicon, then the site default", (
     "https://acme.example/favicon.ico",
   );
   assert.equal(resolveFaviconHref(null, undefined), undefined);
+});
+
+// Google Fonts allow-list resolver
+
+test("resolveGoogleFontHref returns a Google Fonts href for a known font", () => {
+  const href = resolveGoogleFontHref("Oswald");
+  assert.ok(typeof href === "string");
+  assert.ok(href!.includes("fonts.googleapis.com/css2?family=Oswald"));
+});
+
+test("resolveGoogleFontHref is case- and quote-insensitive", () => {
+  const canonical = resolveGoogleFontHref("Oswald");
+  const fromList  = resolveGoogleFontHref('"oswald", sans-serif');
+  assert.equal(fromList, canonical);
+});
+
+test("resolveGoogleFontHref returns undefined for an unrecognized font", () => {
+  assert.equal(resolveGoogleFontHref("No Such Font 9000"), undefined);
+});
+
+// fontDisplay token
+
+test("renderTokenBlock emits a --font-display custom property", () => {
+  const block = renderTokenBlock(deriveTokens(profile(), { primary_color: "#aa0000" }));
+  assert.ok(block.includes("--font-display:"));
+});
+
+test("deriveTokens sets fontDisplay to a quoted proper-name stack for an allow-listed font", () => {
+  const t = deriveTokens(profile(), { font_family: "Oswald" });
+  assert.ok(t.fontDisplay.startsWith('"Oswald"'));
+});
+
+test("deriveTokens sets fontDisplay to the body font stack for an unknown font", () => {
+  const t = deriveTokens(profile(), { font_family: "No Such Font 9000" });
+  assert.equal(t.fontDisplay, t.font);
 });
