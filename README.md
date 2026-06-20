@@ -23,9 +23,9 @@ POST /leads ──> Lead Service ──> jobs table ──> Worker tick
 - **Agents** (`src/agents`) run the Research and Website Builder stages.
 - **Providers** (`src/providers`) wrap Anthropic, Exa, and S3 behind thin abstractions.
 
-### The agent loop runs in-process
+### Where the agent loop runs
 
-The design targets Claude Managed Agents (D9, D13), which hold the agent loop server-side. The provided API key routes through a gateway that does not expose Managed Agents, so the worker runs the loop in-process through the Messages API instead (D45). The model emits tool calls, the worker executes them (Exa search, quote re-fetch), and a forced `tool_choice` on a terminal tool returns the structured result. The pipeline, the durability layer, and the realtime posture stay unchanged; only the location of the loop moved. See the [decision record](../DECISIONS.md) D45 through D47 and the team memory note on the gateway.
+The Research Agent runs server-side on Claude Managed Agents (D9, D13, D50). Anthropic hosts the multi-step loop in an ephemeral sandbox, the agent searches through Exa's hosted MCP server, and the worker harvests the structured result from a custom `emit_research` tool. For the MVP the worker drives the session synchronously within one tick (D46); the webhook-driven start, poll, collect split is a fast-follow (D32). The Website Builder runs as a one-shot Messages API call with a forced `tool_choice` on a terminal tool, not a session, since a single structured generation has no multi-step loop for Managed Agents to host. An earlier session ran the loop in-process after concluding the key routed through a gateway that blocked Managed Agents; a direct probe disproved that premise, since the 401 came from the dev shell's inherited `ANTHROPIC_BASE_URL`, not the key (the rejected D45). The config pins the host through `MIRENTA_ANTHROPIC_BASE_URL` and ignores the ambient `ANTHROPIC_BASE_URL`, so the gateway cannot leak in. See the [decision record](../DECISIONS.md) D50 and the team memory note on the gateway.
 
 ## Stack
 
@@ -36,9 +36,10 @@ The design targets Claude Managed Agents (D9, D13), which hold the agent loop se
 
 ## Setup
 
-1. Copy `.env.example` to `.env` and fill in the keys. Required: `ANTHROPIC_API_KEY`, `EXA_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`. Set `ANTHROPIC_BASE_URL` when the key routes through a gateway. AWS credentials resolve through the standard AWS chain.
+1. Copy `.env.example` to `.env` and fill in the keys. Required: `ANTHROPIC_API_KEY`, `EXA_API_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`. The backend pins the Anthropic host through `MIRENTA_ANTHROPIC_BASE_URL` (default `https://api.anthropic.com`) and ignores the ambient `ANTHROPIC_BASE_URL`, so set `MIRENTA_ANTHROPIC_BASE_URL` only to route through a real proxy (D50). AWS credentials resolve through the standard AWS chain.
 2. Install dependencies: `pnpm install`.
 3. Apply the migrations in `supabase/migrations/` to the Supabase project (in order).
+4. Provision the Managed Agents resources once: `node scripts/provision-managed-agents.ts` creates the persistent research agent, the cloud environment, and the Exa MCP vault credential, and writes their ids (`ANTHROPIC_ENVIRONMENT_ID`, `ANTHROPIC_RESEARCH_AGENT_ID`, `ANTHROPIC_EXA_VAULT_ID`) to `.env` (D50).
 
 ## Run
 
@@ -69,4 +70,4 @@ A submission with an incomplete product profile returns `422` with the missing f
 
 ## Accepted MVP risks
 
-The MVP ships several documented, accepted risks: no row-level security (D30), no prompt-injection guardrails (D31), no spend ceiling (D33), no research-quality gate (D36), no privacy erasure path (D41), inlined real brand assets (D42), and no AI disclaimer (D43). The [backlog](../mirenta-docs/technical/BACKLOG.md) tracks each with its trigger. Reconcile them before meaningful external traffic.
+The MVP ships several documented, accepted risks: no row-level security (D30), no prompt-injection guardrails (D31), no spend ceiling (D33), no research-quality gate (D36), no privacy erasure path (D41), the prospect's real brand assets reproduced by URL reference (D42), and no AI disclaimer (D43). The [backlog](../mirenta-docs/technical/BACKLOG.md) tracks each with its trigger. Reconcile them before meaningful external traffic.
