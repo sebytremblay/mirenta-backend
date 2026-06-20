@@ -14,6 +14,7 @@ import type {
   Organization,
   ProductProfile,
   ResearchRow,
+  TokenUsage,
 } from "../domain/entities.ts";
 
 let client: SupabaseClient | null = null;
@@ -210,4 +211,16 @@ export async function getResearchForJob(jobId: string): Promise<ResearchRow | nu
     .maybeSingle();
   if (res.error) throw new Error(`getResearchForJob: ${res.error.message}`);
   return res.data as ResearchRow | null;
+}
+
+// Token usage ------------------------------------------------------------------
+
+// Record one agent stage's token usage and computed cost (D33 precursor infra).
+// The worker writes one row per stage per job, so the per-lead total sums the
+// job's rows. Tenancy keys on org_id explicitly (D30).
+export async function insertTokenUsage(
+  input: Omit<TokenUsage, "id" | "created_at">,
+): Promise<TokenUsage> {
+  const res = await db().from("token_usage").insert(input).select().single();
+  return unwrap<TokenUsage>("insertTokenUsage", res);
 }

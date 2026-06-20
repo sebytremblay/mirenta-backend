@@ -105,6 +105,29 @@ export interface ResearchRow {
   created_at: string;
 }
 
+// Which agent stage spent the tokens recorded on a token_usage row.
+export type TokenUsageAgent = "research" | "builder";
+
+// One token-usage telemetry row (supabase/migrations/0005_token_usage.sql). The
+// worker writes one row per agent stage per job; the per-lead total sums a job's
+// rows and the research-vs-builder breakdown reads off `agent`. Raw counts keep
+// the granularity; `cost_usd` preserves the cost as it stood at write time.
+export interface TokenUsage {
+  id: string;
+  org_id: string;
+  job_id: string;
+  lead_id: string;
+  agent: TokenUsageAgent;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_tokens: number;
+  cache_read_tokens: number;
+  request_count: number;
+  cost_usd: number;
+  created_at: string;
+}
+
 // API input shape for a single submitted lead (POST /leads).
 export interface LeadInput {
   first_name: string;
