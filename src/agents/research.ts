@@ -15,13 +15,9 @@
 // mirenta-docs/technical/research-agent-design.md.
 
 import { runManagedSession } from "../providers/managed-agents.ts";
-import {
-  validateResearch,
-  MVP_VERTICAL,
-  MVP_DOMAINS,
-  EXECUTIVE_SLOTS,
-} from "../domain/research.ts";
+import { validateResearch, EXECUTIVE_SLOTS } from "../domain/research.ts";
 import type { ResearchObject } from "../domain/research.ts";
+import type { VerticalSpec } from "../verticals/index.ts";
 import { config } from "../config/env.ts";
 import type { Lead, ProductProfile } from "../domain/entities.ts";
 
@@ -33,21 +29,25 @@ export interface ResearchInput {
   // rows straight through with one source of truth (entities.ts).
   lead: Pick<Lead, "first_name" | "last_name" | "role" | "company" | "website_url">;
   profile: Pick<ProductProfile, "company_name" | "product_name" | "value_prop">;
+  // The active vertical (resolved from profile.vertical). Its domains, executive
+  // targets, and value-input guidance ride in the per-lead kickoff, since the
+  // persistent agent's system prompt is frozen and vertical-neutral.
+  vertical: VerticalSpec;
   onStep?: (step: { phase: string; detail: string }) => void;
 }
 
 // The static system prompt the persistent research agent carries. It holds the
-// four-phase methodology, the house writing style, and the deliverable spec, and
-// it stays byte-stable across every lead so Anthropic caches the prefix. The
-// vertical and domains are MVP constants, not per-lead values, so they belong
-// here rather than in the kickoff. Lead-specific context goes in the kickoff
-// message built by buildKickoff below.
+// five-phase methodology, the house writing style, and the deliverable spec, and
+// it stays byte-stable across every lead and every vertical so Anthropic caches
+// the prefix. It carries NO vertical specifics: the target vertical, domains,
+// executive targets, and value inputs ride in the per-lead kickoff built by
+// buildKickoff below, since one persistent agent serves all verticals.
 export function buildAgentSystemPrompt(): string {
   return `You are a B2B research agent producing hyper-personalized intelligence for outbound sales campaigns.
 
 # Your Mission
 
-For each lead, research the prospect's company and produce a structured research object for a one-pager website. The target vertical is ${MVP_VERTICAL}, focusing on ${MVP_DOMAINS.join(" and ")} domains.
+For each lead, research the prospect's company and produce a structured research object for a one-pager website. Your task message names the target vertical, the domains to organize priorities around, the executive roles to prioritize, and the value inputs to gather. Follow that brief.
 
 # Five Research Phases
 
@@ -57,17 +57,12 @@ Execute these phases in order. Use the Exa web search tools to gather facts, the
 
 - What the company does, its industry, scale, and recent strategic moves (acquisitions, expansions, leadership changes).
 - Extract the language the company uses to describe itself (mission statements, taglines, about-us copy).
-- Surface the top priorities in ${MVP_DOMAINS[0]} and ${MVP_DOMAINS[1]} through an executive lens: what matters to the VP of HR, CHRO, CIO, or VP of IT, and why now.
+- Surface the top priorities in each target domain (named in your task) through an executive lens: what matters to the relevant leaders, and why now. Set extension.domains to exactly the domains your task names.
 - Frame each domain priority as a point of view (POV): a stance on what the buyer recognizes as their own priorities.
 
 ## Phase 2: Executive Discovery
 
-Find up to ${EXECUTIVE_SLOTS} key executives at the company. Prioritize:
-- ${MVP_DOMAINS[0]} leadership (CHRO, VP of HR)
-- ${MVP_DOMAINS[1]} leadership (CIO, VP of IT)
-- C-suite (CEO, President, COO)
-
-For each executive, gather full name, title, what they own, and a synthesized profile (goals, public statements, how they think). Rank by seniority and relevance, keep the top ${EXECUTIVE_SLOTS}, and leave slots empty when the company has fewer relevant leaders.
+Find up to ${EXECUTIVE_SLOTS} key executives at the company, prioritizing the roles your task names. For each executive, gather full name, title, what they own, and a synthesized profile (goals, public statements, how they think). Rank by seniority and relevance, keep the top ${EXECUTIVE_SLOTS}, and leave slots empty when the company has fewer relevant leaders.
 
 ## Phase 3: Verifiable Quotes
 
@@ -75,14 +70,9 @@ Extract public quotes from executives or spokespeople. Each quote must be a dire
 
 Strict quote rigor (D37): after extracting a quote, re-fetch the source page with the Exa fetch tool and confirm the wording matches. Set verified: true only when the re-fetch confirms it. Any quote that fails re-fetch verification drops. Do not invent or paraphrase quotes.
 
-## Phase 4: ROI Volume Inputs
+## Phase 4: Value Inputs
 
-Gather headcount for the company:
-- total_employees: total global headcount.
-- it_staff: IT Service Desk reps, help desk staff, or IT support managers. Usually not public; if unavailable, estimate at roughly 0.5% to 1% of total employees and set estimated: true.
-- hr_staff: HR Service Desk reps or HR shared services staff. Usually not public; estimate at roughly 0.1% to 0.3% of total employees if needed and set estimated: true.
-
-Use actual counts when you find them in job postings, org charts, or releases, and set estimated: false. Otherwise estimate and flag it.
+Gather the numeric value inputs your task names and place them in extension.value_inputs as a flat map of numbers. Use actual figures when you find them in job postings, filings, org charts, or releases, and set estimated: false. Otherwise estimate per your task's guidance and set estimated: true.
 
 ## Phase 5: Brand Capture
 
@@ -105,16 +95,18 @@ All prose fields (summary, profiles, POV, why_now) follow the house style:
 
 # Output
 
-Call ${EMIT_RESEARCH_TOOL} exactly once when all five phases finish. The vertical is "${MVP_VERTICAL}" and the domains are ${JSON.stringify(MVP_DOMAINS)}. Produce a complete, high-quality object the downstream builder can trust, including the prospect brand tokens from Phase 5. Be thorough, search liberally, and verify every quote.`;
+Call ${EMIT_RESEARCH_TOOL} exactly once when all five phases finish. Set \`vertical\` and \`extension.domains\` to the values your task specifies. Produce a complete, high-quality object the downstream builder can trust, including the prospect brand tokens from Phase 5. Be thorough, search liberally, and verify every quote.`;
 }
 
-// Build the lead-specific kickoff message. This varies per lead, so it stays out
-// of the cached system prompt.
+// Build the lead-specific kickoff message. This varies per lead and per vertical,
+// so it carries the vertical brief (domains, executive targets, value inputs)
+// that the frozen, vertical-neutral system prompt cannot.
 function buildKickoff(input: ResearchInput): string {
   const leadName = `${input.lead.first_name} ${input.lead.last_name}`;
   const leadRole = input.lead.role ? ` (${input.lead.role})` : "";
   const company = input.lead.company;
   const website = input.lead.website_url || "(no website provided; search for it)";
+  const { vertical } = input;
 
   return `Research ${company} and produce the research object for a one-pager targeting ${leadName}${leadRole}.
 
@@ -122,7 +114,20 @@ Company website: ${website}
 Seller: ${input.profile.company_name}
 Product: ${input.profile.product_name} — ${input.profile.value_prop}
 
-Begin with Phase 1: Account Research and Domain Priorities. Work through all four phases, then call ${EMIT_RESEARCH_TOOL} exactly once with the complete structured result.`;
+# Vertical: ${vertical.id}
+
+Target domains: ${vertical.domains.join(", ")}. Set extension.domains to exactly these.
+
+Domain priorities (Phase 1):
+${vertical.domainGuidance}
+
+Executive targets (Phase 2):
+${vertical.executiveTargeting}
+
+Value inputs (Phase 4):
+${vertical.valueModel.inputGuidance}
+
+Begin with Phase 1: Account Research and Domain Priorities. Work through all five phases, then call ${EMIT_RESEARCH_TOOL} exactly once with the complete structured result, with vertical set to "${vertical.id}".`;
 }
 
 // The main export: run the managed research session and return the validated
@@ -145,7 +150,7 @@ export async function runResearch(input: ResearchInput): Promise<ResearchObject>
   });
 
   input.onStep?.({ phase: "validate", detail: "validating research object" });
-  const validated = validateResearch(raw);
+  const validated = validateResearch(raw, input.vertical);
   input.onStep?.({ phase: "done", detail: "research complete" });
 
   return validated;

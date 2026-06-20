@@ -7,6 +7,7 @@ import {
   upsertProductProfile as dbUpsertProductProfile,
 } from "../db/client.ts";
 import { REQUIRED_PROFILE_FIELDS, type ProductProfile } from "../domain/entities.ts";
+import { DEFAULT_VERTICAL_ID, isKnownVertical } from "../verticals/index.ts";
 
 export interface ProfileInput {
   company_name?: string;
@@ -16,6 +17,10 @@ export interface ProfileInput {
   proof_points?: { claim: string; source?: string }[];
   cta_text?: string;
   brand?: { primary_color?: string; logo_url?: string; [key: string]: unknown };
+  // The customer's vertical. Optional on input: an absent value defaults to the
+  // employee-service id; an unknown id rejects, so a misconfigured profile fails
+  // at save rather than at the worker's stage boundary.
+  vertical?: string;
 }
 
 export class ProfileValidationError extends Error {
@@ -63,6 +68,12 @@ export async function saveProfile(
   const missing = REQUIRED_PROFILE_FIELDS.filter((f) => required[f] === "");
   if (missing.length > 0) throw new ProfileValidationError(missing);
 
+  // Resolve the vertical: default when absent, reject an unknown id loudly.
+  const vertical = input.vertical?.trim() || DEFAULT_VERTICAL_ID;
+  if (!isKnownVertical(vertical)) {
+    throw new ProfileValidationError([`vertical: unknown id "${vertical}"`]);
+  }
+
   return dbUpsertProductProfile({
     org_id: orgId,
     ...required,
@@ -70,5 +81,6 @@ export async function saveProfile(
     proof_points: input.proof_points ?? null,
     cta_text: input.cta_text ?? null,
     brand: input.brand ?? null,
+    vertical,
   });
 }

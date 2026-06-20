@@ -44,6 +44,10 @@ export interface ProductProfile {
   proof_points: ProofPoint[] | null;
   cta_text: string | null;
   brand: Brand | null;
+  // The customer's declared vertical: the VerticalSpec id the pipeline resolves
+  // at runtime to research and render this customer's pages (src/verticals).
+  // Defaults to the employee-service id at the column level (migration 0004).
+  vertical: string;
   created_at: string;
   updated_at: string;
 }

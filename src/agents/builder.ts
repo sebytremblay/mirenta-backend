@@ -13,18 +13,20 @@
 // lives in one <style> tag, so the page stays a single self-contained object
 // with no per-lead build step.
 //
-// The ROI model is computed with computeRoi from src/domain/roi.ts. The model
-// does NOT invent ROI numbers. The page shows the three scenarios (conservative,
-// expected, aggressive) as styled stat cards and renders the headline figure.
+// The business-value block is computed by the active vertical's value model
+// (vertical.valueModel.compute), not by the builder and not by the model. The
+// builder renders the vertical-neutral ValueResult it returns: a section title, a
+// headline figure, scenario stat cards, and an optional footnote. The value model
+// never invents numbers.
 //
 // All copy follows the HOUSE WRITING STYLE: no contractions, active voice, present
 // tense, strong verbs, no weak openers, no em dashes, no AI filler words.
 
 import { config } from "../config/env.ts";
 import { generateStructured } from "../providers/anthropic.ts";
-import { computeRoi, formatDollars, type RoiModel } from "../domain/roi.ts";
 import type { ResearchObject } from "../domain/research.ts";
 import type { ProductProfile } from "../domain/entities.ts";
+import type { ValueResult, VerticalSpec } from "../verticals/index.ts";
 import {
   deriveTokens,
   renderTokenBlock,
@@ -43,6 +45,10 @@ export interface BuildSiteInput {
   };
   profile: ProductProfile;
   research: ResearchObject;
+  // The active vertical (resolved from profile.vertical). Supplies the value
+  // model the builder computes the business-value block from, and the accent
+  // color the page falls back to when no brand color resolves.
+  vertical: VerticalSpec;
   onStep?: (s: { phase: string; detail: string }) => void;
 }
 
@@ -168,9 +174,10 @@ function renderExecutiveCards(
     </section>`;
 }
 
-// Render the domain POV sections (HR, ITSM) grounded in the researched
-// priorities. The page reflects the verified pov and why_now in a fixed order
-// rather than free model prose, so the copy cannot drift from the research.
+// Render the domain POV sections grounded in the researched priorities. The
+// domains come from the vertical, so this stays generic. The page reflects the
+// verified pov and why_now in a fixed order rather than free model prose, so the
+// copy cannot drift from the research.
 function renderDomainSections(research: ResearchObject): string {
   return research.extension.priorities
     .map(
@@ -206,32 +213,35 @@ function renderQuotesSection(research: ResearchObject): string {
     </section>`;
 }
 
-// Render the ROI section with three scenario stat cards and a headline figure.
-function renderRoiSection(roi: RoiModel): string {
-  const cards = roi.scenarios
+// Render the business-value section from the vertical's computed ValueResult:
+// scenario stat cards, a headline figure, and an optional footnote. Every label
+// rides in the ValueResult, so the section reads correctly whether the value is
+// savings, revenue uplift, time recovered, or risk avoided.
+function renderValueSection(value: ValueResult): string {
+  const cards = value.scenarios
     .map(
       (s) => `
       <div class="roi-card">
-        <h4>${s.name.charAt(0).toUpperCase() + s.name.slice(1)}</h4>
-        <p class="roi-value">${formatDollars(s.netAnnualSavings)}</p>
-        <p class="roi-label">Net Annual Savings</p>
-        <p class="roi-percent">${s.roiPercent}% ROI</p>
+        <h4>${escapeHtml(s.name.charAt(0).toUpperCase() + s.name.slice(1))}</h4>
+        <p class="roi-value">${escapeHtml(s.primaryValue)}</p>
+        <p class="roi-label">${escapeHtml(s.primaryLabel)}</p>
+        ${s.secondary ? `<p class="roi-percent">${escapeHtml(s.secondary)}</p>` : ""}
       </div>`,
     )
     .join("");
 
-  const estimatedNote = roi.staffEstimated
-    ? "<p class='roi-footnote'>Staff counts estimated from industry benchmarks.</p>"
+  const footnote = value.footnote
+    ? `<p class='roi-footnote'>${escapeHtml(value.footnote)}</p>`
     : "";
 
   return `
     <section class="roi">
-      <h2>Business Value</h2>
-      <p class="roi-headline">Expected net annual savings: <strong>${formatDollars(roi.headlineNetAnnualSavings)}</strong></p>
+      <h2>${escapeHtml(value.sectionTitle)}</h2>
+      <p class="roi-headline">${escapeHtml(value.headline.label)}: <strong>${escapeHtml(value.headline.value)}</strong></p>
       <div class="roi-grid">
         ${cards}
       </div>
-      ${estimatedNote}
+      ${footnote}
     </section>`;
 }
 
@@ -239,11 +249,11 @@ function renderRoiSection(roi: RoiModel): string {
 function assembleHtml(
   input: BuildSiteInput,
   content: ContentPayload,
-  roi: RoiModel,
+  value: ValueResult,
 ): string {
-  const { lead, profile, research } = input;
+  const { lead, profile, research, vertical } = input;
   const brand = research.brand;
-  const tokens = deriveTokens(profile, brand);
+  const tokens = deriveTokens(profile, brand, vertical.defaultAccentColor);
 
   // Brand assets (D48). Wear the prospect's own brand: prefer the prospect logo
   // and favicon the Research Agent extracted from the prospect site, then fall
@@ -439,7 +449,7 @@ function assembleHtml(
 
     ${renderQuotesSection(research)}
 
-    ${renderRoiSection(roi)}
+    ${renderValueSection(value)}
 
     <section class="cta" id="contact">
       <h2>${escapeHtml(content.cta_heading)}</h2>
@@ -449,7 +459,7 @@ function assembleHtml(
   </div>
 
   <footer>
-    <p>Mirenta prepares this page for ${escapeHtml(lead.company)}. The ROI figures model industry benchmarks and serve as illustration. Confirm them against your own operational data.</p>
+    <p>Mirenta prepares this page for ${escapeHtml(lead.company)}. The value figures model industry benchmarks and serve as illustration. Confirm them against your own operational data.</p>
   </footer>
 </body>
 </html>`;
@@ -477,7 +487,7 @@ Produce clear, confident, executive-ready copy that ties the prospect company's 
 }
 
 // Construct the user prompt that provides the research context and the lead info.
-function buildUserPrompt(input: BuildSiteInput, roi: RoiModel): string {
+function buildUserPrompt(input: BuildSiteInput, value: ValueResult): string {
   const { lead, profile, research } = input;
   const fullName = `${lead.first_name} ${lead.last_name}`;
   const rolePhrase = lead.role ? ` (${lead.role})` : "";
@@ -525,25 +535,30 @@ ${domainLines}
 Verified quotes:
 ${quoteLines}
 
-Business value: The expected ROI is ${formatDollars(roi.headlineNetAnnualSavings)} net annual savings.
+Business value: ${value.headline.label} is ${value.headline.value}.
 
 Generate the page copy: a headline, a subhead, an account narrative that reflects the recent moves and the way they describe themselves, a short intro for each named executive that ties them to the seller's platform, and a CTA. The domain priority sections are rendered separately from the research, so do not write those.`;
 }
 
-// Main export: buildSite receives the lead, profile, and research, and returns
-// a complete self-contained HTML document as a string. The function:
-// 1. Computes the ROI model deterministically (no model involvement).
+// Main export: buildSite receives the lead, profile, research, and vertical, and
+// returns a complete self-contained HTML document as a string. The function:
+// 1. Computes the value model deterministically via the vertical (no model
+//    involvement).
 // 2. Generates the prose content via generateStructured.
 // 3. Assembles the final HTML in TypeScript (no model-generated HTML).
 export async function buildSite(input: BuildSiteInput): Promise<string> {
-  const { onStep } = input;
+  const { onStep, vertical } = input;
 
-  onStep?.({ phase: "roi", detail: "computing business value" });
-  const roi = computeRoi(input.research.extension.roi_inputs);
+  onStep?.({ phase: "value", detail: "computing business value" });
+  const validatedInputs = vertical.valueModel.validateInputs(
+    input.research.extension.value_inputs,
+    input.research.extension.estimated,
+  );
+  const value = vertical.valueModel.compute(validatedInputs);
 
   onStep?.({ phase: "content", detail: "generating page copy" });
   const system = buildSystemPrompt();
-  const prompt = buildUserPrompt(input, roi);
+  const prompt = buildUserPrompt(input, value);
 
   const raw = await generateStructured({
     model: config.anthropic.builderModel,
@@ -562,7 +577,7 @@ export async function buildSite(input: BuildSiteInput): Promise<string> {
   const content = normalizeContent(raw);
 
   onStep?.({ phase: "assembly", detail: "assembling HTML" });
-  const html = assembleHtml(input, content, roi);
+  const html = assembleHtml(input, content, value);
 
   onStep?.({ phase: "done", detail: `${html.length} bytes` });
   return html;

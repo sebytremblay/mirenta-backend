@@ -26,6 +26,7 @@ import {
   updateJob,
 } from "../db/client.ts";
 import { getProfile } from "../services/personalization.ts";
+import { getVertical } from "../verticals/index.ts";
 import { runResearch } from "../agents/research.ts";
 import { buildSite } from "../agents/builder.ts";
 import { publishSite } from "../providers/storage.ts";
@@ -123,6 +124,13 @@ async function researchStage(job: Job, log: TickLogger): Promise<string | null> 
   if (!lead) throw new PermanentStageError("lead disappeared");
   const profile = await getProfile(job.org_id);
   if (!profile) throw new PermanentStageError("product profile disappeared");
+  // An unknown vertical id is a misconfigured profile, not a transient fault.
+  let vertical;
+  try {
+    vertical = getVertical(profile.vertical);
+  } catch (err) {
+    throw new PermanentStageError((err as Error).message);
+  }
 
   log("research start", { jobId: job.id, company: lead.company });
   let research: ResearchObject;
@@ -140,6 +148,7 @@ async function researchStage(job: Job, log: TickLogger): Promise<string | null> 
         product_name: profile.product_name,
         value_prop: profile.value_prop,
       },
+      vertical,
       onStep: (s) => log("research step", { jobId: job.id, phase: s.phase, detail: s.detail }),
     });
   } catch (err) {
@@ -174,10 +183,26 @@ async function buildAndPublishStage(job: Job, log: TickLogger): Promise<string |
   if (!lead) throw new PermanentStageError("lead disappeared");
   const profile = await getProfile(job.org_id);
   if (!profile) throw new PermanentStageError("product profile disappeared");
+  let vertical;
+  try {
+    vertical = getVertical(profile.vertical);
+  } catch (err) {
+    throw new PermanentStageError((err as Error).message);
+  }
 
   const researchRow = await getResearchForJob(job.id);
   if (!researchRow) throw new PermanentStageError("research row missing for build");
-  const research = validateResearch(researchRow.payload);
+  // Re-validate against the active vertical's value contract before building. A
+  // schema-invalid persisted payload is permanent: a retry re-reads the same row.
+  let research: ResearchObject;
+  try {
+    research = validateResearch(researchRow.payload, vertical);
+  } catch (err) {
+    if (err instanceof ResearchSchemaError) {
+      throw new PermanentStageError(`research validation failed: ${err.message}`);
+    }
+    throw err;
+  }
 
   log("build start", { jobId: job.id });
   let html: string;
@@ -192,6 +217,7 @@ async function buildAndPublishStage(job: Job, log: TickLogger): Promise<string |
       },
       profile,
       research,
+      vertical,
       onStep: (s) => log("build step", { jobId: job.id, phase: s.phase, detail: s.detail }),
     });
   } catch (err) {

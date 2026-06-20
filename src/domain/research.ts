@@ -1,7 +1,11 @@
 // The research object: the contract the Research Agent produces and the Website
-// Builder consumes. Shape mirrors mirenta-docs/technical/mvp-data-model.md
-// (generic core plus a pluggable domain extension). The MVP ships the
-// salesforce_employee_service extension and validates against it.
+// Builder consumes. The shape is a generic core plus a vertical extension
+// (mvp-data-model.md; D20). The core holds the fields every vertical needs; the
+// extension holds the vertical's domain set, priorities, and value inputs as
+// data. The active vertical comes from the product profile, not hardcoded here,
+// so the schema and this validator stay vertical-neutral.
+
+import type { VerticalSpec } from "../verticals/index.ts";
 
 export interface Executive {
   name: string;
@@ -23,17 +27,14 @@ export interface DomainPriority {
   why_now: string;
 }
 
-export interface RoiInputs {
-  total_employees: number;
-  it_staff: number; // flagged when estimated
-  hr_staff: number; // flagged when estimated
-  estimated: boolean;
-}
-
+// The vertical extension. `domains` and `priorities` organize the page; the value
+// model reads `value_inputs` (an open numeric map whose keys the vertical defines)
+// and the `estimated` disclosure flag. No vertical-specific field lives here.
 export interface ResearchExtension {
-  domains: string[]; // parameterized, e.g. ["HR", "ITSM"]
+  domains: string[];
   priorities: DomainPriority[];
-  roi_inputs: RoiInputs;
+  value_inputs: Record<string, number>;
+  estimated: boolean;
 }
 
 export interface ResearchAccount {
@@ -61,7 +62,7 @@ export interface ProspectBrand {
 }
 
 export interface ResearchObject {
-  vertical: string; // "salesforce_employee_service" for the MVP
+  vertical: string; // the VerticalSpec id this object targets
   account: ResearchAccount;
   executives: Executive[];
   quotes: Quote[];
@@ -69,17 +70,22 @@ export interface ResearchObject {
   brand?: ProspectBrand; // optional; absent when the site yields no usable brand
 }
 
-// The MVP one-pager template holds six executive slots and the two HR/ITSM
-// domains (mvp-data-model.md). These are template parameters, not schema limits.
+// The one-pager template holds six executive slots. This is a template parameter,
+// not a schema limit; the agent leaves slots empty when a company has fewer
+// relevant leaders.
 export const EXECUTIVE_SLOTS = 6;
-export const MVP_VERTICAL = "salesforce_employee_service";
-export const MVP_DOMAINS = ["HR", "ITSM"] as const;
 
 // JSON Schema for the `emit_research` tool. The Research Agent finishes by
 // calling this tool under a forced tool_choice, so the model returns
 // schema-shaped JSON the Build stage consumes without parsing free text.
-// Kept deliberately permissive (no min/max constraints the gateway may reject);
-// validateResearch below enforces structure in code.
+//
+// This schema bakes onto the persistent Managed Agent at provisioning time and
+// cannot vary per vertical, so `extension.value_inputs` is a permissive numeric
+// map: the per-lead kickoff names the keys the active vertical needs, and
+// validateResearch enforces the vertical's contract in code (D50 sets the
+// precedent of code-level enforcement over a frozen artifact). Kept otherwise
+// permissive (no min/max the gateway may reject); validateResearch enforces
+// structure in code.
 export const RESEARCH_TOOL_SCHEMA = {
   type: "object",
   properties: {
@@ -135,18 +141,10 @@ export const RESEARCH_TOOL_SCHEMA = {
             required: ["domain", "pov", "why_now"],
           },
         },
-        roi_inputs: {
-          type: "object",
-          properties: {
-            total_employees: { type: "number" },
-            it_staff: { type: "number" },
-            hr_staff: { type: "number" },
-            estimated: { type: "boolean" },
-          },
-          required: ["total_employees", "it_staff", "hr_staff", "estimated"],
-        },
+        value_inputs: { type: "object", additionalProperties: { type: "number" } },
+        estimated: { type: "boolean" },
       },
-      required: ["domains", "priorities", "roi_inputs"],
+      required: ["domains", "priorities", "value_inputs", "estimated"],
     },
     brand: {
       type: "object",
@@ -178,6 +176,18 @@ export class ResearchSchemaError extends Error {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((v) => typeof v === "string");
+}
+
+// Keep only the finite-numeric entries of a raw object, dropping anything else.
+// The value model decides which keys are required; this just produces a clean
+// numeric map from the model's possibly-noisy output.
+function toNumericMap(raw: unknown): Record<string, number> {
+  if (typeof raw !== "object" || raw === null) return {};
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+  }
+  return out;
 }
 
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
@@ -218,18 +228,19 @@ function normalizeProspectBrand(raw: unknown): ProspectBrand | undefined {
 
 // Structural validation in code. The research stage rejects a malformed object
 // rather than persisting it (D36 keeps no quality bar, but a schema-valid object
-// is still required before Build). Returns the normalized object or throws a
-// ResearchSchemaError, which the worker classifies as a permanent failure.
-export function validateResearch(raw: unknown): ResearchObject {
+// is still required before Build). The generic core validates here; the active
+// vertical validates its own value inputs. Returns the normalized object or
+// throws a ResearchSchemaError, which the worker classifies as permanent.
+export function validateResearch(raw: unknown, vertical: VerticalSpec): ResearchObject {
   try {
-    return validateResearchInner(raw);
+    return validateResearchInner(raw, vertical);
   } catch (err) {
     if (err instanceof ResearchSchemaError) throw err;
     throw new ResearchSchemaError((err as Error).message);
   }
 }
 
-function validateResearchInner(raw: unknown): ResearchObject {
+function validateResearchInner(raw: unknown, vertical: VerticalSpec): ResearchObject {
   if (typeof raw !== "object" || raw === null) {
     throw new Error("research payload is not an object");
   }
@@ -298,16 +309,12 @@ function validateResearchInner(raw: unknown): ResearchObject {
     return { domain: pri.domain, pov: pri.pov, why_now: pri.why_now };
   });
 
-  const roi = ext.roi_inputs as Record<string, unknown> | undefined;
-  if (!roi || typeof roi.total_employees !== "number") {
-    throw new Error("research.extension.roi_inputs.total_employees missing");
-  }
-  const roiInputs: RoiInputs = {
-    total_employees: roi.total_employees,
-    it_staff: typeof roi.it_staff === "number" ? roi.it_staff : 0,
-    hr_staff: typeof roi.hr_staff === "number" ? roi.hr_staff : 0,
-    estimated: roi.estimated === true,
-  };
+  // Hand the value inputs to the active vertical, which enforces its required
+  // keys. The persisted object keeps the generic numeric map; the value model
+  // narrows it again at compute time.
+  const value_inputs = toNumericMap(ext.value_inputs);
+  const estimated = ext.estimated === true;
+  vertical.valueModel.validateInputs(value_inputs, estimated);
 
   const brand = normalizeProspectBrand(r.brand);
 
@@ -320,7 +327,7 @@ function validateResearchInner(raw: unknown): ResearchObject {
     },
     executives,
     quotes,
-    extension: { domains: ext.domains, priorities, roi_inputs: roiInputs },
+    extension: { domains: ext.domains, priorities, value_inputs, estimated },
     ...(brand ? { brand } : {}),
   };
 }

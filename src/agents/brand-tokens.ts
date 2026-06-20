@@ -11,7 +11,11 @@ import type { ProspectBrand } from "../domain/research.ts";
 import type { ProductProfile } from "../domain/entities.ts";
 
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
-const HOUSE_BLUE = "#0176d3";
+// Neutral house fallback when neither the prospect brand, the seller brand, nor
+// the vertical supplies a primary color. Callers pass the active vertical's
+// defaultAccentColor as fallbackColor, so the registry owns the per-vertical
+// default and this constant only backstops a misconfigured vertical.
+const HOUSE_NEUTRAL = "#1a1a2e";
 const SYSTEM_FONT =
   `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
 
@@ -64,17 +68,21 @@ export function sanitizeFontFamily(raw: string | undefined): string {
   return /sans-serif|serif|monospace/i.test(cleaned) ? cleaned : `${cleaned}, ${SYSTEM_FONT}`;
 }
 
-// Resolve the page tokens from the prospect brand, the seller brand, and the
-// house defaults, in that order. Each token falls back on its own, so a partial
-// prospect brand still themes every value it carries.
+// Resolve the page tokens from the prospect brand, the seller brand, the active
+// vertical's accent, and the house default, in that order. Each token falls back
+// on its own, so a partial prospect brand still themes every value it carries.
+// The builder passes the active vertical's defaultAccentColor as fallbackColor.
 export function deriveTokens(
   profile: ProductProfile,
   brand: ProspectBrand | undefined,
+  fallbackColor: string = HOUSE_NEUTRAL,
 ): PageTokens {
   const sellerColor = (v: unknown): string | undefined =>
     typeof v === "string" && HEX_COLOR.test(v) ? v : undefined;
 
-  const primary = brand?.primary_color || sellerColor(profile.brand?.primary_color) || HOUSE_BLUE;
+  const verticalColor = HEX_COLOR.test(fallbackColor) ? fallbackColor : HOUSE_NEUTRAL;
+  const primary =
+    brand?.primary_color || sellerColor(profile.brand?.primary_color) || verticalColor;
   const accent = brand?.accent_color || primary;
   const bg = brand?.background_color || "#f7f8fa";
   const text = brand?.text_color || "#1a1a1a";
