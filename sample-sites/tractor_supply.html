@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agentforce for Employee Service for Tractor Supply Company | Built for Jordan Avery</title>
+<meta name="description" content="A personalized business case for Tractor Supply Company: how Agentforce for Employee Service (HR Service + IT Service Management) supports 52,000+ Team Members across 2,600+ locations." />
+<link rel="icon" href="https://s23.q4cdn.com/539497486/files/favicon.ico" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&amp;display=swap" rel="stylesheet" />
+<style>
+  :root {
+    /* Brand palette read from Tractor Supply corporate stylesheet */
+    --tsc-red: #c8102e;
+    --tsc-red-dark: #b72121;
+    --tsc-gold: #f1af0f;
+    --ink: #333333;
+    --ink-soft: #666666;
+    --line: #dddddd;
+    --wash: #f6f6f6;
+    --white: #ffffff;
+
+    /* Spacing scale */
+    --s1: 4px;
+    --s2: 8px;
+    --s3: 12px;
+    --s4: 16px;
+    --s5: 24px;
+    --s6: 32px;
+    --s7: 48px;
+    --s8: 64px;
+    --s9: 96px;
+
+    --radius: 14px;
+    --radius-lg: 20px;
+    --shadow-sm: 0 1px 3px rgba(51,51,51,0.08), 0 1px 2px rgba(51,51,51,0.06);
+    --shadow-md: 0 6px 20px rgba(51,51,51,0.10), 0 2px 6px rgba(51,51,51,0.06);
+    --shadow-lg: 0 18px 48px rgba(51,51,51,0.16);
+
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Helvetica Neue", sans-serif;
+    --font-display: "Oswald", "Arial Narrow", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+    --maxw: 1120px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    font-family: var(--font);
+    color: var(--ink);
+    background: var(--white);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    font-size: 17px;
+  }
+
+  h1, h2, h3, h4 { font-family: var(--font-display); line-height: 1.15; margin: 0 0 var(--s4); font-weight: 700; letter-spacing: -0.005em; }
+  h1 { font-size: clamp(2rem, 5.5vw, 3.4rem); }
+  h2 { font-size: clamp(1.6rem, 3.4vw, 2.4rem); }
+  h3 { font-size: 1.2rem; }
+  p { margin: 0 0 var(--s4); }
+  a { color: var(--tsc-red); }
+
+  img { max-width: 100%; display: block; }
+
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--s5); }
+
+  section { padding: var(--s9) 0; }
+  section + section { border-top: 1px solid var(--line); }
+
+  .eyebrow {
+    display: inline-block;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--tsc-red);
+    margin: 0 0 var(--s3);
+  }
+
+  .lede { font-size: 1.15rem; color: var(--ink-soft); max-width: 62ch; }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s2);
+    background: var(--tsc-red);
+    color: var(--white);
+    font-weight: 700;
+    font-size: 1rem;
+    text-decoration: none;
+    padding: 14px 28px;
+    border-radius: 999px;
+    border: 2px solid var(--tsc-red);
+    transition: transform .15s ease, background .15s ease, box-shadow .15s ease;
+    box-shadow: var(--shadow-sm);
+  }
+  .btn:hover { background: var(--tsc-red-dark); border-color: var(--tsc-red-dark); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+  .btn-ghost { background: transparent; color: var(--tsc-red); }
+  .btn-ghost:hover { background: var(--tsc-red); color: var(--white); }
+
+  a:focus-visible, .btn:focus-visible, button:focus-visible {
+    outline: 3px solid var(--ink);
+    outline-offset: 3px;
+    border-radius: 6px;
+    box-shadow: 0 0 0 5px rgba(241,175,15,0.45);
+  }
+
+  /* HERO */
+  .hero {
+    background:
+      radial-gradient(1200px 500px at 80% -10%, rgba(241,175,15,0.16), transparent 60%),
+      linear-gradient(160deg, var(--tsc-red) 0%, var(--tsc-red-dark) 100%);
+    color: var(--white);
+    border-top: none;
+    padding-top: var(--s7);
+    padding-bottom: var(--s9);
+  }
+  .hero .eyebrow { color: var(--tsc-gold); }
+  .hero h1 { color: var(--white); }
+  .hero .lede { color: rgba(255,255,255,0.92); }
+
+  .lockup {
+    display: flex;
+    align-items: center;
+    gap: var(--s4);
+    flex-wrap: wrap;
+    margin-bottom: var(--s7);
+  }
+  .lockup .logo-box {
+    background: rgba(255,255,255,0.0);
+    display: flex;
+    align-items: center;
+    min-height: 52px;
+  }
+  .lockup img.tsc-logo { height: 46px; width: auto; }
+  .tsc-logo-fallback { color: var(--white); font-weight: 800; font-size: 1.35rem; letter-spacing: -0.01em; }
+  .lockup .plus {
+    font-size: 1.8rem;
+    font-weight: 300;
+    color: rgba(255,255,255,0.75);
+    line-height: 1;
+  }
+  .sf-wordmark {
+    display: inline-flex;
+    align-items: center;
+    background: var(--white);
+    color: #00A1E0;
+    font-weight: 800;
+    font-size: 1.35rem;
+    letter-spacing: -0.02em;
+    padding: 8px 18px;
+    border-radius: 10px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .hero-cta { margin-top: var(--s6); display: flex; gap: var(--s4); flex-wrap: wrap; align-items: center; }
+  .hero-meta { color: rgba(255,255,255,0.85); font-size: 0.95rem; }
+
+  /* Cards grid */
+  .grid { display: grid; gap: var(--s5); }
+  .grid-2 { grid-template-columns: 1fr; }
+  .grid-3 { grid-template-columns: 1fr; }
+  @media (min-width: 720px) {
+    .grid-2 { grid-template-columns: repeat(2, 1fr); }
+    .grid-3 { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (min-width: 1000px) {
+    .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  }
+
+  .card {
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: var(--s5);
+    box-shadow: var(--shadow-sm);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
+  .card h3 { margin-bottom: var(--s2); }
+  .card p { color: var(--ink-soft); font-size: 0.98rem; margin-bottom: 0; }
+
+  .card-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px; height: 34px;
+    border-radius: 9px;
+    background: var(--wash);
+    color: var(--tsc-red);
+    font-weight: 800;
+    margin-bottom: var(--s3);
+    border: 1px solid var(--line);
+  }
+
+  .challenges-section { background: var(--wash); }
+  .challenge-card { border-left: 4px solid var(--tsc-gold); }
+
+  /* POV / Goals */
+  .summary p { font-size: 1.12rem; max-width: 70ch; }
+  .summary p:first-of-type::first-letter { }
+
+  .goal {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: var(--s6);
+    box-shadow: var(--shadow-sm);
+    margin-top: var(--s5);
+    background: var(--white);
+  }
+  .goal-head { display: flex; gap: var(--s4); align-items: flex-start; margin-bottom: var(--s5); }
+  .goal-index {
+    flex: 0 0 auto;
+    width: 44px; height: 44px;
+    border-radius: 11px;
+    background: var(--tsc-red);
+    color: var(--white);
+    font-weight: 800;
+    font-size: 1.1rem;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .goal-head h3 { font-size: 1.4rem; margin: 0; align-self: center; }
+
+  .goal-rows { display: grid; gap: var(--s4); }
+  @media (min-width: 820px) { .goal-rows { grid-template-columns: repeat(3, 1fr); } }
+  .goal-row .label {
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--tsc-red);
+    margin-bottom: var(--s2);
+  }
+  .goal-row.help .label { color: var(--ink); }
+  .goal-row p { font-size: 0.96rem; color: var(--ink-soft); margin: 0; }
+  .goal-row.help { background: var(--wash); border-radius: var(--radius); padding: var(--s4); }
+
+  blockquote.exec {
+    margin: var(--s6) 0 0;
+    padding: var(--s5) var(--s6);
+    border-left: 5px solid var(--tsc-gold);
+    background: linear-gradient(180deg, rgba(241,175,15,0.07), rgba(241,175,15,0.02));
+    border-radius: 0 var(--radius) var(--radius) 0;
+    font-size: 1.2rem;
+    font-style: italic;
+    color: var(--ink);
+  }
+  blockquote.exec footer { margin-top: var(--s3); font-style: normal; font-size: 0.9rem; font-weight: 700; color: var(--ink-soft); }
+
+  /* Business case */
+  .case-section { background: var(--ink); color: var(--white); }
+  .case-section h2 { color: var(--white); }
+  .case-section .eyebrow { color: var(--tsc-gold); }
+  .case-section .lede { color: rgba(255,255,255,0.82); }
+
+  .tiles { display: grid; gap: var(--s4); grid-template-columns: 1fr 1fr; margin-top: var(--s6); }
+  @media (min-width: 820px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
+  .tile {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: var(--radius);
+    padding: var(--s5);
+    text-align: center;
+  }
+  .tile .value { font-family: var(--font-display); font-size: clamp(1.9rem, 4vw, 2.6rem); font-weight: 700; color: var(--tsc-gold); letter-spacing: -0.01em; line-height: 1; }
+  .tile .label { margin-top: var(--s3); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.78); font-weight: 700; }
+
+  .chart-card {
+    margin-top: var(--s7);
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: var(--radius-lg);
+    padding: var(--s6);
+  }
+  .chart-card h3 { color: var(--white); }
+  .chart-card p { color: rgba(255,255,255,0.78); font-size: 0.95rem; }
+  .chart-wrap { width: 100%; overflow-x: auto; }
+  svg { display: block; width: 100%; height: auto; }
+
+  .scenarios { margin-top: var(--s7); }
+  .scenario {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: var(--radius);
+    padding: var(--s5);
+  }
+  .scenario.featured { border-color: var(--tsc-gold); background: rgba(241,175,15,0.10); }
+  .scenario .tag {
+    display: inline-block;
+    font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--ink); background: var(--tsc-gold);
+    padding: 3px 10px; border-radius: 999px; margin-bottom: var(--s3);
+  }
+  .scenario h4 { font-size: 1.1rem; color: var(--white); text-transform: capitalize; margin-bottom: var(--s3); }
+  .scenario .metric-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed rgba(255,255,255,0.16); font-size: 0.92rem; }
+  .scenario .metric-row:last-of-type { border-bottom: none; }
+  .scenario .metric-row span:last-child { font-weight: 800; color: var(--tsc-gold); }
+  .scenario .note { margin-top: var(--s3); font-size: 0.82rem; color: rgba(255,255,255,0.7); }
+
+  /* CTA */
+  .cta-section { text-align: center; }
+  .cta-card {
+    max-width: 760px; margin: 0 auto;
+    background: var(--white);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    padding: var(--s8) var(--s6);
+    box-shadow: var(--shadow-lg);
+    border-top: 6px solid var(--tsc-red);
+  }
+  .rep {
+    margin-top: var(--s6);
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--s1);
+  }
+  .rep .name { font-weight: 800; font-size: 1.05rem; }
+  .rep .title { color: var(--ink-soft); font-size: 0.95rem; }
+  .rep .email a { font-weight: 700; }
+
+  /* Footer */
+  footer.site {
+    background: var(--ink);
+    color: rgba(255,255,255,0.72);
+    padding: var(--s7) 0;
+    font-size: 0.82rem;
+  }
+  footer.site .wrap { display: flex; flex-direction: column; gap: var(--s3); }
+  footer.site strong { color: var(--white); }
+  footer.site .credit { font-weight: 700; color: var(--tsc-gold); }
+
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<header class="hero" role="banner">
+  <div class="wrap">
+    <div class="lockup" aria-label="Tractor Supply Company and Salesforce partnership">
+      <span class="logo-box">
+        <img class="tsc-logo" src="https://s23.q4cdn.com/539497486/files/images/2023/TSC_CoreLogos_RGB_2023-02_wht.png" alt="Tractor Supply Company" onerror="this.style.display='none';this.insertAdjacentHTML('afterend','<span class=\'tsc-logo-fallback\'>Tractor Supply Co.</span>')" />
+      </span>
+      <span class="plus" aria-hidden="true">+</span>
+      <span class="sf-wordmark">Salesforce</span>
+    </div>
+
+    <span class="eyebrow">A business case prepared for Jordan Avery, VP, Employee Experience</span>
+    <h1>Built for Jordan at Tractor Supply Company</h1>
+    <p class="lede">
+      Agentforce for Employee Service puts HR Service and IT Service Management in the flow of work,
+      across Slack, mobile, and a portal, so your 52,000-plus Team Members resolve everyday questions in
+      conversation instead of a ticket queue. Here is how that supports the Life Out Here 2030 strategy,
+      protects margin, and frees your HR and IT teams for the work that needs human judgment.
+    </p>
+    <div class="hero-cta">
+      <a class="btn" href="#book">Book a 30-minute walkthrough</a>
+      <span class="hero-meta">Prepared by Sam Rivera, Salesforce</span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<!-- PRIORITIES -->
+<section id="priorities" aria-labelledby="priorities-h">
+  <div class="wrap">
+    <span class="eyebrow">The roadmap</span>
+    <h2 id="priorities-h">What Tractor Supply Company is focused on</h2>
+    <p class="lede">Five priorities pulled from your own strategy, filings, and newsroom. Each one runs through your people and your technology.</p>
+    <div class="grid grid-3" style="margin-top: var(--s7);">
+      <article class="card">
+        <span class="card-num">1</span>
+        <h3>Execute the Life Out Here 2030 strategy</h3>
+        <p>The December 2024 Investment Community Day set 6 to 8 percent annual net sales growth, 3 to 5 percent comparable store sales growth, and a 10 to 10.5 percent operating margin through 2030. CEO Hal Lawton frames this as the roadmap that People and Technology must support.</p>
+      </article>
+      <article class="card">
+        <span class="card-num">2</span>
+        <h3>Empower the frontline through technology</h3>
+        <p>The CIO 100-winning generative AI program, including Hey GURA on handheld devices, gives store associates product knowledge and answers. Rob Mills states the goal is to make Team Members the heroes as they serve customers, scaling support without proportional headcount.</p>
+      </article>
+      <article class="card">
+        <span class="card-num">3</span>
+        <h3>Disciplined expansion toward 3,000 stores</h3>
+        <p>FY2025 closed with 2,395 Tractor Supply stores and 207 Petsense stores, with roughly 100 more openings planned for 2026 toward a 3,000-store target. Every opening requires hiring, onboarding, and training a new store team.</p>
+      </article>
+      <article class="card">
+        <span class="card-num">4</span>
+        <h3>Modernize core technology platforms</h3>
+        <p>The 10-K commits to IT reliability, scalability, and security alongside AI, automation, computer vision, and analytics. Named focus areas include cloud, endpoint protection, identity and access management, and privacy, with managing expansion tied to the adequacy of information systems.</p>
+      </article>
+      <article class="card">
+        <span class="card-num">5</span>
+        <h3>Sustain a people-first culture</h3>
+        <p>More than 52,000 Team Members and six consecutive years of Great Place to Work certification. The People function invests in onboarding, new-store training, management training, and leadership development, with district managers averaging about 10 years of tenure.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- CHALLENGES -->
+<section id="challenges" class="challenges-section" aria-labelledby="challenges-h">
+  <div class="wrap">
+    <span class="eyebrow">The pressure points</span>
+    <h2 id="challenges-h">Where employee support strains today</h2>
+    <p class="lede">A distributed, frontline-heavy, high-turnover workforce generates large, repetitive HR and IT volume, while cost pressure leaves little room to add headcount.</p>
+    <div class="grid grid-2" style="margin-top: var(--s7);">
+      <article class="card challenge-card">
+        <h3>Hiring, training, and retaining at scale</h3>
+        <p>The 10-K ties comparable sales and expansion success to attracting and retaining qualified Team Members, especially store managers. Roughly 100 new stores a year on a 2,395-store base toward a 3,000-store goal makes frontline staffing and store-leadership development a recurring operational pressure.</p>
+      </article>
+      <article class="card challenge-card">
+        <h3>Rising labor and healthcare costs</h3>
+        <p>The 10-K names higher labor and healthcare costs as a margin risk. With the FY2026 operating margin outlook at 9.3 to 9.6 percent, below the 10 percent-plus long-term goal, supporting associates without proportional headcount growth becomes essential.</p>
+      </article>
+      <article class="card challenge-card">
+        <h3>Dependence on information systems and security</h3>
+        <p>Managing expansion depends on the adequacy of existing information systems. As store-facing AI and computer vision roll out across thousands of locations, supporting and securing that footprint becomes a growing demand, and outages or access issues stop revenue and shipments directly.</p>
+      </article>
+      <article class="card challenge-card">
+        <h3>Tariff, supply chain, and transportation cost</h3>
+        <p>Q4 FY2025 gross margin felt pressure from higher tariffs and transportation costs, with imports at 11.4 percent of total sales for the year. These dynamics squeeze the operating model and intensify the need to do more with existing resources.</p>
+      </article>
+      <article class="card challenge-card">
+        <h3>Softening discretionary demand</h3>
+        <p>CEO Hal Lawton noted Q4 came in below expectations as discretionary demand moderated while essentials stayed resilient. The 1 to 3 percent comparable sales outlook reflects a cautious consumer, raising the bar for disciplined support functions.</p>
+      </article>
+      <article class="card challenge-card">
+        <h3>A deskless majority waiting in a queue</h3>
+        <p>Half the team works part-time and most never sit at a desk. They need answers on pay, PTO balances, benefits deadlines, locked accounts, or a down POS lane while standing in a store aisle or on a DC dock, not while waiting in a corporate ticket queue.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- POV / GOALS -->
+<section id="pov" aria-labelledby="pov-h">
+  <div class="wrap">
+    <span class="eyebrow">The point of view</span>
+    <h2 id="pov-h">Supporting both populations, the way Hey GURA already supports the floor</h2>
+    <div class="summary" style="margin-top: var(--s5);">
+      <p>Tractor Supply runs on its people. More than 52,000 Team Members across 2,602 stores, 10 distribution centers, and the Brentwood Store Support Center carry the Life Out Here promise to customers every day. The 2030 strategy raises the bar: 6 to 8 percent annual net sales growth, roughly 100 new stores a year toward a 3,000-store target, and a path back toward a 10 percent operating margin. Every one of those goals depends on hiring, onboarding, and keeping qualified Team Members, and on running the technology that stores and distribution centers cannot operate without. For the Employee Experience function you lead, this is the gap between the experience Tractor Supply gives customers and the one it gives its own Team Members.</p>
+      <p>The workforce shape makes that hard in a specific way. Half the team works part-time, turnover runs high in hourly retail, and most Team Members never sit at a desk. They need an answer about a pay question, a PTO balance, a benefits deadline, a locked account, or a down POS lane while standing in a store aisle or a DC dock, not while waiting in a ticket queue. Seasonal hiring surges ahead of spring and the fourth quarter pile onboarding, account provisioning, and equipment requests onto the same support teams at the same time. Rising labor and healthcare costs, tariff pressure, and a cautious consumer leave little room to add headcount to keep up. The work grows; the budget to staff it does not.</p>
+      <p>Agentforce for Employee Service addresses both populations directly. HR Service and IT Service Management put autonomous AI agents inside Slack, mobile, and a portal, where Team Members already work, so they resolve routine HR and IT questions in conversation instead of filing tickets. The platform grounds answers in your own policies and systems and hands off to a person the moment a request turns sensitive or complex. The point is not to replace your HR and IT teams. The point is to free them to spend their hours on the work that needs human judgment, the same way Hey GURA already frees store associates to serve customers.</p>
+    </div>
+
+    <!-- Goal 1 -->
+    <article class="goal">
+      <div class="goal-head">
+        <span class="goal-index" aria-hidden="true">1</span>
+        <h3>Staff and support roughly 100 new stores a year without straining HR and IT teams</h3>
+      </div>
+      <div class="goal-rows">
+        <div class="goal-row"><div class="label">Challenge</div><p>Each opening requires hiring, onboarding, and training a new store team, and the 10-K ties expansion success directly to the adequacy of that process, especially for store managers. Adding 100 stores a year onto a 2,395-store base multiplies onboarding HR work and IT account, access, and device provisioning, while support teams stay roughly the same size.</p></div>
+        <div class="goal-row"><div class="label">Current state</div><p>New Team Members and store leaders route onboarding questions, access requests, and equipment setup through portals and ticket queues built for a corporate population, not for deskless hires who need answers fast during a store-opening sprint. Seasonal surges ahead of spring and the fourth quarter compound the load.</p></div>
+        <div class="goal-row help"><div class="label">How Salesforce Employee Service helps</div><p>Agentforce HR Service tracks onboarding programs and milestones and answers eligibility, pay, and benefits questions conversationally, while IT Service Management fulfills equipment, access, and software requests through agentic automation and resolves routine items such as password resets without a human touch. New hires get moving on day one, and your teams scale store openings without scaling headcount in lockstep.</p></div>
+      </div>
+    </article>
+
+    <!-- Goal 2 -->
+    <article class="goal">
+      <div class="goal-head">
+        <span class="goal-index" aria-hidden="true">2</span>
+        <h3>Empower frontline Team Members through technology, the way Hey GURA already does in stores</h3>
+      </div>
+      <div class="goal-rows">
+        <div class="goal-row"><div class="label">Challenge</div><p>Tractor Supply built its CIO 100-winning generative AI program to put product knowledge and answers in associates' hands so they serve customers better. The same Team Members still carry HR and IT friction, pay questions, PTO balances, locked accounts, that pulls them off the floor and into a queue.</p></div>
+        <div class="goal-row"><div class="label">Current state</div><p>Store associates and DC labor reach for a phone or a break-room portal for HR and IT help, then wait. The conversational, mobile-first support that already works for product questions does not yet extend to the everyday HR and IT questions every Team Member has.</p></div>
+        <div class="goal-row help"><div class="label">How Salesforce Employee Service helps</div><p>Agentforce delivers HR and IT support in the same conversational, deskless-friendly form across Slack, mobile, and a portal, grounded in your policies and systems. Team Members get personalized, accurate answers in the flow of their shift and stay focused on customers, extending the empower-the-frontline approach Tractor Supply already proved with Hey GURA.</p></div>
+      </div>
+      <blockquote class="exec">
+        "Our goal is to further empower them through technology, making them the heroes as they serve our customers"
+        <footer>Robert (Rob) Mills, Executive Vice President, Chief Technology, Digital and Pet Specialty Officer</footer>
+      </blockquote>
+    </article>
+
+    <!-- Goal 3 -->
+    <article class="goal">
+      <div class="goal-head">
+        <span class="goal-index" aria-hidden="true">3</span>
+        <h3>Protect margin by doing more with the support teams already in place</h3>
+      </div>
+      <div class="goal-rows">
+        <div class="goal-row"><div class="label">Challenge</div><p>The FY2026 operating margin outlook of 9.3 to 9.6 percent sits below the 10 percent-plus long-term goal, and the 10-K names higher labor and healthcare costs, tariffs, and transportation as pressures on profitability. Softening discretionary demand and a 1 to 3 percent comparable sales outlook leave no room to grow support headcount.</p></div>
+        <div class="goal-row"><div class="label">Current state</div><p>High-volume, repetitive HR and IT inquiries, pay, scheduling, leave balances, password resets, access requests, consume tier-1 staff time across a 52,000-Team Member, 2,602-location footprint. Resolving them through ticket queues costs hours that compound with every new store and every seasonal surge.</p></div>
+        <div class="goal-row help"><div class="label">How Salesforce Employee Service helps</div><p>Conversational agents resolve a large share of routine tier-1 HR and IT questions autonomously, with an automatic handoff to a person the moment a request turns sensitive or complex. Salesforce's own HR team reached a 96 percent self-service resolution rate using Agentforce, and CHROs expect an average 30 percent productivity gain and 19 percent labor-cost reduction once fully implemented.</p></div>
+      </div>
+      <blockquote class="exec">
+        "we are prepared to operate with discipline across a range of economic conditions"
+        <footer>Hal Lawton, President and Chief Executive Officer</footer>
+      </blockquote>
+    </article>
+
+    <!-- Goal 4 -->
+    <article class="goal">
+      <div class="goal-head">
+        <span class="goal-index" aria-hidden="true">4</span>
+        <h3>Sustain the people-first culture your Employee Experience team is accountable for as the workforce grows</h3>
+      </div>
+      <div class="goal-rows">
+        <div class="goal-row"><div class="label">Challenge</div><p>Tractor Supply has held Great Place to Work certification for six straight years and invests heavily in employee experience, but a 50/50 full-time/part-time split and high hourly turnover generate constant HR-inquiry volume from people who need fast, respectful answers. Slow or impersonal support erodes the culture the People function works to protect.</p></div>
+        <div class="goal-row"><div class="label">Current state</div><p>HR data sits across multiple systems, and Team Members navigate tickets and handoffs for questions about leave, payroll discrepancies, and benefits. The experience does not yet match the legendary standard Tractor Supply sets for serving its own people, and 90 percent of HR professionals already run stretched thin.</p></div>
+        <div class="goal-row help"><div class="label">How Salesforce Employee Service helps</div><p>Agentforce HR Service consolidates siloed HR data into one hub and answers Team Members conversationally with personalized, data-grounded responses, escalating to a human HR rep for complex or sensitive matters. HR copilots draft responses and case summaries in real time so the team spends its hours on the people work that builds culture, not on triage.</p></div>
+      </div>
+      <blockquote class="exec">
+        "We are thrilled to re-certify as a Great Place to Work, a nod to our legendary culture that continues to evolve at Tractor Supply"
+        <footer>Melissa Kersey, Executive Vice President, Chief Human Resources Officer</footer>
+      </blockquote>
+    </article>
+
+    <!-- Goal 5 -->
+    <article class="goal">
+      <div class="goal-head">
+        <span class="goal-index" aria-hidden="true">5</span>
+        <h3>Keep stores and distribution centers running as the technology footprint grows</h3>
+      </div>
+      <div class="goal-rows">
+        <div class="goal-row"><div class="label">Challenge</div><p>The 10-K ties managing expansion to the adequacy of existing information systems and commits to ongoing investment in IT reliability, scalability, and security. As store-facing AI such as Hey GURA and computer vision rolls out across thousands of locations, supporting and securing that footprint becomes a growing operational demand, and IT outages and access issues stop revenue and shipments directly.</p></div>
+        <div class="goal-row"><div class="label">Current state</div><p>A large frontline base depends on POS, warehouse and labor-management tools, and an in-house transportation management system, generating high tier-1 IT volume from non-technical staff who need fast, conversational resolution. Traditional ticket-based ITSM slows that resolution and pulls IT staff toward reactive work.</p></div>
+        <div class="goal-row help"><div class="label">How Salesforce Employee Service helps</div><p>Agentforce IT Service Management runs an agentic service desk with ITIL-compliant incident, problem, and change management, an agentic CMDB as a single source of truth, proactive incident alerts, and autonomous resolution of routine issues. Conversational agents resolve 60 to 70 percent of tier-1 tickets without human touch, and the product launched with more than 100 pre-built connectors, including Workday, Okta, Microsoft, and CrowdStrike, so IT shifts toward a strategic partner to the business.</p></div>
+      </div>
+    </article>
+  </div>
+</section>
+
+<!-- BUSINESS CASE -->
+<section id="business-case" class="case-section" aria-labelledby="case-h">
+  <div class="wrap">
+    <span class="eyebrow">The business case</span>
+    <h2 id="case-h">A five-year view of the return</h2>
+    <p class="lede">Grounded in your FY2025 10-K: about 52,000 Team Members generating roughly 520,000 IT tickets and 416,000 HR interactions a year, against a current-state support spend near $43.0M. Figures below report the expected scenario.</p>
+
+    <div class="tiles">
+      <div class="tile">
+        <div class="value" data-count="1005.8" data-suffix="%" data-decimals="1">1005.8%</div>
+        <div class="label">Expected ROI</div>
+      </div>
+      <div class="tile">
+        <div class="value" data-count="2.3" data-suffix=" mo" data-decimals="1">2.3 mo</div>
+        <div class="label">Payback period</div>
+      </div>
+      <div class="tile">
+        <div class="value" data-count="78.0" data-prefix="$" data-suffix="M" data-decimals="1">$78.0M</div>
+        <div class="label">5-year net savings</div>
+      </div>
+      <div class="tile">
+        <div class="value" data-count="60.7" data-prefix="$" data-suffix="M" data-decimals="1">$60.7M</div>
+        <div class="label">NPV at 8 percent</div>
+      </div>
+    </div>
+
+    <!-- CHART -->
+    <div class="chart-card">
+      <h3>Cumulative net cash flow, years 1 to 5</h3>
+      <p>Net of the $1.5M annual license and a one-time $250K implementation in year 1. Adoption ramps through years 1 to 3, then holds at a steady-state run rate.</p>
+      <div class="chart-wrap">
+        <svg viewBox="0 0 760 380" role="img" aria-labelledby="chart-title chart-desc" preserveAspectRatio="xMidYMid meet">
+          <title id="chart-title">Cumulative net cash flow by year</title>
+          <desc id="chart-desc">Bar chart of cumulative net savings: Year 1 $8.3M, Year 2 $23.0M, Year 3 $40.6M, Year 4 $59.3M, Year 5 $78.0M.</desc>
+
+          <!-- gridlines + y axis labels (scale 0 to 80M) -->
+          <g font-family="-apple-system, Segoe UI, Roboto, sans-serif" font-size="12" fill="rgba(255,255,255,0.6)">
+            <!-- y=0 baseline at 320, top at 40, 80M span over 280px -->
+            <line x1="70" y1="320" x2="730" y2="320" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+            <line x1="70" y1="250" x2="730" y2="250" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
+            <line x1="70" y1="180" x2="730" y2="180" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
+            <line x1="70" y1="110" x2="730" y2="110" stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
+            <line x1="70" y1="40"  x2="730" y2="40"  stroke="rgba(255,255,255,0.10)" stroke-width="1"/>
+            <text x="62" y="324" text-anchor="end">$0</text>
+            <text x="62" y="254" text-anchor="end">$20M</text>
+            <text x="62" y="184" text-anchor="end">$40M</text>
+            <text x="62" y="114" text-anchor="end">$60M</text>
+            <text x="62" y="44"  text-anchor="end">$80M</text>
+          </g>
+
+          <!-- bars: each value scaled px = value/80M * 280 -->
+          <!-- Y1 8.332436M -> 29.16px -> y=290.84 -->
+          <!-- Y2 22.964334M -> 80.38px -> y=239.62 -->
+          <!-- Y3 40.620962M -> 142.17px -> y=177.83 -->
+          <!-- Y4 59.285834M -> 207.50px -> y=112.50 -->
+          <!-- Y5 77.950706M -> 272.83px -> y=47.17 -->
+          <g>
+            <rect x="92"  y="290.84" width="92" height="29.16"  rx="5" fill="#c8102e"/>
+            <rect x="220" y="239.62" width="92" height="80.38"  rx="5" fill="#c8102e"/>
+            <rect x="348" y="177.83" width="92" height="142.17" rx="5" fill="#c8102e"/>
+            <rect x="476" y="112.50" width="92" height="207.50" rx="5" fill="#d8243f"/>
+            <rect x="604" y="47.17"  width="92" height="272.83" rx="5" fill="#f1af0f"/>
+          </g>
+
+          <!-- value labels on bars -->
+          <g font-family="-apple-system, Segoe UI, Roboto, sans-serif" font-size="13" font-weight="700" fill="#ffffff" text-anchor="middle">
+            <text x="138" y="282">$8.3M</text>
+            <text x="266" y="231">$23.0M</text>
+            <text x="394" y="169">$40.6M</text>
+            <text x="522" y="104">$59.3M</text>
+            <text x="650" y="39" fill="#f1af0f">$78.0M</text>
+          </g>
+
+          <!-- x axis labels -->
+          <g font-family="-apple-system, Segoe UI, Roboto, sans-serif" font-size="13" fill="rgba(255,255,255,0.85)" text-anchor="middle">
+            <text x="138" y="342">Year 1</text>
+            <text x="266" y="342">Year 2</text>
+            <text x="394" y="342">Year 3</text>
+            <text x="522" y="342">Year 4</text>
+            <text x="650" y="342">Year 5</text>
+          </g>
+          <text x="400" y="370" font-family="-apple-system, Segoe UI, Roboto, sans-serif" font-size="12" fill="rgba(255,255,255,0.6)" text-anchor="middle">Cumulative net savings (USD), expected scenario</text>
+        </svg>
+      </div>
+    </div>
+
+    <!-- SCENARIOS -->
+    <div class="grid grid-3 scenarios">
+      <article class="scenario">
+        <span class="tag" style="background:rgba(255,255,255,0.16); color:#fff;">Conservative</span>
+        <h4>55% of full impact</h4>
+        <div class="metric-row"><span>Net savings / yr</span><span>$13.3M</span></div>
+        <div class="metric-row"><span>ROI</span><span>663.2%</span></div>
+        <div class="metric-row"><span>Payback</span><span>3.6 mo</span></div>
+        <p class="note">Reflects slower knowledge-base maturity, modest self-service adoption in a deskless workforce, and conservative change management.</p>
+      </article>
+      <article class="scenario featured">
+        <span class="tag">Expected</span>
+        <h4>75% of full impact</h4>
+        <div class="metric-row"><span>Net savings / yr</span><span>$18.7M</span></div>
+        <div class="metric-row"><span>ROI</span><span>1005.8%</span></div>
+        <div class="metric-row"><span>Payback</span><span>2.3 mo</span></div>
+        <p class="note">Credible adoption for a mature retail support organization with established IT and HR shared services.</p>
+      </article>
+      <article class="scenario">
+        <span class="tag" style="background:rgba(255,255,255,0.16); color:#fff;">Aggressive</span>
+        <h4>90% of full impact</h4>
+        <div class="metric-row"><span>Net savings / yr</span><span>$22.7M</span></div>
+        <div class="metric-row"><span>ROI</span><span>1289.4%</span></div>
+        <div class="metric-row"><span>Payback</span><span>1.6 mo</span></div>
+        <p class="note">Strong executive sponsorship, mature knowledge management, and rapid mobile self-service adoption across stores and distribution centers.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section id="book" class="cta-section" aria-labelledby="book-h">
+  <div class="wrap">
+    <div class="cta-card">
+      <span class="eyebrow">Let us walk it through together</span>
+      <h2 id="book-h">Thirty minutes, your numbers, your workforce</h2>
+      <p class="lede" style="margin: 0 auto;">Jordan, bring your ticket and case telemetry and we will pressure-test this model against your real support cost structure. We will show Agentforce HR Service and IT Service Management answering the questions your Team Members actually ask, in Slack and on mobile, the way they already work.</p>
+      <div style="margin-top: var(--s6);">
+        <a class="btn" href="https://calendly.com/sam-rivera-salesforce/30min">Book a 30-minute walkthrough</a>
+      </div>
+      <div class="rep">
+        <span class="name">Sam Rivera</span>
+        <span class="title">Account Executive, Employee Service, Salesforce</span>
+        <span class="email"><a href="mailto:sam.rivera@salesforce.com">sam.rivera@salesforce.com</a></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- FOOTER -->
+<footer class="site" role="contentinfo">
+  <div class="wrap">
+    <p><strong>About this page.</strong> The lead record shown here is a representative sample prepared to illustrate a personalized outreach. Jordan Avery and the contact details are sample data for demonstration.</p>
+    <p>The ROI figures are illustrative estimates pending customer discovery and are not commitments. They follow the Mirenta reference methodology applied to public Tractor Supply Company filings and should be validated against your actual support cost structure before external use.</p>
+    <p class="credit">Generated by Mirenta</p>
+  </div>
+</footer>
+
+<script>
+  // Count-up animation for headline metric tiles, runs once on scroll into view.
+  (function () {
+    var prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function format(el, value) {
+      var decimals = parseInt(el.dataset.decimals || '0', 10);
+      var prefix = el.dataset.prefix || '';
+      var suffix = el.dataset.suffix || '';
+      return prefix + value.toFixed(decimals) + suffix;
+    }
+
+    function animate(el) {
+      var target = parseFloat(el.dataset.count);
+      if (prefersReduced) { el.textContent = format(el, target); return; }
+      var duration = 1400;
+      var start = null;
+      function step(ts) {
+        if (!start) start = ts;
+        var p = Math.min((ts - start) / duration, 1);
+        var eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = format(el, target * eased);
+        if (p < 1) requestAnimationFrame(step);
+        else el.textContent = format(el, target);
+      }
+      requestAnimationFrame(step);
+    }
+
+    var tiles = document.querySelectorAll('.value[data-count]');
+    if ('IntersectionObserver' in window) {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) { animate(entry.target); io.unobserve(entry.target); }
+        });
+      }, { threshold: 0.4 });
+      tiles.forEach(function (t) { io.observe(t); });
+    } else {
+      tiles.forEach(function (t) { t.textContent = format(t, parseFloat(t.dataset.count)); });
+    }
+  })();
+</script>
+
+</body>
+</html>
