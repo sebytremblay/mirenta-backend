@@ -28,38 +28,48 @@ function profile(brand?: ProductProfile["brand"]): ProductProfile {
     proof_points: null,
     cta_text: null,
     brand: brand ?? null,
+    vertical: "salesforce_employee_service",
     created_at: "",
     updated_at: "",
   };
 }
 
-const HOUSE_BLUE = "#0176d3";
+// The vertical accent the builder passes as deriveTokens' fallbackColor. The
+// employee-service spec supplies Salesforce blue.
+const VERTICAL_ACCENT = "#0176d3";
 
-test("prospect brand color wins over seller and house", () => {
+test("prospect brand color wins over seller and the vertical accent", () => {
   const brand: ProspectBrand = { primary_color: "#aa0000" };
-  const t = deriveTokens(profile({ primary_color: "#00aa00" }), brand);
+  const t = deriveTokens(profile({ primary_color: "#00aa00" }), brand, VERTICAL_ACCENT);
   assert.equal(t.brand, "#aa0000");
 });
 
 test("seller brand color applies when the prospect has none", () => {
-  const t = deriveTokens(profile({ primary_color: "#00aa00" }), {});
+  const t = deriveTokens(profile({ primary_color: "#00aa00" }), {}, VERTICAL_ACCENT);
   assert.equal(t.brand, "#00aa00");
 });
 
-test("house default applies when neither prospect nor seller supplies a color", () => {
-  assert.equal(deriveTokens(profile(), undefined).brand, HOUSE_BLUE);
+test("the vertical accent applies when neither prospect nor seller supplies a color", () => {
+  assert.equal(deriveTokens(profile(), undefined, VERTICAL_ACCENT).brand, VERTICAL_ACCENT);
 });
 
-test("a malformed seller color falls through to the house default", () => {
-  const t = deriveTokens(profile({ primary_color: "green" }), undefined);
-  assert.equal(t.brand, HOUSE_BLUE);
+test("a malformed seller color falls through to the vertical accent", () => {
+  const t = deriveTokens(profile({ primary_color: "green" }), undefined, VERTICAL_ACCENT);
+  assert.equal(t.brand, VERTICAL_ACCENT);
+});
+
+test("a neutral house default backstops a missing vertical accent", () => {
+  // No fallbackColor passed: the helper uses its neutral house default rather
+  // than producing an empty or invalid brand color.
+  const t = deriveTokens(profile(), undefined);
+  assert.match(t.brand, /^#[0-9A-Fa-f]{6}$/);
 });
 
 test("tokens fall back independently on a partial prospect brand", () => {
-  const t = deriveTokens(profile(), { background_color: "#101010" });
+  const t = deriveTokens(profile(), { background_color: "#101010" }, VERTICAL_ACCENT);
   assert.equal(t.bg, "#101010"); // prospect-supplied
-  assert.equal(t.brand, HOUSE_BLUE); // fell back
-  assert.equal(t.accent, HOUSE_BLUE); // accent defaults to the primary
+  assert.equal(t.brand, VERTICAL_ACCENT); // fell back
+  assert.equal(t.accent, VERTICAL_ACCENT); // accent defaults to the primary
 });
 
 test("readableOn returns dark text on a light brand and white on a dark brand", () => {
