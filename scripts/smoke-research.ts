@@ -5,7 +5,9 @@
 // Run: timeout 240 node scripts/smoke-research.ts
 
 import { runResearch } from "../src/agents/research.ts";
-import { MVP_VERTICAL } from "../src/domain/research.ts";
+import { employeeServiceVertical } from "../src/verticals/employee-service.ts";
+
+const vertical = employeeServiceVertical;
 
 const lead = {
   first_name: "Jordan",
@@ -29,6 +31,7 @@ try {
   const result = await runResearch({
     lead,
     profile,
+    vertical,
     onStep: (s) => console.log(`  [${s.phase}] ${s.detail}`),
   });
 
@@ -60,12 +63,11 @@ try {
     console.log(`  - ${pri.domain}: ${pri.pov.slice(0, 60)}...`);
   }
   console.log();
-  console.log(
-    `ROI inputs: ${result.extension.roi_inputs.total_employees} employees`,
-  );
-  console.log(`  IT staff: ${result.extension.roi_inputs.it_staff}`);
-  console.log(`  HR staff: ${result.extension.roi_inputs.hr_staff}`);
-  console.log(`  Estimated: ${result.extension.roi_inputs.estimated}`);
+  console.log("Value inputs:");
+  for (const [key, val] of Object.entries(result.extension.value_inputs)) {
+    console.log(`  ${key}: ${val}`);
+  }
+  console.log(`  Estimated: ${result.extension.estimated}`);
   console.log();
 
   // Assertions
@@ -76,9 +78,9 @@ try {
     },
     {
       name: "total_employees > 0",
-      pass: result.extension.roi_inputs.total_employees > 0,
+      pass: (result.extension.value_inputs.total_employees ?? 0) > 0,
     },
-    { name: "vertical is MVP_VERTICAL", pass: result.vertical === MVP_VERTICAL },
+    { name: "vertical matches the spec", pass: result.vertical === vertical.id },
     {
       name: "has account summary",
       pass: result.account.summary.length > 0,

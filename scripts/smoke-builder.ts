@@ -4,9 +4,12 @@
 // Anthropic API through the Salesforce gateway. Run: node scripts/smoke-builder.ts
 
 import { buildSite } from "../src/agents/builder.ts";
+import { employeeServiceVertical } from "../src/verticals/employee-service.ts";
 import type { ResearchObject } from "../src/domain/research.ts";
 import type { ProductProfile } from "../src/domain/entities.ts";
 import { writeFileSync } from "node:fs";
+
+const vertical = employeeServiceVertical;
 
 // Construct a realistic sample ResearchObject (Plexus Corp).
 const sampleResearch: ResearchObject = {
@@ -75,12 +78,12 @@ const sampleResearch: ResearchObject = {
           "Operational uptime is critical. The IT service desk handles high ticket volumes, with many repetitive issues that can be automated.",
       },
     ],
-    roi_inputs: {
+    value_inputs: {
       total_employees: 20000,
       it_staff: 80,
       hr_staff: 25,
-      estimated: false,
     },
+    estimated: false,
   },
 };
 
@@ -98,6 +101,7 @@ const sampleProfile: ProductProfile = {
   ],
   cta_text: "Schedule a personalized demo",
   brand: { primary_color: "#0176d3" },
+  vertical: "salesforce_employee_service",
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 };
@@ -119,6 +123,7 @@ try {
     lead: sampleLead,
     profile: sampleProfile,
     research: sampleResearch,
+    vertical,
     onStep: (s) => console.log(`  [${s.phase}] ${s.detail}`),
   });
 

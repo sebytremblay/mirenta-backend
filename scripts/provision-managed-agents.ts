@@ -14,6 +14,15 @@
 // agent. The builder model (ANTHROPIC_BUILDER_MODEL) reads at runtime and needs
 // no re-provision.
 //
+// The agent serves every vertical (D53). The system prompt this script bakes on
+// is vertical-neutral: it holds the five-phase methodology and the house style,
+// not any HR/ITSM specifics. The per-lead kickoff carries the vertical brief
+// (domains, executive targets, value inputs), and the frozen emit_research schema
+// stays permissive (extension.value_inputs is an open numeric map), with
+// validateResearch enforcing the active vertical's contract in code. Re-run this
+// after a change to the generic prompt or the permissive schema so the live agent
+// picks it up.
+//
 // Idempotency: pass the existing ids back through .env to reuse and update them.
 // With ANTHROPIC_RESEARCH_AGENT_ID set, the agent updates in place (a new
 // version) rather than duplicating. With ANTHROPIC_ENVIRONMENT_ID and
