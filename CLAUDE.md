@@ -6,6 +6,10 @@ Guidance for Claude Code in the Mirenta backend. The repo-root `CLAUDE.md` cover
 
 The backend service and its setup (env, preflight, provisioning docs) live at the repository root. `DECISIONS.md` records the system-design decisions, both resolved and open.
 
+## Cost discipline
+
+Run the full pipeline sparingly: each invocation of the Research Agent and the Website Builder spends real money. To exercise behavior alone, where the final output does not matter, point at a cheaper model and short-circuit the call so no live generation runs.
+
 ## Anthropic integration: Claude Managed Agents
 
 The backend runs the **Research Agent** on **Claude Managed Agents**, a real Anthropic product. The **Website Builder** runs a one-shot Messages API call, not a session, since a single structured generation has no multi-step loop for Managed Agents to host (D50). Read this before reasoning about the agent integration.
