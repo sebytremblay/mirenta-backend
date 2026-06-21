@@ -183,6 +183,11 @@ async function researchStage(job: Job, log: TickLogger): Promise<string | null> 
   log("research start", { jobId: job.id, company: lead.company });
   let research: ResearchObject;
   let usage: TokenUsageTotals;
+  // Capture the Managed Agents session id the run emits at create time (D56).
+  // It arrives on the "session" step before any work runs, so we hold it even
+  // if the run later throws, and we persist it onto the job below so a debug
+  // pass can fetch the agent's reasoning transcript after the fact.
+  let researchSessionId: string | null = null;
   try {
     ({ research, usage } = await runResearch({
       lead: {
@@ -198,7 +203,10 @@ async function researchStage(job: Job, log: TickLogger): Promise<string | null> 
         value_prop: profile.value_prop,
       },
       vertical,
-      onStep: (s) => log("research step", { jobId: job.id, phase: s.phase, detail: s.detail }),
+      onStep: (s) => {
+        if (s.phase === "session") researchSessionId = s.detail;
+        log("research step", { jobId: job.id, phase: s.phase, detail: s.detail });
+      },
     }));
   } catch (err) {
     // A refusal or a schema-invalid result is permanent: a retry repeats it.
@@ -227,10 +235,13 @@ async function researchStage(job: Job, log: TickLogger): Promise<string | null> 
   const updated = await updateJob(job.id, job.status, {
     status: "building",
     research_id: row.id,
+    // Persist the retained session id (D56) so a debug pass can pull the agent's
+    // reasoning transcript. Null when the run emitted no id (an older run shape).
+    research_session_id: researchSessionId,
     lease_until: null,
   });
   if (!updated) return null; // lost the guard race
-  log("research done", { jobId: job.id, researchId: row.id });
+  log("research done", { jobId: job.id, researchId: row.id, researchSessionId });
   return "building";
 }
 

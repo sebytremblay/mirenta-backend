@@ -43,7 +43,11 @@ export function managedAgentsClient(): Anthropic {
 export class AgentSessionError extends Error {}
 
 export interface ManagedSessionStep {
-  kind: "text" | "search" | "final" | "error" | "status";
+  // "session" fires once at create time and carries the session id in `detail`.
+  // The caller persists it (D56) so a later debug pass fetches the transcript
+  // through client.beta.sessions.events.list. It fires before any work runs, so
+  // the id is captured even when the run later fails.
+  kind: "text" | "search" | "final" | "error" | "status" | "session";
   detail: string;
 }
 
@@ -86,9 +90,10 @@ export interface ManagedSessionResult {
 }
 
 // Run one research session end to end and return the structured object the agent
-// passed to its final tool, plus the accumulated token usage. Creates and deletes
-// a session against the persistent agent/environment/vault; throws if the agent
-// refuses or the session ends without emitting a result.
+// passed to its final tool, plus the accumulated token usage. Creates a session
+// against the persistent agent/environment/vault and retains it on a clean run
+// so its event history stays fetchable for debugging (D56); deletes it only on a
+// failed run. Throws if the agent refuses or the session ends without a result.
 export async function runManagedSession(
   opts: RunManagedSessionOptions,
 ): Promise<ManagedSessionResult> {
@@ -106,6 +111,12 @@ export async function runManagedSession(
     vault_ids: exaVaultId ? [exaVaultId] : undefined,
     title: "mirenta research",
   });
+
+  // Surface the session id immediately, before any work runs, so the caller
+  // persists it (D56) even if the run later throws. The id is the only handle
+  // back to the server-side event history (agent reasoning, MCP searches, the
+  // emit_research input) that client.beta.sessions.events.list reads.
+  opts.onStep?.({ kind: "session", detail: session.id });
 
   // Hard guard: abort the stream if the session stalls. The async iterator
   // blocks when no events arrive, so a stuck session needs a wall-clock ceiling.
@@ -216,19 +227,33 @@ export async function runManagedSession(
     throw new AgentSessionError("event stream ended without a result");
   } finally {
     clearTimeout(guard);
-    // Best-effort cleanup. A still-running session rejects delete (400), so
-    // interrupt it first on any non-clean exit (timeout, stall, error). Never
-    // let a cleanup failure mask the real outcome, but surface it so a leaked
-    // session is observable rather than silent.
-    try {
-      if (!cleanExit) {
+    // Cleanup splits on the exit kind (D56).
+    //
+    // Clean exit: RETAIN the session. Anthropic holds the event history for the
+    // life of the session, so retaining it keeps the agent's reasoning, its MCP
+    // searches, and the emit_research input fetchable later through
+    // client.beta.sessions.events.list. The retained session is what makes a
+    // generation debuggable after the fact; the D23 retention sweep deletes it
+    // alongside the research and the published site (the sweep extension is the
+    // deferred follow-up D56 names).
+    //
+    // Non-clean exit (timeout, stall, refusal, error): a still-running session
+    // rejects delete (400), so interrupt it first, then delete. A failed run
+    // leaves no transcript worth keeping, so it deletes rather than leaks.
+    // Never let a cleanup failure mask the real outcome, but surface it so a
+    // leaked session is observable rather than silent.
+    if (!cleanExit) {
+      try {
         await c.beta.sessions.events
           .send(session.id, { events: [{ type: "user.interrupt" }] })
           .catch(() => {});
+        await c.beta.sessions.delete(session.id);
+      } catch (err) {
+        opts.onStep?.({
+          kind: "error",
+          detail: `session cleanup failed: ${(err as Error).message}`,
+        });
       }
-      await c.beta.sessions.delete(session.id);
-    } catch (err) {
-      opts.onStep?.({ kind: "error", detail: `session cleanup failed: ${(err as Error).message}` });
     }
   }
 }

@@ -99,6 +99,11 @@ export interface Job {
   batch_id: string | null;
   status: JobStatus;
   research_id: string | null;
+  // The retained Managed Agents research session id (D56, migration 0008). The
+  // handle to the agent's server-side reasoning transcript, fetched on demand
+  // for debugging. Null for jobs that ran before the column, or whose session
+  // was deleted on a failed run.
+  research_session_id: string | null;
   html_s3_key: string | null;
   site_url: string | null;
   failure_reason: string | null;

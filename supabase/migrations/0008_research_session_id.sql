@@ -1,0 +1,12 @@
+-- Persist the Managed Agents research session id on the job (D56).
+-- The Research Agent runs server-side on Claude Managed Agents (D50), where
+-- Anthropic holds the event history (agent reasoning, MCP searches, the
+-- emit_research call) for the life of the session. The worker now retains that
+-- session on a clean run and records its id here, so a later debug pass fetches
+-- the transcript through client.beta.sessions.events.list and reconstructs why
+-- the agent reached the conclusion it did.
+--
+-- Nullable on purpose: jobs that ran before this column existed, and any job
+-- whose session was interrupted and deleted on a failed run, carry no id. A
+-- reader treats null as "transcript unavailable" rather than an error.
+alter table jobs add column if not exists research_session_id text;
