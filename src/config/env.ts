@@ -9,16 +9,44 @@ import { dirname, resolve } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const backendRoot = resolve(here, "..", "..");
 
+// Neutralize the dev shell's ambient Anthropic gateway credentials BEFORE loading
+// .env. The shell exports a Bedrock/gateway ANTHROPIC_API_KEY (plus
+// ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL) because Claude Code runs on
+// Bedrock. loadEnvFile (below) leaves keys already present in process.env
+// untouched, so those ambient values would shadow the real first-party key in
+// .env and 401 the Managed Agents calls. The project authenticates with the
+// first-party key via x-api-key and pins the host through
+// MIRENTA_ANTHROPIC_BASE_URL (D50), so the ambient auth token and base url are
+// pure leak vectors: the SDK would inherit them at construction even though the
+// clients pass apiKey + baseURL explicitly. Drop all three here.
+//
+// Deploy safety: keep the ambient ANTHROPIC_API_KEY as a fallback and restore it
+// after the load only if .env did not supply one, so a platform that sets the
+// key as an env var with no .env file (the normal deploy shape) still works.
+// The auth token and base url are never restored: nothing in the project reads
+// them. See [[mirenta-ambient-anthropic-key-leak]].
+const ambientAnthropicKey = process.env.ANTHROPIC_API_KEY;
+delete process.env.ANTHROPIC_API_KEY;
+delete process.env.ANTHROPIC_AUTH_TOKEN;
+delete process.env.ANTHROPIC_BASE_URL;
+
 // Load .env through the Node built-in (the >=22.18 engines floor pins it well
 // past its 20.12 introduction). Node needs no separate dotenv dependency and
 // the project keeps deps lean. loadEnvFile leaves keys already present in
-// process.env untouched, so ambient values win and deploys override the file.
-// A missing file is fine; rethrow any other error so a permission or parse
-// failure fails loud at startup rather than starting with a half-loaded config.
+// process.env untouched, so ambient values win and deploys override the file
+// (except the Anthropic credentials cleared above). A missing file is fine;
+// rethrow any other error so a permission or parse failure fails loud at startup
+// rather than starting with a half-loaded config.
 try {
   process.loadEnvFile(resolve(backendRoot, ".env"));
 } catch (err) {
   if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+}
+
+// Deploy fallback: .env wins, but when it carries no key, fall back to the
+// platform-set ambient key the load cleared above.
+if (!process.env.ANTHROPIC_API_KEY && ambientAnthropicKey) {
+  process.env.ANTHROPIC_API_KEY = ambientAnthropicKey;
 }
 
 function required(key: string): string {
