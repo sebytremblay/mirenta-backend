@@ -7,9 +7,10 @@
 //
 // Customer (seller): the Mirenta team, selling Mirenta itself.
 // Lead: Masafumi Kawashima, Account Executive at Salesforce.
-// The profile omits a vertical, so it resolves to the one registered spec
-// (salesforce_employee_service); the page personalizes to Salesforce while the
-// value model renders that vertical's ROI shape.
+// The profile declares the sales_marketing vertical: Mirenta sells outbound
+// personalization to revenue and demand-generation leaders, so the page
+// researches Salesforce through a Sales and Marketing lens and the value model
+// renders pipeline-uplift ROI, with no HR/ITSM framing.
 
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -43,6 +44,7 @@ try {
     ],
     cta_text: "Book a working session",
     brand: { primary_color: "#3b5bdb" },
+    vertical: "sales_marketing",
   });
   console.log("  org:", org.id);
 

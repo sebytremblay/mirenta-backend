@@ -101,8 +101,10 @@ Call ${EMIT_RESEARCH_TOOL} exactly once when all five phases finish. Set \`verti
 
 // Build the lead-specific kickoff message. This varies per lead and per vertical,
 // so it carries the vertical brief (domains, executive targets, value inputs)
-// that the frozen, vertical-neutral system prompt cannot.
-function buildKickoff(input: ResearchInput): string {
+// that the frozen, vertical-neutral system prompt cannot. Exported so a unit test
+// can assert the brief carries the active vertical's framing and no other
+// vertical's (the HR/ITSM leak guard).
+export function buildKickoff(input: ResearchInput): string {
   const leadName = `${input.lead.first_name} ${input.lead.last_name}`;
   const leadRole = input.lead.role ? ` (${input.lead.role})` : "";
   const company = input.lead.company;

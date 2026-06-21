@@ -20,8 +20,8 @@ export interface ProfileInput {
   cta_text?: string;
   brand?: { primary_color?: string; logo_url?: string; [key: string]: unknown };
   // The customer's vertical. Optional on input: an absent value defaults to the
-  // employee-service id; an unknown id rejects, so a misconfigured profile fails
-  // at save rather than at the worker's stage boundary.
+  // neutral generic id (DEFAULT_VERTICAL_ID); an unknown id rejects, so a
+  // misconfigured profile fails at save rather than at the worker's stage boundary.
   vertical?: string;
   // Per-customer value-model economics (migration 0007). Optional: an absent
   // value persists null and the vertical falls back to its default economics.
