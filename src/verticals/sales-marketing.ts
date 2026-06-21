@@ -11,7 +11,6 @@
 // from the research value inputs and the scenario uplift. The builder renders the
 // computed ValueResult; the worker never lets the model author a figure (D9, D54).
 
-import { formatDollars } from "../domain/format.ts";
 import type {
   BoundValueModel,
   ValidatedInputs,
@@ -21,6 +20,7 @@ import type {
 } from "./types.ts";
 import type { ProductProfile } from "../domain/entities.ts";
 import { validateEconomicsShape } from "./contract.ts";
+import { DEFAULT_ADOPTION_CURVE, projectFinancials } from "./financial-model.ts";
 
 // Funnel assumption: the share of incremental booked meetings that become a
 // closed-won deal. A single blended rate keeps the model defensible and auditable;
@@ -33,11 +33,6 @@ const MEETING_TO_WON_RATE = 0.05;
 // estimated: true; this constant only guards a missing input so compute never reads
 // undefined and silently produces zero.
 const DEFAULT_MEETINGS_PER_REP_YEAR = 60;
-
-// Default 5-year adoption ramp. defaultEconomics populates it and createCompute
-// falls back to it when an economics object omits the curve. One source so a
-// deliberate change to the ramp edits one literal.
-const DEFAULT_ADOPTION_CURVE = [0.5, 0.8, 1.0, 1.0, 1.0];
 
 // The effectiveness key createCompute reads from each scenario: the fractional lift
 // in booked meetings Mirenta drives. validateEconomics requires every scenario to
@@ -60,10 +55,6 @@ function defaultEconomics(): VerticalEconomics {
     ],
     adoption_curve: DEFAULT_ADOPTION_CURVE,
   };
-}
-
-function round(n: number): number {
-  return Math.round(n);
 }
 
 function validateEconomics(raw: unknown): VerticalEconomics {
@@ -95,6 +86,12 @@ function validateInputs(raw: Record<string, number>, estimated: boolean): Valida
 
 // Factory: create a compute function bound to the given economics. Pure
 // (inputs -> ValueResult); the economics flow through the closure.
+//
+// The value is pipeline uplift: the rep roster and baseline meeting rate set the
+// annual booked-meeting volume, and each scenario's meeting_uplift lifts it. The
+// funnel rate turns incremental meetings into closed-won deals, and the deal size
+// turns those into gross new annual revenue. The shared financial engine turns
+// that gross value into the net, ROI, payback, projection, and NPV the page renders.
 function createCompute(economics: VerticalEconomics) {
   return (inputs: ValidatedInputs): ValueResult => {
     const reps = Math.max(0, Math.floor(inputs.values.quota_carrying_reps ?? 0));
@@ -102,80 +99,20 @@ function createCompute(economics: VerticalEconomics) {
     const meetingsPerRep = Math.max(0, inputs.values.baseline_meetings_per_rep_year ?? 0);
     const baselineMeetings = reps * meetingsPerRep;
 
-    const firstYearCost = economics.annual_license + economics.implementation_fee;
-
-    // Each scenario: the meeting uplift turns baseline meetings into incremental
-    // booked meetings, the funnel rate turns those into incremental closed-won
-    // deals, and the deal size turns those into net new annual revenue.
-    const scenarios = economics.scenarios.map((s) => {
-      const uplift = s.effectiveness.meeting_uplift ?? 0;
-      const incrementalMeetings = baselineMeetings * uplift;
+    const grossFor = (effectiveness: Record<string, number>): number => {
+      const incrementalMeetings = baselineMeetings * (effectiveness.meeting_uplift ?? 0);
       const incrementalWonDeals = incrementalMeetings * MEETING_TO_WON_RATE;
-      const gross = incrementalWonDeals * dealSize;
-      const net = gross - economics.annual_license;
-      const roiPercent = firstYearCost > 0 ? (net / firstYearCost) * 100 : 0;
-      return {
-        name: s.name,
-        primaryValue: formatDollars(round(net)),
-        primaryLabel: "Net new annual revenue",
-        secondary: `${round(roiPercent)}% ROI`,
-      };
-    });
-
-    const expectedUplift = economics.scenarios[1]!.effectiveness.meeting_uplift ?? 0;
-    const expectedIncrementalMeetings = baselineMeetings * expectedUplift;
-    const expectedGross = expectedIncrementalMeetings * MEETING_TO_WON_RATE * dealSize;
-    const expectedNet = round(expectedGross - economics.annual_license);
-
-    // Payback: total first-year investment divided by monthly gross revenue.
-    // Guard against a zero funnel: expectedGross of 0 produces Infinity otherwise.
-    const paybackValue =
-      expectedGross > 0 ? `${(firstYearCost / (expectedGross / 12)).toFixed(1)} mo` : "n/a";
-
-    // Annual cash flows follow the adoption ramp; year 1 absorbs the implementation fee.
-    const adoption = economics.adoption_curve ?? DEFAULT_ADOPTION_CURVE;
-    const annualCashFlows = adoption.map((ramp, i) => {
-      const yearNumber = i + 1;
-      return (
-        ramp * expectedGross -
-        economics.annual_license -
-        (yearNumber === 1 ? economics.implementation_fee : 0)
-      );
-    });
-
-    let runningTotal = 0;
-    const series = annualCashFlows.map((flow, i) => {
-      runningTotal += flow;
-      const rounded = round(runningTotal);
-      return {
-        period: `Year ${i + 1}`,
-        value: rounded,
-        display: formatDollars(rounded),
-      };
-    });
-
-    const cumulative5 = runningTotal;
-    const npv = round(annualCashFlows.reduce((sum, flow, i) => sum + flow / 1.08 ** (i + 1), 0));
-
-    return {
-      sectionTitle: "Business Value",
-      headline: { label: "Expected net new annual revenue", value: formatDollars(expectedNet) },
-      scenarios,
-      footnote: inputs.estimated
-        ? "Pipeline and revenue figures model industry benchmarks and serve as illustration pending discovery."
-        : undefined,
-      metrics: [
-        { label: "Expected ROI", value: `${round((expectedNet / firstYearCost) * 100)}%` },
-        { label: "Payback period", value: paybackValue },
-        { label: "5-year net new revenue", value: formatDollars(round(cumulative5)) },
-        { label: "NPV at 8 percent", value: formatDollars(npv) },
-      ],
-      projection: {
-        label: "Cumulative net new revenue",
-        unit: "USD",
-        series,
-      },
+      return incrementalWonDeals * dealSize;
     };
+
+    return projectFinancials(economics, inputs, grossFor, {
+      primaryLabel: "Net new annual revenue",
+      headlineLabel: "Expected net new annual revenue",
+      fiveYearLabel: "5-year net new revenue",
+      projectionLabel: "Cumulative net new revenue",
+      estimatedFootnote:
+        "Pipeline and revenue figures model industry benchmarks and serve as illustration pending discovery.",
+    });
   };
 }
 

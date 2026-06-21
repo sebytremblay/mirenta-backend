@@ -9,7 +9,6 @@
 // expected, and aggressive scenarios. The model never invents numbers; the
 // builder renders the computed ValueResult.
 
-import { formatDollars } from "../domain/format.ts";
 import type {
   BoundValueModel,
   ValidatedInputs,
@@ -19,6 +18,7 @@ import type {
 } from "./types.ts";
 import type { ProductProfile } from "../domain/entities.ts";
 import { validateEconomicsShape } from "./contract.ts";
+import { DEFAULT_ADOPTION_CURVE, projectFinancials } from "./financial-model.ts";
 
 // Reference assumptions from the workflow doc.
 const IT_TICKETS_PER_EMPLOYEE_YEAR = 10; // "10 IT-related support tickets"
@@ -29,11 +29,6 @@ const HR_INTERACTIONS_PER_EMPLOYEE_YEAR = 8; // "8 HR-related support interactio
 // which dominate the mix per the volume distributions.
 const IT_BLENDED_COST_PER_TICKET = 22; // L1 help desk floor, the dominant tier
 const HR_BLENDED_COST_PER_INTERACTION = 18; // Tier 1 HR shared services floor
-
-// Default 5-year adoption ramp. defaultEconomics() populates it and createCompute
-// falls back to it when an economics object omits the curve (a custom Phase 2
-// config may). One source so a deliberate change to the ramp edits one literal.
-const DEFAULT_ADOPTION_CURVE = [0.5, 0.8, 1.0, 1.0, 1.0];
 
 // The effectiveness keys createCompute reads from each scenario. validateEconomics
 // requires every scenario to carry these, so a typo'd or missing key fails at save
@@ -66,10 +61,6 @@ function defaultEconomics(): VerticalEconomics {
   };
 }
 
-function round(n: number): number {
-  return Math.round(n);
-}
-
 // Narrow the generic numeric map to the employee-service inputs. Headcount is
 // required; the staff counts default to 0 when absent (the current model does
 // not consume them, but they persist for the future full Step 4 model, D49).
@@ -91,87 +82,29 @@ function validateInputs(raw: Record<string, number>, estimated: boolean): Valida
 // function is pure (inputs → ValueResult) while the economics flow through the
 // closure. Phase 1 always passes defaultEconomics(); Phase 2 passes per-customer
 // economics when profile.economics is populated.
+//
+// The value is support deflection: headcount sets the annual IT and HR contact
+// cost pools, and each scenario's deflection rates recover a share of them. The
+// shared financial engine turns that gross value into the net, ROI, payback,
+// cash-flow projection, and NPV the page renders.
 function createCompute(economics: VerticalEconomics) {
   return (inputs: ValidatedInputs): ValueResult => {
     const employees = Math.max(0, Math.floor(inputs.values.total_employees ?? 0));
-    const annualItTickets = employees * IT_TICKETS_PER_EMPLOYEE_YEAR;
-    const annualHrInteractions = employees * HR_INTERACTIONS_PER_EMPLOYEE_YEAR;
+    const itAnnualCost = employees * IT_TICKETS_PER_EMPLOYEE_YEAR * IT_BLENDED_COST_PER_TICKET;
+    const hrAnnualCost =
+      employees * HR_INTERACTIONS_PER_EMPLOYEE_YEAR * HR_BLENDED_COST_PER_INTERACTION;
 
-    const itAnnualCost = annualItTickets * IT_BLENDED_COST_PER_TICKET;
-    const hrAnnualCost = annualHrInteractions * HR_BLENDED_COST_PER_INTERACTION;
+    const grossFor = (effectiveness: Record<string, number>): number =>
+      itAnnualCost * (effectiveness.itDeflection ?? 0) +
+      hrAnnualCost * (effectiveness.hrDeflection ?? 0);
 
-    const firstYearCost = economics.annual_license + economics.implementation_fee;
-
-    const scenarios = economics.scenarios.map((s) => {
-      const itDeflection = s.effectiveness.itDeflection ?? 0;
-      const hrDeflection = s.effectiveness.hrDeflection ?? 0;
-      const gross = itAnnualCost * itDeflection + hrAnnualCost * hrDeflection;
-      const net = gross - economics.annual_license;
-      const roiPercent = firstYearCost > 0 ? (net / firstYearCost) * 100 : 0;
-      return {
-        name: s.name,
-        primaryValue: formatDollars(round(net)),
-        primaryLabel: "Net Annual Savings",
-        secondary: `${round(roiPercent)}% ROI`,
-      };
+    return projectFinancials(economics, inputs, grossFor, {
+      primaryLabel: "Net Annual Savings",
+      headlineLabel: "Expected net annual savings",
+      fiveYearLabel: "5-year net savings",
+      projectionLabel: "Cumulative net cash flow",
+      estimatedFootnote: "Staff counts estimated from industry benchmarks.",
     });
-
-    const expectedScenario = economics.scenarios[1]!;
-    const expectedGross =
-      itAnnualCost * (expectedScenario.effectiveness.itDeflection ?? 0) +
-      hrAnnualCost * (expectedScenario.effectiveness.hrDeflection ?? 0);
-    const expectedNet = round(expectedGross - economics.annual_license);
-
-    // Payback: total first-year investment divided by monthly gross savings.
-    // Guard against zero headcount: expectedGross of 0 produces Infinity otherwise.
-    const paybackValue =
-      expectedGross > 0 ? `${(firstYearCost / (expectedGross / 12)).toFixed(1)} mo` : "n/a";
-
-    // Annual cash flows follow the adoption ramp; year 1 absorbs the implementation fee.
-    const adoption = economics.adoption_curve ?? DEFAULT_ADOPTION_CURVE;
-    const annualCashFlows = adoption.map((ramp, i) => {
-      const yearNumber = i + 1;
-      return (
-        ramp * expectedGross -
-        economics.annual_license -
-        (yearNumber === 1 ? economics.implementation_fee : 0)
-      );
-    });
-
-    // Cumulative series: each point sums all flows up to and including that year.
-    let runningTotal = 0;
-    const series = annualCashFlows.map((flow, i) => {
-      runningTotal += flow;
-      const rounded = round(runningTotal);
-      return {
-        period: `Year ${i + 1}`,
-        value: rounded,
-        display: formatDollars(rounded),
-      };
-    });
-
-    const cumulative5 = runningTotal;
-
-    // NPV at 8%: discount each year's cash flow back to present value, then round.
-    const npv = round(annualCashFlows.reduce((sum, flow, i) => sum + flow / 1.08 ** (i + 1), 0));
-
-    return {
-      sectionTitle: "Business Value",
-      headline: { label: "Expected net annual savings", value: formatDollars(expectedNet) },
-      scenarios,
-      footnote: inputs.estimated ? "Staff counts estimated from industry benchmarks." : undefined,
-      metrics: [
-        { label: "Expected ROI", value: `${round((expectedNet / firstYearCost) * 100)}%` },
-        { label: "Payback period", value: paybackValue },
-        { label: "5-year net savings", value: formatDollars(round(cumulative5)) },
-        { label: "NPV at 8 percent", value: formatDollars(npv) },
-      ],
-      projection: {
-        label: "Cumulative net cash flow",
-        unit: "USD",
-        series,
-      },
-    };
   };
 }
 
