@@ -88,26 +88,30 @@ export interface PageTokens {
   fontDisplay: string;
 }
 
+// Parse a six-digit hex color into its red, green, and blue bytes. Returns
+// undefined for any non-hex input, so each caller supplies its own fallback.
+function parseHexRgb(hex: string): { r: number; g: number; b: number } | undefined {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return undefined;
+  const n = parseInt(m[1]!, 16);
+  return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
+}
+
 // Pick a readable foreground (near-black or white) for text laid over the given
 // background color, so a light prospect brand color does not produce white text
 // on a white header. Uses an sRGB luminance approximation.
 export function readableOn(hex: string): string {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex);
-  if (!m) return "#ffffff";
-  const n = parseInt(m[1]!, 16);
-  const r = (n >> 16) & 0xff;
-  const g = (n >> 8) & 0xff;
-  const b = n & 0xff;
-  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  const rgb = parseHexRgb(hex);
+  if (!rgb) return "#ffffff";
+  const lum = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
   return lum > 0.6 ? "#111111" : "#ffffff";
 }
 
 // Build a low-alpha rgba from a hex color for soft, on-brand section fills.
 export function tint(hex: string, alpha: number): string {
-  const m = /^#([0-9a-f]{6})$/i.exec(hex);
-  if (!m) return `rgba(1, 118, 211, ${alpha})`;
-  const n = parseInt(m[1]!, 16);
-  return `rgba(${(n >> 16) & 0xff}, ${(n >> 8) & 0xff}, ${n & 0xff}, ${alpha})`;
+  const rgb = parseHexRgb(hex);
+  if (!rgb) return `rgba(1, 118, 211, ${alpha})`;
+  return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
 }
 
 // Sanitize a prospect-supplied font-family before it enters the stylesheet. The
