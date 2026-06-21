@@ -29,7 +29,7 @@ import {
 import { computeCost } from "../providers/pricing.ts";
 import type { TokenUsageTotals } from "../providers/usage.ts";
 import { getProfile } from "../services/personalization.ts";
-import { getVertical } from "../verticals/index.ts";
+import { getVertical, type VerticalSpec } from "../verticals/index.ts";
 import { runResearch } from "../agents/research.ts";
 import { buildSite } from "../agents/builder.ts";
 import { publishSite } from "../providers/storage.ts";
@@ -39,7 +39,7 @@ import { AgentRefusalError } from "../providers/anthropic.ts";
 import { PageValidationError } from "../domain/page-validation.ts";
 import { ValueModelContractError } from "../verticals/contract.ts";
 import { validateResearch, ResearchSchemaError, type ResearchObject } from "../domain/research.ts";
-import type { Job, JobStatus, TokenUsageAgent } from "../domain/entities.ts";
+import type { Job, JobStatus, Lead, ProductProfile, TokenUsageAgent } from "../domain/entities.ts";
 
 // A permanent failure moves the job straight to failed; a transient one leaves
 // the job in place so a later tick retries after the lease expires.
@@ -164,21 +164,29 @@ async function recordUsage(
   }
 }
 
-// Research stage: drive the Managed Agents research session, persist the object, advance
-// to building. Idempotent: re-running inserts a fresh research row and the
-// guarded transition only fires from the claimed status.
-async function researchStage(job: Job, log: TickLogger): Promise<string | null> {
+// The lead, profile, and active vertical every stage needs before it runs. A
+// missing lead or profile and an unknown vertical id are all misconfigured-input
+// faults, not transient ones, so they fail the stage permanently rather than
+// retrying a deterministic failure on the lease.
+async function resolveStageContext(
+  job: Job,
+): Promise<{ lead: Lead; profile: ProductProfile; vertical: VerticalSpec }> {
   const lead = await getLead(job.org_id, job.lead_id);
   if (!lead) throw new PermanentStageError("lead disappeared");
   const profile = await getProfile(job.org_id);
   if (!profile) throw new PermanentStageError("product profile disappeared");
-  // An unknown vertical id is a misconfigured profile, not a transient fault.
-  let vertical;
   try {
-    vertical = getVertical(profile.vertical);
+    return { lead, profile, vertical: getVertical(profile.vertical) };
   } catch (err) {
     throw new PermanentStageError((err as Error).message);
   }
+}
+
+// Research stage: drive the Managed Agents research session, persist the object, advance
+// to building. Idempotent: re-running inserts a fresh research row and the
+// guarded transition only fires from the claimed status.
+async function researchStage(job: Job, log: TickLogger): Promise<string | null> {
+  const { lead, profile, vertical } = await resolveStageContext(job);
 
   log("research start", { jobId: job.id, company: lead.company });
   let research: ResearchObject;
@@ -250,16 +258,7 @@ async function researchStage(job: Job, log: TickLogger): Promise<string | null> 
 // mark the job done. The upload overwrites identical bytes on a repeat, so the
 // whole stage is safe to re-run.
 async function buildAndPublishStage(job: Job, log: TickLogger): Promise<string | null> {
-  const lead = await getLead(job.org_id, job.lead_id);
-  if (!lead) throw new PermanentStageError("lead disappeared");
-  const profile = await getProfile(job.org_id);
-  if (!profile) throw new PermanentStageError("product profile disappeared");
-  let vertical;
-  try {
-    vertical = getVertical(profile.vertical);
-  } catch (err) {
-    throw new PermanentStageError((err as Error).message);
-  }
+  const { lead, profile, vertical } = await resolveStageContext(job);
 
   const researchRow = await getResearchForJob(job.id);
   if (!researchRow) throw new PermanentStageError("research row missing for build");
