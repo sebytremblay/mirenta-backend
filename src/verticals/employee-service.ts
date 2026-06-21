@@ -18,7 +18,7 @@ import type {
   VerticalSpec,
 } from "./types.ts";
 import type { ProductProfile } from "../domain/entities.ts";
-import { ValueModelContractError, DISCLOSURE_SCENARIO_NAMES } from "./contract.ts";
+import { validateEconomicsShape } from "./contract.ts";
 
 // Reference assumptions from the workflow doc.
 const IT_TICKETS_PER_EMPLOYEE_YEAR = 10; // "10 IT-related support tickets"
@@ -41,6 +41,14 @@ const DEFAULT_ADOPTION_CURVE = [0.5, 0.8, 1.0, 1.0, 1.0];
 // figures. Keep in lockstep with the keys createCompute reads below.
 const REQUIRED_EFFECTIVENESS_KEYS = ["itDeflection", "hrDeflection"] as const;
 
+// Validate a raw economics object (Phase 2) against the shared shape and disclosure
+// policy plus this vertical's required effectiveness keys. saveProfile maps the
+// throw to a 400 the seller can correct; createValueModel calls it again at build as
+// a defense-in-depth guard for rows that reach the worker without passing save.
+function validateEconomics(raw: unknown): VerticalEconomics {
+  return validateEconomicsShape(raw, REQUIRED_EFFECTIVENESS_KEYS);
+}
+
 // Default economics for the employee-service vertical. Phase 1 always returns
 // these values; Phase 2 reads profile.economics when present and falls back to
 // these when null. Extracted from hardcoded constants to support multi-customer
@@ -60,77 +68,6 @@ function defaultEconomics(): VerticalEconomics {
 
 function round(n: number): number {
   return Math.round(n);
-}
-
-// Validate a raw economics object (Phase 2). A profile.economics that fails this
-// is a misconfigured profile, not a transient fault, so it throws
-// ValueModelContractError. saveProfile calls it and maps the throw to a 400 the
-// seller can correct; createValueModel calls it again at build as a
-// defense-in-depth guard for rows that reach the worker without passing save.
-//
-// The check covers three layers, so a value that passes here cannot fail later or
-// silently render wrong figures:
-// 1. Structure: numeric fees, an adoption_curve of numbers when present.
-// 2. D38/D49 disclosure policy: exactly 3 scenarios named Conservative/Expected/
-//    Aggressive in order (the same names contract.ts enforces on the rendered
-//    ValueResult, read from the shared DISCLOSURE_SCENARIO_NAMES constant).
-// 3. Compute contract: every scenario carries the effectiveness keys createCompute
-//    reads (REQUIRED_EFFECTIVENESS_KEYS), each numeric, so no term defaults to a
-//    silent zero from a typo'd or missing key.
-function validateEconomics(raw: unknown): VerticalEconomics {
-  if (typeof raw !== "object" || raw === null) {
-    throw new ValueModelContractError("economics must be an object");
-  }
-  const e = raw as Record<string, unknown>;
-
-  if (typeof e.annual_license !== "number" || e.annual_license < 0) {
-    throw new ValueModelContractError("economics.annual_license must be a non-negative number");
-  }
-  if (typeof e.implementation_fee !== "number" || e.implementation_fee < 0) {
-    throw new ValueModelContractError(
-      "economics.implementation_fee must be a non-negative number",
-    );
-  }
-  if (!Array.isArray(e.scenarios) || e.scenarios.length !== 3) {
-    throw new ValueModelContractError("economics.scenarios must be an array of exactly 3 scenarios");
-  }
-  for (const [i, s] of e.scenarios.entries()) {
-    if (typeof s !== "object" || s === null) {
-      throw new ValueModelContractError(`economics.scenarios[${i}] must be an object`);
-    }
-    const scenario = s as Record<string, unknown>;
-    // D49: names must match the disclosure policy exactly and in order, since the
-    // value model passes them straight onto the rendered scenario cards.
-    const expectedName = DISCLOSURE_SCENARIO_NAMES[i];
-    if (scenario.name !== expectedName) {
-      throw new ValueModelContractError(
-        `economics.scenarios[${i}].name must be "${expectedName}" (D49 disclosure policy), got ${JSON.stringify(scenario.name)}`,
-      );
-    }
-    if (typeof scenario.effectiveness !== "object" || scenario.effectiveness === null) {
-      throw new ValueModelContractError(
-        `economics.scenarios[${i}].effectiveness must be an object`,
-      );
-    }
-    const effectiveness = scenario.effectiveness as Record<string, unknown>;
-    // Every key compute reads must be present and numeric, so no term silently
-    // defaults to zero from a missing or misspelled key.
-    for (const key of REQUIRED_EFFECTIVENESS_KEYS) {
-      if (typeof effectiveness[key] !== "number") {
-        throw new ValueModelContractError(
-          `economics.scenarios[${i}].effectiveness.${key} must be a number`,
-        );
-      }
-    }
-  }
-
-  if (e.adoption_curve !== undefined) {
-    if (!Array.isArray(e.adoption_curve) || e.adoption_curve.some((n) => typeof n !== "number")) {
-      throw new ValueModelContractError("economics.adoption_curve must be an array of numbers");
-    }
-  }
-
-  return e as unknown as VerticalEconomics;
 }
 
 // Narrow the generic numeric map to the employee-service inputs. Headcount is
