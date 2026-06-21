@@ -11,8 +11,7 @@ import {
   insertLead,
 } from "../db/client.ts";
 import type { JobStatus, LeadInput } from "../domain/entities.ts";
-import { isProfileComplete, missingRequiredFields } from "./personalization.ts";
-import { getProfile } from "./personalization.ts";
+import { getProfile, isProfileComplete, missingRequiredFields } from "./personalization.ts";
 
 export class ProfileIncompleteError extends Error {
   readonly missing: string[];
@@ -54,6 +53,14 @@ function isNonEmpty(value: string | undefined | null): value is string {
   return typeof value === "string" && value.trim() !== "";
 }
 
+// Precondition gate (D14): a complete profile must exist before any lead spends
+// research or build cost. Both submit and regenerate enforce it identically.
+async function assertProfileComplete(orgId: string): Promise<void> {
+  if (await isProfileComplete(orgId)) return;
+  const profile = await getProfile(orgId);
+  throw new ProfileIncompleteError(missingRequiredFields(profile));
+}
+
 // Submit leads (create) or rebuild one lead (regenerate). Always returns the
 // leadId -> jobId map (D15). Rejects up front when the profile is incomplete (D14).
 export async function submit(orgId: string, req: SubmitRequest): Promise<SubmitResponse> {
@@ -62,11 +69,7 @@ export async function submit(orgId: string, req: SubmitRequest): Promise<SubmitR
   const leads = req.leads ?? [];
   if (leads.length === 0) throw new Error("submit requires at least one lead");
 
-  // Precondition gate: a complete profile must exist before any lead spends cost.
-  if (!(await isProfileComplete(orgId))) {
-    const profile = await getProfile(orgId);
-    throw new ProfileIncompleteError(missingRequiredFields(profile));
-  }
+  await assertProfileComplete(orgId);
 
   const batch = await createLeadBatch(orgId, req.source ?? "api");
   const map: Record<string, string> = {};
@@ -113,10 +116,7 @@ async function regenerate(orgId: string, req: SubmitRequest): Promise<SubmitResp
   if (!lead) throw new LeadNotFoundError(req.lead_id);
 
   // The profile must still be complete to rebuild a meaningful page.
-  if (!(await isProfileComplete(orgId))) {
-    const profile = await getProfile(orgId);
-    throw new ProfileIncompleteError(missingRequiredFields(profile));
-  }
+  await assertProfileComplete(orgId);
 
   const job = await createJob({ org_id: orgId, lead_id: lead.id, batch_id: lead.batch_id });
   return { batchId: lead.batch_id, map: { [lead.id]: job.id } };
