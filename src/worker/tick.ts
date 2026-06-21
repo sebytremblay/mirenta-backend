@@ -23,8 +23,11 @@ import {
   getLead,
   getResearchForJob,
   insertResearch,
+  insertTokenUsage,
   updateJob,
 } from "../db/client.ts";
+import { computeCost } from "../providers/pricing.ts";
+import type { TokenUsageTotals } from "../providers/usage.ts";
 import { getProfile } from "../services/personalization.ts";
 import { getVertical } from "../verticals/index.ts";
 import { runResearch } from "../agents/research.ts";
@@ -33,8 +36,9 @@ import { publishSite } from "../providers/storage.ts";
 // One refusal type covers both paths: the builder (Messages API) and research
 // (Managed Agents) share it. A refusal is always a permanent failure.
 import { AgentRefusalError } from "../providers/anthropic.ts";
+import { PageValidationError } from "../domain/page-validation.ts";
 import { validateResearch, ResearchSchemaError, type ResearchObject } from "../domain/research.ts";
-import type { Job, JobStatus } from "../domain/entities.ts";
+import type { Job, JobStatus, TokenUsageAgent } from "../domain/entities.ts";
 
 // A permanent failure moves the job straight to failed; a transient one leaves
 // the job in place so a later tick retries after the lease expires.
@@ -116,6 +120,49 @@ async function advance(job: Job, log: TickLogger): Promise<string | null> {
   }
 }
 
+// Record one agent stage's token usage and computed cost (D33 precursor infra).
+// Telemetry is best-effort: a usage-write failure logs and returns rather than
+// throwing, so it never fails a job whose real work already succeeded. The spend
+// is real whether or not the stage's guarded transition wins its race, so this
+// records right after the agent returns, before the transition.
+async function recordUsage(
+  job: Job,
+  agent: TokenUsageAgent,
+  model: string,
+  usage: TokenUsageTotals,
+  log: TickLogger,
+): Promise<void> {
+  const costUsd = computeCost(model, usage);
+  try {
+    await insertTokenUsage({
+      org_id: job.org_id,
+      job_id: job.id,
+      lead_id: job.lead_id,
+      agent,
+      model,
+      input_tokens: usage.input_tokens,
+      output_tokens: usage.output_tokens,
+      cache_creation_tokens: usage.cache_creation_tokens,
+      cache_read_tokens: usage.cache_read_tokens,
+      request_count: usage.requests,
+      cost_usd: costUsd,
+    });
+    log("token usage recorded", {
+      jobId: job.id,
+      agent,
+      model,
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens,
+      cacheCreationTokens: usage.cache_creation_tokens,
+      cacheReadTokens: usage.cache_read_tokens,
+      requests: usage.requests,
+      costUsd,
+    });
+  } catch (err) {
+    log("token usage record failed", { jobId: job.id, agent, reason: (err as Error).message });
+  }
+}
+
 // Research stage: drive the Managed Agents research session, persist the object, advance
 // to building. Idempotent: re-running inserts a fresh research row and the
 // guarded transition only fires from the claimed status.
@@ -134,8 +181,9 @@ async function researchStage(job: Job, log: TickLogger): Promise<string | null> 
 
   log("research start", { jobId: job.id, company: lead.company });
   let research: ResearchObject;
+  let usage: TokenUsageTotals;
   try {
-    research = await runResearch({
+    ({ research, usage } = await runResearch({
       lead: {
         first_name: lead.first_name,
         last_name: lead.last_name,
@@ -150,7 +198,7 @@ async function researchStage(job: Job, log: TickLogger): Promise<string | null> 
       },
       vertical,
       onStep: (s) => log("research step", { jobId: job.id, phase: s.phase, detail: s.detail }),
-    });
+    }));
   } catch (err) {
     // A refusal or a schema-invalid result is permanent: a retry repeats it.
     // Everything else (session timeout, rate limit, network, a stalled session)
@@ -163,11 +211,22 @@ async function researchStage(job: Job, log: TickLogger): Promise<string | null> 
     throw err; // transient (includes AgentSessionError: timeout, stall, terminate)
   }
 
+  // The research session spent these tokens whether or not the transition below
+  // wins its race, so record the spend before the guarded update.
+  await recordUsage(job, "research", config.anthropic.researchModel, usage, log);
+
   const row = await insertResearch({ job_id: job.id, org_id: job.org_id, payload: research });
 
+  // Clear the lease on a clean advance so the next stage claims this job on the
+  // very next tick, rather than waiting out the full lease window. The lease
+  // exists for crash recovery: a worker that dies mid-stage leaves lease_until
+  // set, and expiry re-claims the job. A successful transition has no such
+  // worker to wait on, so decouple handoff latency from the lease length (which
+  // also bounds the research timeout, and runs long now that research is uncapped).
   const updated = await updateJob(job.id, job.status, {
     status: "building",
     research_id: row.id,
+    lease_until: null,
   });
   if (!updated) return null; // lost the guard race
   log("research done", { jobId: job.id, researchId: row.id });
@@ -206,8 +265,9 @@ async function buildAndPublishStage(job: Job, log: TickLogger): Promise<string |
 
   log("build start", { jobId: job.id });
   let html: string;
+  let usage: TokenUsageTotals;
   try {
-    html = await buildSite({
+    ({ html, usage } = await buildSite({
       lead: {
         first_name: lead.first_name,
         last_name: lead.last_name,
@@ -219,11 +279,20 @@ async function buildAndPublishStage(job: Job, log: TickLogger): Promise<string |
       research,
       vertical,
       onStep: (s) => log("build step", { jobId: job.id, phase: s.phase, detail: s.detail }),
-    });
+    }));
   } catch (err) {
     if (err instanceof AgentRefusalError) throw err; // permanent
-    throw err; // transient
+    // A page that fails validation after the builder's corrective retries is a
+    // permanent contract violation: a retry re-reads the same research and
+    // repeats it. A truncated page (PageValidationError.transient) falls through
+    // to the transient path and retries on the lease like a network fault.
+    if (err instanceof PageValidationError && !err.transient) {
+      throw new PermanentStageError(`page validation failed: ${err.message}`);
+    }
+    throw err; // transient (includes truncation and network faults)
   }
+
+  await recordUsage(job, "builder", config.anthropic.builderModel, usage, log);
 
   log("publish start", { jobId: job.id, bytes: html.length });
   const published = await publishSite(job.org_id, job.id, html);

@@ -28,7 +28,7 @@ console.log(`Starting research for ${lead.company}...`);
 console.log();
 
 try {
-  const result = await runResearch({
+  const { research: result, usage } = await runResearch({
     lead,
     profile,
     vertical,
@@ -68,6 +68,11 @@ try {
     console.log(`  ${key}: ${val}`);
   }
   console.log(`  Estimated: ${result.extension.estimated}`);
+  console.log();
+  console.log(
+    `Token usage: ${usage.requests} requests, ${usage.input_tokens} in / ${usage.output_tokens} out, ` +
+      `cache ${usage.cache_creation_tokens} write / ${usage.cache_read_tokens} read`,
+  );
   console.log();
 
   // Assertions

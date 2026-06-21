@@ -14,6 +14,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config/env.ts";
 import { AgentRefusalError } from "./anthropic.ts";
+import { addUsage, emptyUsage, usageFromRaw, type TokenUsageTotals } from "./usage.ts";
 
 // Re-export so the research path and the builder path share one refusal type.
 // Both mean the same thing to the worker: a refusal is a permanent failure.
@@ -76,13 +77,21 @@ export interface RunManagedSessionOptions {
   onStep?: (step: ManagedSessionStep) => void;
 }
 
+// The structured result plus the token usage the session accumulated across its
+// model requests. The worker persists the usage per agent stage (D33 precursor
+// infra); the research result feeds the validator.
+export interface ManagedSessionResult {
+  result: Record<string, unknown>;
+  usage: TokenUsageTotals;
+}
+
 // Run one research session end to end and return the structured object the agent
-// passed to its final tool. Creates and deletes a session against the persistent
-// agent/environment/vault; throws if the agent refuses or the session ends
-// without emitting a result.
+// passed to its final tool, plus the accumulated token usage. Creates and deletes
+// a session against the persistent agent/environment/vault; throws if the agent
+// refuses or the session ends without emitting a result.
 export async function runManagedSession(
   opts: RunManagedSessionOptions,
-): Promise<Record<string, unknown>> {
+): Promise<ManagedSessionResult> {
   const c = managedAgentsClient();
   const { environmentId, researchAgentId, exaVaultId } = config.managedAgents;
   if (!environmentId || !researchAgentId) {
@@ -112,6 +121,9 @@ export async function runManagedSession(
 
   let cleanExit = false;
   let result: Record<string, unknown> | null = null;
+  // Accumulate token usage across every model request the session makes. Each
+  // span.model_request_end carries one model_usage record (D33 precursor infra).
+  let usage = emptyUsage();
   try {
     // Stream-first, then kick off, so no early events are missed (Pattern 7).
     const stream = await c.beta.sessions.events.stream(session.id, undefined, {
@@ -151,6 +163,21 @@ export async function runManagedSession(
           });
           break;
         }
+        case "span.model_request_end": {
+          // One model request finished; fold its usage into the running total.
+          const modelUsage = (event as { model_usage?: unknown }).model_usage;
+          usage = addUsage(usage, usageFromRaw(modelUsage, 1));
+          break;
+        }
+        case "span.outcome_evaluation_end": {
+          // The rubric-less research agent runs no outcome evaluation, so this
+          // case stays dead in practice. Fold its usage in anyway so the totals
+          // stay honest if a rubric ever attaches; the evaluation is one model
+          // request of its own.
+          const evalUsage = (event as { usage?: unknown }).usage;
+          usage = addUsage(usage, usageFromRaw(evalUsage, 1));
+          break;
+        }
         case "session.error":
           opts.onStep?.({ kind: "error", detail: JSON.stringify(event).slice(0, 200) });
           break;
@@ -163,7 +190,7 @@ export async function runManagedSession(
           }
           if (action === "return") {
             cleanExit = true;
-            return result as Record<string, unknown>;
+            return { result: result as Record<string, unknown>, usage };
           }
           if (action === "wait") break; // session waits on a client event; keep draining
           // "error": terminal idle (end_turn, retries_exhausted) with no result.
@@ -173,7 +200,7 @@ export async function runManagedSession(
           opts.onStep?.({ kind: "status", detail: "terminated" });
           if (result) {
             cleanExit = true;
-            return result;
+            return { result, usage };
           }
           throw new AgentSessionError("session terminated without emitting a result");
       }
@@ -184,7 +211,7 @@ export async function runManagedSession(
     if (timedOut) throw new AgentSessionError(`research session exceeded ${timeoutMs}ms`);
     if (result) {
       cleanExit = true;
-      return result;
+      return { result, usage };
     }
     throw new AgentSessionError("event stream ended without a result");
   } finally {

@@ -1,0 +1,11 @@
+-- Disable RLS on token_usage for the MVP.
+-- Migration 0003 disabled RLS on the application tables that existed then, but
+-- 0005 added token_usage afterward. Supabase enables RLS by default with no
+-- policies, which denies the backend credential every insert, so the worker's
+-- best-effort usage write fails with a row-level security violation and the
+-- telemetry never records (the job still completes; the write is non-fatal).
+-- D30 defers row-level security: the MVP enforces tenant isolation in
+-- application code (every query filters on org_id), and RLS lands as a
+-- fast-follow. Disable it explicitly to match that intent. Before external
+-- traffic, re-enable RLS across every table and add policies.
+alter table token_usage disable row level security;

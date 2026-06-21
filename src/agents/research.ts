@@ -15,6 +15,7 @@
 // mirenta-docs/technical/research-agent-design.md.
 
 import { runManagedSession } from "../providers/managed-agents.ts";
+import type { TokenUsageTotals } from "../providers/usage.ts";
 import { validateResearch, EXECUTIVE_SLOTS } from "../domain/research.ts";
 import type { ResearchObject } from "../domain/research.ts";
 import type { VerticalSpec } from "../verticals/index.ts";
@@ -130,13 +131,21 @@ ${vertical.valueModel.inputGuidance}
 Begin with Phase 1: Account Research and Domain Priorities. Work through all five phases, then call ${EMIT_RESEARCH_TOOL} exactly once with the complete structured result, with vertical set to "${vertical.id}".`;
 }
 
+// The validated research object plus the token usage the session spent, which
+// the worker persists per agent stage (D33 precursor infra).
+export interface ResearchResult {
+  research: ResearchObject;
+  usage: TokenUsageTotals;
+}
+
 // The main export: run the managed research session and return the validated
-// ResearchObject. The worker classifies a thrown ResearchSchemaError or
-// AgentRefusalError as permanent; everything else is transient and retried.
-export async function runResearch(input: ResearchInput): Promise<ResearchObject> {
+// ResearchObject plus its token usage. The worker classifies a thrown
+// ResearchSchemaError or AgentRefusalError as permanent; everything else is
+// transient and retried.
+export async function runResearch(input: ResearchInput): Promise<ResearchResult> {
   input.onStep?.({ phase: "start", detail: `researching ${input.lead.company}` });
 
-  const raw = await runManagedSession({
+  const { result: raw, usage } = await runManagedSession({
     kickoff: buildKickoff(input),
     finalToolName: EMIT_RESEARCH_TOOL,
     // Leave headroom under the worker lease so a session that runs long still
@@ -153,5 +162,5 @@ export async function runResearch(input: ResearchInput): Promise<ResearchObject>
   const validated = validateResearch(raw, input.vertical);
   input.onStep?.({ phase: "done", detail: "research complete" });
 
-  return validated;
+  return { research: validated, usage };
 }
