@@ -7,7 +7,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { validateResearch } from "../../src/domain/research.ts";
+import { buildKickoff } from "../../src/agents/research.ts";
 import { employeeServiceVertical } from "../../src/verticals/employee-service.ts";
+import { genericVertical } from "../../src/verticals/generic.ts";
+import { salesMarketingVertical } from "../../src/verticals/sales-marketing.ts";
+import type { VerticalSpec } from "../../src/verticals/types.ts";
 
 const vertical = employeeServiceVertical;
 
@@ -148,4 +152,44 @@ test("a malformed brand does not fail the whole object", () => {
   const r = validateResearch(p, vertical);
   assert.equal(r.brand, undefined);
   assert.equal(r.executives.length, 1); // rest of the object still validates
+});
+
+// Kickoff-brief framing (the HR/ITSM leak guard). The per-lead kickoff injects the
+// active vertical's domains, executive targets, and value-input guidance. A
+// horizontal or sales/marketing run must never carry HR/ITSM framing, since that
+// framing is the employee-service vertical's alone, not the generic core's.
+function leadInput(vertical: VerticalSpec) {
+  return {
+    lead: {
+      first_name: "Masafumi",
+      last_name: "Kawashima",
+      role: "Account Executive",
+      company: "Salesforce",
+      website_url: "https://www.salesforce.com",
+    },
+    profile: {
+      company_name: "Mirenta",
+      product_name: "Mirenta",
+      value_prop: "Turns a lead list into one hyper-personalized one-pager per prospect.",
+    },
+    vertical,
+  };
+}
+
+const HR_ITSM_TOKENS = /\b(HR|ITSM|CHRO|CIO|ticket|deflection)\b/i;
+
+test("the generic kickoff carries no HR/ITSM framing", () => {
+  assert.doesNotMatch(buildKickoff(leadInput(genericVertical)), HR_ITSM_TOKENS);
+});
+
+test("the sales-marketing kickoff carries no HR/ITSM framing", () => {
+  const kickoff = buildKickoff(leadInput(salesMarketingVertical));
+  assert.doesNotMatch(kickoff, HR_ITSM_TOKENS);
+  assert.match(kickoff, /Sales, Marketing/);
+});
+
+test("the employee-service kickoff still carries its own HR/ITSM framing", () => {
+  // The leak guard must not regress the legitimate vertical: employee-service
+  // still organizes its leads around HR and ITSM.
+  assert.match(buildKickoff(leadInput(employeeServiceVertical)), /HR/);
 });

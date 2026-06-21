@@ -16,17 +16,27 @@ import {
 import { assertValueModelContract } from "../../src/verticals/contract.ts";
 import { makeProfile } from "../fixtures/profile.ts";
 
-test("the default id resolves to a registered spec", () => {
+test("the default id resolves to the neutral generic spec", () => {
+  // The fallback is the horizontal generic vertical, not HR/ITSM, so an
+  // un-configured profile never inherits another vertical's industry framing.
   assert.ok(isKnownVertical(DEFAULT_VERTICAL_ID));
+  assert.equal(DEFAULT_VERTICAL_ID, "generic");
   assert.equal(getVertical(DEFAULT_VERTICAL_ID).id, DEFAULT_VERTICAL_ID);
 });
 
 test("getVertical returns the spec for a known id", () => {
   const spec = getVertical(DEFAULT_VERTICAL_ID);
-  assert.equal(spec.id, "salesforce_employee_service");
+  assert.equal(spec.id, "generic");
   assert.ok(spec.domains.length > 0);
   assert.equal(typeof spec.createValueModel, "function");
   assert.equal(typeof spec.defaultEconomics, "function");
+});
+
+test("the registry holds the generic, employee-service, and sales-marketing specs", () => {
+  for (const id of ["generic", "salesforce_employee_service", "sales_marketing"]) {
+    assert.ok(isKnownVertical(id), `${id} must be registered`);
+    assert.equal(getVertical(id).id, id);
+  }
 });
 
 test("getVertical throws on an unknown id", () => {
