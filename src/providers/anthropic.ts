@@ -10,6 +10,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../config/env.ts";
+import { usageFromRaw, type TokenUsageTotals } from "./usage.ts";
 
 let client: Anthropic | null = null;
 
@@ -28,6 +29,21 @@ export function anthropic(): Anthropic {
 // this; the research path throws the equivalent from providers/managed-agents.ts.
 export class AgentRefusalError extends Error {}
 
+// The result of a one-shot structured generation: the forced tool's input plus
+// the response stop_reason. The builder reads stopReason to tell a truncated
+// document (`max_tokens`) from a clean-but-noncompliant one: truncation is a
+// transient fault retried via the lease, while a noncompliant page retries in
+// the builder and then fails permanently.
+export interface StructuredResult {
+  input: Record<string, unknown>;
+  stopReason: string | null;
+  // Token usage for this one-shot call, mapped from response.usage. The builder
+  // accumulates it across corrective retries and the worker persists the total
+  // (D33 precursor infra). Present even on a max_tokens truncation, since the
+  // partial response still bills.
+  usage: TokenUsageTotals;
+}
+
 // One-shot structured generation with no tools loop: force a single tool and
 // return its input. Used by the Website Builder, which needs no search, just
 // synthesis. This is intentionally NOT a Managed Agents session — a one-shot
@@ -39,7 +55,7 @@ export async function generateStructured(opts: {
   prompt: string;
   tool: { name: string; description: string; input_schema: Record<string, unknown> };
   maxTokens?: number;
-}): Promise<Record<string, unknown>> {
+}): Promise<StructuredResult> {
   const response = await anthropic().messages.create({
     model: opts.model,
     max_tokens: opts.maxTokens ?? 8000,
@@ -55,6 +71,9 @@ export async function generateStructured(opts: {
     messages: [{ role: "user", content: opts.prompt }],
   });
 
+  // One Messages call bills as one model request, truncated or not.
+  const usage = usageFromRaw(response.usage, 1);
+
   if (response.stop_reason === "refusal") {
     throw new AgentRefusalError("model refused the request");
   }
@@ -62,6 +81,14 @@ export async function generateStructured(opts: {
     (b): b is Anthropic.Messages.ToolUseBlock =>
       b.type === "tool_use" && b.name === opts.tool.name,
   );
-  if (!call) throw new Error("model did not call the forced tool");
-  return call.input as Record<string, unknown>;
+  // A forced tool that gets truncated mid-arguments (stop_reason max_tokens) can
+  // leave no complete tool_use block. Surface that as a truncation signal the
+  // builder retries on the lease, not as a hard "did not call the tool" error.
+  if (!call) {
+    if (response.stop_reason === "max_tokens") {
+      return { input: {}, stopReason: "max_tokens", usage };
+    }
+    throw new Error("model did not call the forced tool");
+  }
+  return { input: call.input as Record<string, unknown>, stopReason: response.stop_reason, usage };
 }

@@ -1,9 +1,19 @@
 // Live smoke test for the Website Builder: builds a complete HTML page from a
-// hardcoded ResearchObject and ProductProfile, writes it to /tmp/mirenta-smoke.html,
-// and validates the output. Proves the builder assembles valid HTML and calls the
-// Anthropic API through the Salesforce gateway. Run: node scripts/smoke-builder.ts
+// hardcoded ResearchObject (including a prospect brand) and ProductProfile, writes
+// it to /tmp/mirenta-smoke.html, and runs the real page validator over the result.
+// Proves the model emits a sample-grade self-contained page that wears the prospect
+// brand and passes every load-bearing invariant. Run: node scripts/smoke-builder.ts
+//
+// Develop and test on Opus via config only: set ANTHROPIC_BUILDER_MODEL to an Opus
+// id in .env. The builder reads config.anthropic.builderModel; this script changes
+// no model.
 
 import { buildSite } from "../src/agents/builder.ts";
+import { resolveLogoUrl, resolveFaviconHref } from "../src/agents/brand-tokens.ts";
+import {
+  validatePage,
+  PageValidationError,
+} from "../src/domain/page-validation.ts";
 import { employeeServiceVertical } from "../src/verticals/employee-service.ts";
 import type { ResearchObject } from "../src/domain/research.ts";
 import type { ProductProfile } from "../src/domain/entities.ts";
@@ -85,6 +95,16 @@ const sampleResearch: ResearchObject = {
     },
     estimated: false,
   },
+  // Prospect brand read from the prospect site (D48). The builder resolves these
+  // into the per-lead :root token block, so the page wears Plexus colors and font,
+  // not the seller default.
+  brand: {
+    primary_color: "#005596",
+    accent_color: "#00a3e0",
+    font_family: "Montserrat",
+    logo_url: "https://www.plexus.com/assets/logo.svg",
+    favicon_url: "https://www.plexus.com/favicon.ico",
+  },
 };
 
 // Construct a sample ProductProfile (Salesforce Agentforce).
@@ -115,11 +135,15 @@ const sampleLead = {
   website_url: "https://www.plexus.com",
 };
 
-// Run the builder.
+// Run the builder, then re-run the real validator over the output and report each
+// check. The builder injects the count-up script and CSP meta after it validates,
+// so the published page carries the one approved <script>; re-validating the final
+// bytes confirms only the figures, anchors, brand assets, and quote rules, never
+// the absence of that injected script.
 try {
   console.log("Building site for Plexus Corp...");
 
-  const html = await buildSite({
+  const { html, usage } = await buildSite({
     lead: sampleLead,
     profile: sampleProfile,
     research: sampleResearch,
@@ -127,21 +151,70 @@ try {
     onStep: (s) => console.log(`  [${s.phase}] ${s.detail}`),
   });
 
-  // Write to /tmp/mirenta-smoke.html.
+  // Write to /tmp/mirenta-smoke.html for visual comparison against the gold sample
+  // (sample-sites/employee-service/tractor_supply.html).
   const outputPath = "/tmp/mirenta-smoke.html";
   writeFileSync(outputPath, html, "utf8");
-
-  // Validate the output.
-  const startsCorrectly = html.startsWith("<!") || html.startsWith("<html");
-  const containsCompany = html.includes("Plexus Corp");
-  const containsDollarFigure = /\$\d/.test(html);
-
   console.log(`\nOutput written to ${outputPath} (${html.length} bytes)`);
-  console.log(`Starts with HTML: ${startsCorrectly}`);
-  console.log(`Contains company name: ${containsCompany}`);
-  console.log(`Contains dollar figure: ${containsDollarFigure}`);
+  console.log(
+    `Token usage: ${usage.requests} requests, ${usage.input_tokens} in / ${usage.output_tokens} out, ` +
+      `cache ${usage.cache_creation_tokens} write / ${usage.cache_read_tokens} read`,
+  );
 
-  const pass = startsCorrectly && containsCompany && containsDollarFigure;
+  // Recompute the value model and resolve the brand assets exactly as the builder
+  // does, so the validator inspects the published page against the same contract.
+  const validatedInputs = vertical.valueModel.validateInputs(
+    sampleResearch.extension.value_inputs,
+    sampleResearch.extension.estimated,
+  );
+  const value = vertical.valueModel.compute(validatedInputs);
+  const logoUrl = resolveLogoUrl(sampleProfile, sampleResearch.brand);
+  const faviconHref = resolveFaviconHref(sampleLead.website_url, sampleResearch.brand);
+  const hostOf = (u: string | undefined): string | undefined => {
+    if (!u || !/^https?:\/\//i.test(u)) return undefined;
+    try {
+      return new URL(u).host.toLowerCase();
+    } catch {
+      return undefined;
+    }
+  };
+  const assetHosts = [logoUrl, faviconHref, sampleLead.website_url]
+    .map(hostOf)
+    .filter((h): h is string => Boolean(h));
+
+  // Per-check report. Each named probe runs an independent slice of the validator
+  // by failing fast on the first violation; reading the messages shows which check
+  // tripped.
+  const check = (name: string, fn: () => void): boolean => {
+    try {
+      fn();
+      console.log(`  PASS  ${name}`);
+      return true;
+    } catch (e) {
+      const transient = e instanceof PageValidationError && e.transient ? " (transient)" : "";
+      console.log(`  FAIL  ${name}: ${(e as Error).message}${transient}`);
+      return false;
+    }
+  };
+
+  console.log("\nValidator report (final published bytes):");
+  const ok = check("page passes every load-bearing invariant", () =>
+    validatePage(html, {
+      value,
+      research: sampleResearch,
+      assetHosts,
+      requiredAnchors: ["#business-case", "#book"],
+      stopReason: "end_turn",
+    }),
+  );
+
+  // A few human-readable spot checks beyond the validator.
+  const wearsBrand = html.includes("#005596") || html.includes("--brand");
+  const containsCompany = html.includes("Plexus Corp");
+  console.log(`  ${wearsBrand ? "PASS" : "FAIL"}  page references the prospect brand token`);
+  console.log(`  ${containsCompany ? "PASS" : "FAIL"}  page names the prospect company`);
+
+  const pass = ok && wearsBrand && containsCompany;
   console.log(pass ? "\nSMOKE BUILDER: PASS" : "\nSMOKE BUILDER: FAIL");
   if (!pass) process.exitCode = 1;
 } catch (e) {
