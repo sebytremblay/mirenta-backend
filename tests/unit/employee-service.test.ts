@@ -7,8 +7,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { employeeServiceVertical } from "../../src/verticals/employee-service.ts";
+import { assertValueModelContract } from "../../src/verticals/contract.ts";
+import { makeProfile } from "../fixtures/profile.ts";
 
-const { valueModel } = employeeServiceVertical;
+// A profile with no economics override exercises the Phase 1 default economics,
+// which these tests pin. The profile content does not otherwise affect the model.
+const valueModel = employeeServiceVertical.createValueModel(makeProfile());
 
 // 20000 employees: the reference Plexus account. Derived expectations:
 //   IT cost   = 20000 * 10 * 22 = 4,400,000
@@ -127,4 +131,15 @@ test("zero employees does not throw and produces metrics and 5-point projection"
   // Payback must not produce Infinity or NaN.
   const payback = result.metrics?.find((m) => m.label === "Payback period");
   assert.ok(payback?.value !== "Infinity mo" && payback?.value !== "NaN mo");
+});
+
+// Contract enforcement: D38/D49 disclosure policy (Concern #2).
+test("compute satisfies D38/D49 disclosure contract (estimated=true)", () => {
+  const result = valueModel.compute(plexusInputs(true));
+  assertValueModelContract(result, true);
+});
+
+test("compute satisfies D38/D49 disclosure contract (estimated=false)", () => {
+  const result = valueModel.compute(plexusInputs(false));
+  assertValueModelContract(result, false);
 });

@@ -30,6 +30,7 @@ function profile(brand?: ProductProfile["brand"]): ProductProfile {
     cta_text: null,
     brand: brand ?? null,
     vertical: "salesforce_employee_service",
+    economics: null,
     created_at: "",
     updated_at: "",
   };

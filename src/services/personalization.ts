@@ -7,7 +7,9 @@ import {
   upsertProductProfile as dbUpsertProductProfile,
 } from "../db/client.ts";
 import { REQUIRED_PROFILE_FIELDS, type ProductProfile } from "../domain/entities.ts";
-import { DEFAULT_VERTICAL_ID, isKnownVertical } from "../verticals/index.ts";
+import type { VerticalEconomics } from "../verticals/types.ts";
+import { DEFAULT_VERTICAL_ID, getVertical, isKnownVertical } from "../verticals/index.ts";
+import { ValueModelContractError } from "../verticals/contract.ts";
 
 export interface ProfileInput {
   company_name?: string;
@@ -21,6 +23,13 @@ export interface ProfileInput {
   // employee-service id; an unknown id rejects, so a misconfigured profile fails
   // at save rather than at the worker's stage boundary.
   vertical?: string;
+  // Per-customer value-model economics (migration 0007). Optional: an absent
+  // value persists null and the vertical falls back to its default economics.
+  // When present, saveProfile validates it against the resolved vertical's
+  // economics contract and rejects a malformed object as a ProfileValidationError
+  // (HTTP 400), so the seller corrects it before any lead runs. The worker's
+  // value-model factory validates again at build as defense in depth.
+  economics?: VerticalEconomics;
 }
 
 export class ProfileValidationError extends Error {
@@ -69,9 +78,26 @@ export async function saveProfile(
   if (missing.length > 0) throw new ProfileValidationError(missing);
 
   // Resolve the vertical: default when absent, reject an unknown id loudly.
-  const vertical = input.vertical?.trim() || DEFAULT_VERTICAL_ID;
-  if (!isKnownVertical(vertical)) {
-    throw new ProfileValidationError([`vertical: unknown id "${vertical}"`]);
+  const verticalId = input.vertical?.trim() || DEFAULT_VERTICAL_ID;
+  if (!isKnownVertical(verticalId)) {
+    throw new ProfileValidationError([`vertical: unknown id "${verticalId}"`]);
+  }
+
+  // Validate per-customer economics against the resolved vertical's contract when
+  // present, so a malformed object fails at save (a 400 the seller can correct)
+  // rather than at the worker's build stage. The economics schema is
+  // vertical-specific, so the check lives on the spec, not in this generic
+  // service. A null persists as-is and the vertical falls back to its defaults.
+  let economics: VerticalEconomics | null = null;
+  if (input.economics != null) {
+    try {
+      economics = getVertical(verticalId).validateEconomics(input.economics);
+    } catch (err) {
+      if (err instanceof ValueModelContractError) {
+        throw new ProfileValidationError([`economics: ${err.message}`]);
+      }
+      throw err;
+    }
   }
 
   return dbUpsertProductProfile({
@@ -81,6 +107,7 @@ export async function saveProfile(
     proof_points: input.proof_points ?? null,
     cta_text: input.cta_text ?? null,
     brand: input.brand ?? null,
-    vertical,
+    vertical: verticalId,
+    economics,
   });
 }

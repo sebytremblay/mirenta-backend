@@ -30,10 +30,17 @@ export interface DomainPriority {
 // The vertical extension. `domains` and `priorities` organize the page; the value
 // model reads `value_inputs` (an open numeric map whose keys the vertical defines)
 // and the `estimated` disclosure flag. No vertical-specific field lives here.
+//
+// DESIGN NOTE (D53): value_inputs is intentionally numeric-only. The research
+// agent's emit_research tool schema is frozen on the persistent Managed Agent
+// (cached by Anthropic) and cannot vary per vertical. Categorical data (region,
+// segment, industry tier) should be encoded as numeric codes (e.g., region: 1=NA,
+// 2=EU, 3=APAC) with legend in vertical inputGuidance, or handled through separate
+// extension fields added later (requires schema change and agent reprovision).
 export interface ResearchExtension {
   domains: string[];
   priorities: DomainPriority[];
-  value_inputs: Record<string, number>;
+  value_inputs: Record<string, number>; // INTENTIONAL: numeric only (D53)
   estimated: boolean;
 }
 
@@ -311,10 +318,12 @@ function validateResearchInner(raw: unknown, vertical: VerticalSpec): ResearchOb
 
   // Hand the value inputs to the active vertical, which enforces its required
   // keys. The persisted object keeps the generic numeric map; the value model
-  // narrows it again at compute time.
+  // narrows it again at compute time. validateInputs is exposed directly on the
+  // spec (not on valueModel) so this early gate works without creating a bound
+  // value model or needing a product profile.
   const value_inputs = toNumericMap(ext.value_inputs);
   const estimated = ext.estimated === true;
-  vertical.valueModel.validateInputs(value_inputs, estimated);
+  vertical.validateInputs(value_inputs, estimated);
 
   const brand = normalizeProspectBrand(r.brand);
 

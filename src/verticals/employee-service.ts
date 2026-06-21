@@ -10,7 +10,15 @@
 // builder renders the computed ValueResult.
 
 import { formatDollars } from "../domain/format.ts";
-import type { ValidatedInputs, ValueResult, VerticalSpec } from "./types.ts";
+import type {
+  BoundValueModel,
+  ValidatedInputs,
+  ValueResult,
+  VerticalEconomics,
+  VerticalSpec,
+} from "./types.ts";
+import type { ProductProfile } from "../domain/entities.ts";
+import { ValueModelContractError, DISCLOSURE_SCENARIO_NAMES } from "./contract.ts";
 
 // Reference assumptions from the workflow doc.
 const IT_TICKETS_PER_EMPLOYEE_YEAR = 10; // "10 IT-related support tickets"
@@ -22,31 +30,107 @@ const HR_INTERACTIONS_PER_EMPLOYEE_YEAR = 8; // "8 HR-related support interactio
 const IT_BLENDED_COST_PER_TICKET = 22; // L1 help desk floor, the dominant tier
 const HR_BLENDED_COST_PER_INTERACTION = 18; // Tier 1 HR shared services floor
 
-// Platform impact: the share of contact cost the AI platform removes, net of the
-// residual handling cost on contacts it does not fully deflect. Three adoption
-// scenarios bound the estimate (D38 requires all three).
-interface DeflectionScenario {
-  name: string; // display label, rendered directly on the page
-  itDeflection: number; // effective fraction of IT cost removed
-  hrDeflection: number; // effective fraction of HR cost removed
+// Default 5-year adoption ramp. defaultEconomics() populates it and createCompute
+// falls back to it when an economics object omits the curve (a custom Phase 2
+// config may). One source so a deliberate change to the ramp edits one literal.
+const DEFAULT_ADOPTION_CURVE = [0.5, 0.8, 1.0, 1.0, 1.0];
+
+// The effectiveness keys createCompute reads from each scenario. validateEconomics
+// requires every scenario to carry these, so a typo'd or missing key fails at save
+// rather than silently computing zero deflection for that term and rendering wrong
+// figures. Keep in lockstep with the keys createCompute reads below.
+const REQUIRED_EFFECTIVENESS_KEYS = ["itDeflection", "hrDeflection"] as const;
+
+// Default economics for the employee-service vertical. Phase 1 always returns
+// these values; Phase 2 reads profile.economics when present and falls back to
+// these when null. Extracted from hardcoded constants to support multi-customer
+// use of the same vertical with different product pricing (Concern #1).
+function defaultEconomics(): VerticalEconomics {
+  return {
+    annual_license: 1_500_000,
+    implementation_fee: 200_000,
+    scenarios: [
+      { name: "Conservative", effectiveness: { itDeflection: 0.4, hrDeflection: 0.45 } },
+      { name: "Expected", effectiveness: { itDeflection: 0.55, hrDeflection: 0.6 } },
+      { name: "Aggressive", effectiveness: { itDeflection: 0.7, hrDeflection: 0.72 } },
+    ],
+    adoption_curve: DEFAULT_ADOPTION_CURVE,
+  };
 }
-
-const SCENARIOS: DeflectionScenario[] = [
-  { name: "Conservative", itDeflection: 0.4, hrDeflection: 0.45 },
-  { name: "Expected", itDeflection: 0.55, hrDeflection: 0.6 },
-  { name: "Aggressive", itDeflection: 0.7, hrDeflection: 0.72 },
-];
-
-// Investment assumptions from the workflow doc.
-const ANNUAL_LICENSE = 1_500_000;
-const IMPLEMENTATION = 200_000;
-
-// Adoption ramp over the 5-year projection: 50% in year 1, 80% in year 2,
-// full utilization from year 3 onward. Each coefficient scales expectedGross.
-const ADOPTION = [0.5, 0.8, 1.0, 1.0, 1.0];
 
 function round(n: number): number {
   return Math.round(n);
+}
+
+// Validate a raw economics object (Phase 2). A profile.economics that fails this
+// is a misconfigured profile, not a transient fault, so it throws
+// ValueModelContractError. saveProfile calls it and maps the throw to a 400 the
+// seller can correct; createValueModel calls it again at build as a
+// defense-in-depth guard for rows that reach the worker without passing save.
+//
+// The check covers three layers, so a value that passes here cannot fail later or
+// silently render wrong figures:
+// 1. Structure: numeric fees, an adoption_curve of numbers when present.
+// 2. D38/D49 disclosure policy: exactly 3 scenarios named Conservative/Expected/
+//    Aggressive in order (the same names contract.ts enforces on the rendered
+//    ValueResult, read from the shared DISCLOSURE_SCENARIO_NAMES constant).
+// 3. Compute contract: every scenario carries the effectiveness keys createCompute
+//    reads (REQUIRED_EFFECTIVENESS_KEYS), each numeric, so no term defaults to a
+//    silent zero from a typo'd or missing key.
+function validateEconomics(raw: unknown): VerticalEconomics {
+  if (typeof raw !== "object" || raw === null) {
+    throw new ValueModelContractError("economics must be an object");
+  }
+  const e = raw as Record<string, unknown>;
+
+  if (typeof e.annual_license !== "number" || e.annual_license < 0) {
+    throw new ValueModelContractError("economics.annual_license must be a non-negative number");
+  }
+  if (typeof e.implementation_fee !== "number" || e.implementation_fee < 0) {
+    throw new ValueModelContractError(
+      "economics.implementation_fee must be a non-negative number",
+    );
+  }
+  if (!Array.isArray(e.scenarios) || e.scenarios.length !== 3) {
+    throw new ValueModelContractError("economics.scenarios must be an array of exactly 3 scenarios");
+  }
+  for (const [i, s] of e.scenarios.entries()) {
+    if (typeof s !== "object" || s === null) {
+      throw new ValueModelContractError(`economics.scenarios[${i}] must be an object`);
+    }
+    const scenario = s as Record<string, unknown>;
+    // D49: names must match the disclosure policy exactly and in order, since the
+    // value model passes them straight onto the rendered scenario cards.
+    const expectedName = DISCLOSURE_SCENARIO_NAMES[i];
+    if (scenario.name !== expectedName) {
+      throw new ValueModelContractError(
+        `economics.scenarios[${i}].name must be "${expectedName}" (D49 disclosure policy), got ${JSON.stringify(scenario.name)}`,
+      );
+    }
+    if (typeof scenario.effectiveness !== "object" || scenario.effectiveness === null) {
+      throw new ValueModelContractError(
+        `economics.scenarios[${i}].effectiveness must be an object`,
+      );
+    }
+    const effectiveness = scenario.effectiveness as Record<string, unknown>;
+    // Every key compute reads must be present and numeric, so no term silently
+    // defaults to zero from a missing or misspelled key.
+    for (const key of REQUIRED_EFFECTIVENESS_KEYS) {
+      if (typeof effectiveness[key] !== "number") {
+        throw new ValueModelContractError(
+          `economics.scenarios[${i}].effectiveness.${key} must be a number`,
+        );
+      }
+    }
+  }
+
+  if (e.adoption_curve !== undefined) {
+    if (!Array.isArray(e.adoption_curve) || e.adoption_curve.some((n) => typeof n !== "number")) {
+      throw new ValueModelContractError("economics.adoption_curve must be an array of numbers");
+    }
+  }
+
+  return e as unknown as VerticalEconomics;
 }
 
 // Narrow the generic numeric map to the employee-service inputs. Headcount is
@@ -66,84 +150,116 @@ function validateInputs(raw: Record<string, number>, estimated: boolean): Valida
   };
 }
 
-// Compute the model from the validated inputs. Headcount drives volume; the
-// fixed formulas turn volume into a defensible dollar range.
-function compute(inputs: ValidatedInputs): ValueResult {
-  const employees = Math.max(0, Math.floor(inputs.values.total_employees ?? 0));
-  const annualItTickets = employees * IT_TICKETS_PER_EMPLOYEE_YEAR;
-  const annualHrInteractions = employees * HR_INTERACTIONS_PER_EMPLOYEE_YEAR;
+// Factory: create a compute function bound to the given economics. The returned
+// function is pure (inputs → ValueResult) while the economics flow through the
+// closure. Phase 1 always passes defaultEconomics(); Phase 2 passes per-customer
+// economics when profile.economics is populated.
+function createCompute(economics: VerticalEconomics) {
+  return (inputs: ValidatedInputs): ValueResult => {
+    const employees = Math.max(0, Math.floor(inputs.values.total_employees ?? 0));
+    const annualItTickets = employees * IT_TICKETS_PER_EMPLOYEE_YEAR;
+    const annualHrInteractions = employees * HR_INTERACTIONS_PER_EMPLOYEE_YEAR;
 
-  const itAnnualCost = annualItTickets * IT_BLENDED_COST_PER_TICKET;
-  const hrAnnualCost = annualHrInteractions * HR_BLENDED_COST_PER_INTERACTION;
+    const itAnnualCost = annualItTickets * IT_BLENDED_COST_PER_TICKET;
+    const hrAnnualCost = annualHrInteractions * HR_BLENDED_COST_PER_INTERACTION;
 
-  const firstYearCost = ANNUAL_LICENSE + IMPLEMENTATION;
+    const firstYearCost = economics.annual_license + economics.implementation_fee;
 
-  const scenarios = SCENARIOS.map((s) => {
-    const gross = itAnnualCost * s.itDeflection + hrAnnualCost * s.hrDeflection;
-    const net = gross - ANNUAL_LICENSE;
-    const roiPercent = firstYearCost > 0 ? (net / firstYearCost) * 100 : 0;
+    const scenarios = economics.scenarios.map((s) => {
+      const itDeflection = s.effectiveness.itDeflection ?? 0;
+      const hrDeflection = s.effectiveness.hrDeflection ?? 0;
+      const gross = itAnnualCost * itDeflection + hrAnnualCost * hrDeflection;
+      const net = gross - economics.annual_license;
+      const roiPercent = firstYearCost > 0 ? (net / firstYearCost) * 100 : 0;
+      return {
+        name: s.name,
+        primaryValue: formatDollars(round(net)),
+        primaryLabel: "Net Annual Savings",
+        secondary: `${round(roiPercent)}% ROI`,
+      };
+    });
+
+    const expectedScenario = economics.scenarios[1]!;
+    const expectedGross =
+      itAnnualCost * (expectedScenario.effectiveness.itDeflection ?? 0) +
+      hrAnnualCost * (expectedScenario.effectiveness.hrDeflection ?? 0);
+    const expectedNet = round(expectedGross - economics.annual_license);
+
+    // Payback: total first-year investment divided by monthly gross savings.
+    // Guard against zero headcount: expectedGross of 0 produces Infinity otherwise.
+    const paybackValue =
+      expectedGross > 0 ? `${(firstYearCost / (expectedGross / 12)).toFixed(1)} mo` : "n/a";
+
+    // Annual cash flows follow the adoption ramp; year 1 absorbs the implementation fee.
+    const adoption = economics.adoption_curve ?? DEFAULT_ADOPTION_CURVE;
+    const annualCashFlows = adoption.map((ramp, i) => {
+      const yearNumber = i + 1;
+      return (
+        ramp * expectedGross -
+        economics.annual_license -
+        (yearNumber === 1 ? economics.implementation_fee : 0)
+      );
+    });
+
+    // Cumulative series: each point sums all flows up to and including that year.
+    let runningTotal = 0;
+    const series = annualCashFlows.map((flow, i) => {
+      runningTotal += flow;
+      const rounded = round(runningTotal);
+      return {
+        period: `Year ${i + 1}`,
+        value: rounded,
+        display: formatDollars(rounded),
+      };
+    });
+
+    const cumulative5 = runningTotal;
+
+    // NPV at 8%: discount each year's cash flow back to present value, then round.
+    const npv = round(annualCashFlows.reduce((sum, flow, i) => sum + flow / 1.08 ** (i + 1), 0));
+
     return {
-      name: s.name,
-      primaryValue: formatDollars(round(net)),
-      primaryLabel: "Net Annual Savings",
-      secondary: `${round(roiPercent)}% ROI`,
+      sectionTitle: "Business Value",
+      headline: { label: "Expected net annual savings", value: formatDollars(expectedNet) },
+      scenarios,
+      footnote: inputs.estimated ? "Staff counts estimated from industry benchmarks." : undefined,
+      metrics: [
+        { label: "Expected ROI", value: `${round((expectedNet / firstYearCost) * 100)}%` },
+        { label: "Payback period", value: paybackValue },
+        { label: "5-year net savings", value: formatDollars(round(cumulative5)) },
+        { label: "NPV at 8 percent", value: formatDollars(npv) },
+      ],
+      projection: {
+        label: "Cumulative net cash flow",
+        unit: "USD",
+        series,
+      },
     };
-  });
+  };
+}
 
-  const expectedGross =
-    itAnnualCost * SCENARIOS[1]!.itDeflection + hrAnnualCost * SCENARIOS[1]!.hrDeflection;
-  const expectedNet = round(expectedGross - ANNUAL_LICENSE);
+// Input guidance for the research agent Phase 4. Exposed on the VerticalSpec
+// (not just the bound value model) so the research agent kickoff can inject it
+// without needing a product profile.
+const inputGuidance = `Gather headcount as numeric value_inputs:
+- total_employees: total global headcount (required).
+- it_staff: IT Service Desk reps, help desk staff, or IT support managers. Usually not public; if unavailable, estimate at roughly 0.5% to 1% of total employees.
+- hr_staff: HR Service Desk reps or HR shared services staff. Usually not public; estimate at roughly 0.1% to 0.3% of total employees if needed.
+Use actual counts when you find them in job postings, org charts, or releases, and set estimated: false. Otherwise estimate and set estimated: true.`;
 
-  // Payback: total first-year investment divided by monthly gross savings.
-  // Guard against zero headcount: expectedGross of 0 produces Infinity otherwise.
-  const paybackValue =
-    expectedGross > 0
-      ? `${(firstYearCost / (expectedGross / 12)).toFixed(1)} mo`
-      : "n/a";
-
-  // Annual cash flows follow the adoption ramp; year 1 absorbs the implementation fee.
-  const annualCashFlows = ADOPTION.map((ramp, i) => {
-    const yearNumber = i + 1;
-    return ramp * expectedGross - ANNUAL_LICENSE - (yearNumber === 1 ? IMPLEMENTATION : 0);
-  });
-
-  // Cumulative series: each point sums all flows up to and including that year.
-  let runningTotal = 0;
-  const series = annualCashFlows.map((flow, i) => {
-    runningTotal += flow;
-    const rounded = round(runningTotal);
-    return {
-      period: `Year ${i + 1}`,
-      value: rounded,
-      display: formatDollars(rounded),
-    };
-  });
-
-  const cumulative5 = runningTotal;
-
-  // NPV at 8%: discount each year's cash flow back to present value, then round.
-  const npv = round(
-    annualCashFlows.reduce((sum, flow, i) => sum + flow / 1.08 ** (i + 1), 0),
-  );
+// Factory: create a value model bound to the customer's economics. Reads
+// profile.economics when present (migration 0007) and validates its shape;
+// falls back to defaultEconomics() when null, so existing profiles keep the
+// Phase 1 figures. A malformed economics object throws ValueModelContractError,
+// which the worker classifies as a permanent build failure.
+function createValueModel(profile: ProductProfile): BoundValueModel {
+  const economics = profile.economics ? validateEconomics(profile.economics) : defaultEconomics();
 
   return {
-    sectionTitle: "Business Value",
-    headline: { label: "Expected net annual savings", value: formatDollars(expectedNet) },
-    scenarios,
-    footnote: inputs.estimated
-      ? "Staff counts estimated from industry benchmarks."
-      : undefined,
-    metrics: [
-      { label: "Expected ROI", value: `${round(expectedNet / firstYearCost * 100)}%` },
-      { label: "Payback period", value: paybackValue },
-      { label: "5-year net savings", value: formatDollars(round(cumulative5)) },
-      { label: "NPV at 8 percent", value: formatDollars(npv) },
-    ],
-    projection: {
-      label: "Cumulative net cash flow",
-      unit: "USD",
-      series,
-    },
+    inputGuidance,
+    validateInputs,
+    compute: createCompute(economics),
+    economics,
   };
 }
 
@@ -157,13 +273,9 @@ export const employeeServiceVertical: VerticalSpec = {
 - ITSM leadership (CIO, VP of IT)
 - C-suite (CEO, President, COO)`,
   defaultAccentColor: "#0176d3", // Salesforce blue
-  valueModel: {
-    inputGuidance: `Gather headcount as numeric value_inputs:
-- total_employees: total global headcount (required).
-- it_staff: IT Service Desk reps, help desk staff, or IT support managers. Usually not public; if unavailable, estimate at roughly 0.5% to 1% of total employees.
-- hr_staff: HR Service Desk reps or HR shared services staff. Usually not public; estimate at roughly 0.1% to 0.3% of total employees if needed.
-Use actual counts when you find them in job postings, org charts, or releases, and set estimated: false. Otherwise estimate and set estimated: true.`,
-    validateInputs,
-    compute,
-  },
+  inputGuidance, // exposed directly for research agent kickoff
+  validateInputs, // exposed directly for validateResearch early gate
+  createValueModel,
+  defaultEconomics,
+  validateEconomics, // exposed for saveProfile's save-time gate
 };

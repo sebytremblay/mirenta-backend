@@ -37,6 +37,7 @@ import { publishSite } from "../providers/storage.ts";
 // (Managed Agents) share it. A refusal is always a permanent failure.
 import { AgentRefusalError } from "../providers/anthropic.ts";
 import { PageValidationError } from "../domain/page-validation.ts";
+import { ValueModelContractError } from "../verticals/contract.ts";
 import { validateResearch, ResearchSchemaError, type ResearchObject } from "../domain/research.ts";
 import type { Job, JobStatus, TokenUsageAgent } from "../domain/entities.ts";
 
@@ -282,6 +283,14 @@ async function buildAndPublishStage(job: Job, log: TickLogger): Promise<string |
     }));
   } catch (err) {
     if (err instanceof AgentRefusalError) throw err; // permanent
+    // A value-model contract breach (wrong scenario count or names, missing
+    // footnote when estimated) is a misconfigured vertical, not a transient
+    // fault: compute() re-reads the same persisted research and the same
+    // economics every retry, so the breach reproduces identically. Fail
+    // permanently rather than burn the attempt budget on futile builder runs.
+    if (err instanceof ValueModelContractError) {
+      throw new PermanentStageError(`value model contract violation: ${err.message}`);
+    }
     // A page that fails validation after the builder's corrective retries is a
     // permanent contract violation: a retry re-reads the same research and
     // repeats it. A truncated page (PageValidationError.transient) falls through

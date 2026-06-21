@@ -7,12 +7,14 @@ import { employeeServiceVertical } from "./employee-service.ts";
 import type { VerticalSpec } from "./types.ts";
 
 export type {
+  BoundValueModel,
   ValidatedInputs,
   ValueMetric,
   ValueModel,
   ValueProjection,
   ValueResult,
   ValueScenario,
+  VerticalEconomics,
   VerticalSpec,
 } from "./types.ts";
 

@@ -126,7 +126,7 @@ Executive targets (Phase 2):
 ${vertical.executiveTargeting}
 
 Value inputs (Phase 4):
-${vertical.valueModel.inputGuidance}
+${vertical.inputGuidance}
 
 Begin with Phase 1: Account Research and Domain Priorities. Work through all five phases, then call ${EMIT_RESEARCH_TOOL} exactly once with the complete structured result, with vertical set to "${vertical.id}".`;
 }

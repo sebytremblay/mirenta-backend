@@ -65,6 +65,7 @@ const profile: ProductProfile = {
   cta_text: "Schedule a demo",
   brand: { primary_color: "#0176d3" },
   vertical: "salesforce_employee_service",
+  economics: null,
   created_at: "2026-01-01T00:00:00.000Z",
   updated_at: "2026-01-01T00:00:00.000Z",
 };

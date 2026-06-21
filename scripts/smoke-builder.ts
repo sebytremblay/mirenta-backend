@@ -122,6 +122,7 @@ const sampleProfile: ProductProfile = {
   cta_text: "Schedule a personalized demo",
   brand: { primary_color: "#0176d3" },
   vertical: "salesforce_employee_service",
+  economics: null,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
 };
@@ -163,11 +164,12 @@ try {
 
   // Recompute the value model and resolve the brand assets exactly as the builder
   // does, so the validator inspects the published page against the same contract.
-  const validatedInputs = vertical.valueModel.validateInputs(
+  const valueModel = vertical.createValueModel(sampleProfile);
+  const validatedInputs = valueModel.validateInputs(
     sampleResearch.extension.value_inputs,
     sampleResearch.extension.estimated,
   );
-  const value = vertical.valueModel.compute(validatedInputs);
+  const value = valueModel.compute(validatedInputs);
   const logoUrl = resolveLogoUrl(sampleProfile, sampleResearch.brand);
   const faviconHref = resolveFaviconHref(sampleLead.website_url, sampleResearch.brand);
   const hostOf = (u: string | undefined): string | undefined => {

@@ -16,9 +16,10 @@
 // seller brand and then to house defaults.
 //
 // The business-value block is computed by the active vertical's value model
-// (vertical.valueModel.compute), never by the builder and never by the model. The
-// builder serializes the vertical-neutral ValueResult into the prompt as exact
-// display strings, and the validator confirms every figure appears verbatim.
+// (vertical.createValueModel(profile).compute), never by the builder and never by
+// the model. The builder serializes the vertical-neutral ValueResult into the
+// prompt as exact display strings, and the validator confirms every figure
+// appears verbatim.
 
 import { config } from "../config/env.ts";
 import { generateStructured } from "../providers/anthropic.ts";
@@ -36,7 +37,7 @@ import {
   injectRuntimeAssets,
   PageValidationError,
 } from "../domain/page-validation.ts";
-import { validateDisclosurePolicy, ValueModelContractError } from "../verticals/contract.ts";
+import { validateDisclosurePolicy } from "../verticals/contract.ts";
 import type { ProductProfile } from "../domain/entities.ts";
 
 export type { BuildSiteInput } from "./builder-prompt.ts";
@@ -126,17 +127,15 @@ export async function buildSite(input: BuildSiteInput): Promise<BuildSiteResult>
   );
   const value = valueModel.compute(validatedInputs);
 
-  // Enforce D38/D49 disclosure policy (contract validation for Concern #2).
-  // Throws ValueModelContractError on violation, which the worker classifies as
-  // permanent. This catches misconfigured verticals at runtime before page render.
-  try {
-    validateDisclosurePolicy(value, research.extension.estimated);
-  } catch (err) {
-    if (err instanceof ValueModelContractError) {
-      throw new Error(`value model contract violation: ${err.message}`);
-    }
-    throw err;
-  }
+  // Enforce the D38/D49 disclosure policy (Concern #2). A violation is a
+  // misconfigured vertical, not a transient fault: a retry recomputes the same
+  // ValueResult from the same persisted research and reproduces the breach
+  // identically, so it must fail permanently rather than burn retries on futile
+  // builder generations. validateDisclosurePolicy throws the typed
+  // ValueModelContractError, which the worker's buildAndPublishStage catch
+  // classifies as permanent (tick.ts). Let it propagate unwrapped so the type
+  // survives; do not re-wrap it in a bare Error.
+  validateDisclosurePolicy(value, research.extension.estimated);
 
   onStep?.({ phase: "brand", detail: "resolving brand tokens" });
   const brand = research.brand;

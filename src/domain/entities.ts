@@ -1,6 +1,13 @@
 // Row types for the tables in supabase/migrations/0001_mvp_schema.sql. These
 // model the persisted shape; service inputs and API payloads live alongside.
 
+// VerticalEconomics is the per-customer pricing/effectiveness shape the value
+// model consumes. The type lives with the vertical seam; entities references it
+// only for the profile's economics column. The import is type-only, so it erases
+// at compile time and raises no runtime cycle with verticals (which reads
+// ProductProfile back the same way).
+import type { VerticalEconomics } from "../verticals/types.ts";
+
 export type JobStatus =
   | "pending"
   | "researching"
@@ -48,6 +55,10 @@ export interface ProductProfile {
   // at runtime to research and render this customer's pages (src/verticals).
   // Defaults to the employee-service id at the column level (migration 0004).
   vertical: string;
+  // Per-customer value-model economics (migration 0007). Null falls back to the
+  // active vertical's defaultEconomics(), so existing rows keep Phase 1 behavior.
+  // The vertical's createValueModel validates the shape before compute reads it.
+  economics: VerticalEconomics | null;
   created_at: string;
   updated_at: string;
 }

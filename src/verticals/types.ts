@@ -11,9 +11,29 @@
 // - the Website Builder renders the spec's computed ValueResult;
 // - validateResearch enforces the spec's value-input contract in code.
 
+// The factory signature (createValueModel) types its argument as ProductProfile.
+// The dependency runs one way: verticals reads the entity shape, entities imports
+// nothing from verticals. A type-only import erases at compile time, so it raises
+// no runtime cycle even when Phase 2 adds an economics field to the profile.
+// Re-exported so a consumer can reach the type through the seam module.
+import type { ProductProfile } from "../domain/entities.ts";
+export type { ProductProfile };
+
 // The validated, vertical-typed inputs the value model computes from. The
 // generic research payload carries value_inputs as an open numeric map; each
 // spec's validateInputs narrows that map to the keys its compute needs.
+//
+// DESIGN NOTE (D53): value_inputs is numeric-only by design. Categorical inputs
+// (region, segment, tier) should be encoded as numeric codes and decoded in
+// validateInputs. Example:
+//
+//   validateInputs(raw, estimated) {
+//     const regionCode = raw.region ?? 1; // 1=NA, 2=EU, 3=APAC
+//     const region = ["NA", "EU", "APAC"][regionCode - 1];
+//     return { values: { region }, estimated };
+//   }
+//
+// This preserves the frozen emit_research schema without cache invalidation.
 export interface ValidatedInputs {
   values: Record<string, number>;
   estimated: boolean;
@@ -75,6 +95,26 @@ export interface ValueModel {
   compute(inputs: ValidatedInputs): ValueResult;
 }
 
+// Economics configuration per customer (pricing and effectiveness assumptions).
+// Moved from hardcoded vertical constants to support multi-customer use of the
+// same vertical with different product economics (Concern #1).
+export interface VerticalEconomics {
+  annual_license: number; // annual licensing cost in USD
+  implementation_fee: number; // one-time implementation cost in USD
+  scenarios: Array<{
+    name: string; // scenario label, e.g. "Conservative"
+    effectiveness: Record<string, number>; // metric-specific effectiveness rates
+  }>;
+  adoption_curve?: number[]; // optional: 5-year adoption ramp (defaults to [0.5, 0.8, 1.0, 1.0, 1.0])
+}
+
+// A bound value model with customer-specific economics baked in. The factory
+// pattern (createValueModel) returns this instead of a bare ValueModel, so
+// compute() stays pure while per-customer configuration flows through.
+export interface BoundValueModel extends ValueModel {
+  economics: VerticalEconomics; // expose for introspection and tests
+}
+
 export interface VerticalSpec {
   id: string; // stable identifier persisted on the profile and the research object
   label: string; // human-readable name
@@ -82,5 +122,28 @@ export interface VerticalSpec {
   domainGuidance: string; // Research Agent Phase 1 fragment (what to surface per domain)
   executiveTargeting: string; // Research Agent Phase 2 fragment (which leaders to find)
   defaultAccentColor: string; // page accent when the seller supplies none
-  valueModel: ValueModel;
+  // Phase 4 prompt fragment: names the numeric value_inputs keys the research agent
+  // must gather and how to estimate them when they are not public. Exposed directly
+  // on the spec (not on the bound value model) so the research agent can inject it
+  // into the kickoff without needing a product profile.
+  inputGuidance: string;
+  // Validate research value_inputs (used by validateResearch early gate, independent
+  // of economics). Throws when required keys are missing. Exposed directly on the
+  // spec so validateResearch can check the research object without creating a bound
+  // value model or needing a product profile.
+  validateInputs(raw: Record<string, number>, estimated: boolean): ValidatedInputs;
+  // Factory that returns a value model bound to the customer's economics. Phase 1
+  // always returns default economics; Phase 2 reads profile.economics when present.
+  createValueModel(profile: ProductProfile): BoundValueModel;
+  // Default economics when profile.economics is null or absent. Verticals export
+  // this so tests can introspect the defaults without creating a full profile.
+  defaultEconomics(): VerticalEconomics;
+  // Validate a raw economics object against this vertical's shape and against the
+  // D38/D49 disclosure policy (scenario count, names, and the effectiveness keys
+  // compute reads). Throws ValueModelContractError on any violation. saveProfile
+  // calls this so a misconfigured economics object fails at save (mapped to a 400
+  // the seller can correct) rather than reaching the worker; createValueModel
+  // calls it again at build as a defense-in-depth guard for rows that bypass save.
+  validateEconomics(raw: unknown): VerticalEconomics;
 }
+
