@@ -36,6 +36,16 @@ function unwrap<T>(label: string, res: { data: T | null; error: { message: strin
   return res.data;
 }
 
+// Sibling of unwrap for reads that may legitimately match no row (maybeSingle).
+// Throws on a query error but passes a null result straight through.
+function unwrapMaybe<T>(
+  label: string,
+  res: { data: T | null; error: { message: string } | null },
+): T | null {
+  if (res.error) throw new Error(`${label}: ${res.error.message}`);
+  return res.data;
+}
+
 // Organizations and membership -------------------------------------------------
 
 export async function createOrganization(name: string, slug: string): Promise<Organization> {
@@ -65,16 +75,15 @@ export async function resolveOrgIdForUser(userId: string): Promise<string | null
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
-  if (res.error) throw new Error(`resolveOrgIdForUser: ${res.error.message}`);
-  return res.data ? (res.data as { org_id: string }).org_id : null;
+  const row = unwrapMaybe<{ org_id: string }>("resolveOrgIdForUser", res);
+  return row ? row.org_id : null;
 }
 
 // Product profile --------------------------------------------------------------
 
 export async function getProductProfile(orgId: string): Promise<ProductProfile | null> {
   const res = await db().from("product_profiles").select("*").eq("org_id", orgId).maybeSingle();
-  if (res.error) throw new Error(`getProductProfile: ${res.error.message}`);
-  return res.data as ProductProfile | null;
+  return unwrapMaybe<ProductProfile>("getProductProfile", res);
 }
 
 export async function upsertProductProfile(
@@ -111,8 +120,7 @@ export async function getLead(orgId: string, leadId: string): Promise<Lead | nul
     .eq("org_id", orgId)
     .eq("id", leadId)
     .maybeSingle();
-  if (res.error) throw new Error(`getLead: ${res.error.message}`);
-  return res.data as Lead | null;
+  return unwrapMaybe<Lead>("getLead", res);
 }
 
 // Jobs --------------------------------------------------------------------------
@@ -137,8 +145,7 @@ export async function getJob(orgId: string, jobId: string): Promise<Job | null> 
     .eq("org_id", orgId)
     .eq("id", jobId)
     .maybeSingle();
-  if (res.error) throw new Error(`getJob: ${res.error.message}`);
-  return res.data as Job | null;
+  return unwrapMaybe<Job>("getJob", res);
 }
 
 // Submission-time dedupe (D34): the most recent active or done job belonging to
@@ -155,10 +162,10 @@ export async function findActiveJobByEmail(orgId: string, email: string): Promis
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (res.error) throw new Error(`findActiveJobByEmail: ${res.error.message}`);
-  if (!res.data) return null;
+  const row = unwrapMaybe<Job & { leads?: unknown }>("findActiveJobByEmail", res);
+  if (!row) return null;
   // Strip the joined leads column the embed adds; callers want a plain Job.
-  const { leads: _embedded, ...job } = res.data as Job & { leads?: unknown };
+  const { leads: _embedded, ...job } = row;
   return job as Job;
 }
 
@@ -186,8 +193,7 @@ export async function updateJob(
     .eq("status", expectedStatus)
     .select()
     .maybeSingle();
-  if (res.error) throw new Error(`updateJob: ${res.error.message}`);
-  return res.data as Job | null;
+  return unwrapMaybe<Job>("updateJob", res);
 }
 
 // Research ----------------------------------------------------------------------
@@ -209,8 +215,7 @@ export async function getResearchForJob(jobId: string): Promise<ResearchRow | nu
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (res.error) throw new Error(`getResearchForJob: ${res.error.message}`);
-  return res.data as ResearchRow | null;
+  return unwrapMaybe<ResearchRow>("getResearchForJob", res);
 }
 
 // Token usage ------------------------------------------------------------------
