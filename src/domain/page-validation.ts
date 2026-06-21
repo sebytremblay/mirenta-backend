@@ -140,11 +140,17 @@ export function validatePage(html: string, opts: ValidatePageOptions): void {
   }
 
   // 4. External assets resolve only to allow-listed hosts. Anything else is an
-  // invented or unexpected fetch the page must not make.
+  // invented or unexpected fetch the page must not make. Strip XML namespace
+  // declarations first: an inline SVG carries xmlns="http://www.w3.org/2000/svg"
+  // and xmlns:xlink="http://www.w3.org/1999/xlink", which are namespace
+  // identifiers the browser never fetches, not asset references. The
+  // vertical-agnostic restyle renders inline SVG, so without this every page
+  // would trip the scan on www.w3.org. Real href/src/url() references survive.
   const allowed = new Set(
     [...ALWAYS_ALLOWED_HOSTS, ...opts.assetHosts].map((h) => h.toLowerCase()),
   );
-  for (const url of html.match(/https?:\/\/[^\s"'()<>]+/gi) ?? []) {
+  const scannable = html.replace(/\bxmlns(:[a-z0-9-]+)?\s*=\s*("[^"]*"|'[^']*')/gi, " ");
+  for (const url of scannable.match(/https?:\/\/[^\s"'()<>]+/gi) ?? []) {
     const host = hostOf(url);
     if (host && !allowed.has(host)) {
       throw new PageValidationError(`external asset host not allow-listed: ${host}`);

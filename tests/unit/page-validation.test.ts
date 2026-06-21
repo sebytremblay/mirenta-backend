@@ -160,6 +160,27 @@ test("rejects a non-allow-listed external asset host", () => {
   assert.throws(() => validatePage(html, options), /not allow-listed/);
 });
 
+test("accepts inline SVG xmlns namespace declarations (not asset fetches)", () => {
+  // The vertical-agnostic restyle renders inline SVG, which carries the W3C
+  // namespace URIs. These are XML namespace identifiers, never fetched, so the
+  // asset-host scan must not reject www.w3.org. A real asset reference still must.
+  const html = goodHtml().replace(
+    '<svg viewBox="0 0 760 380" role="img" aria-labelledby="chart-t">',
+    '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 760 380" role="img" aria-labelledby="chart-t">',
+  );
+  assert.doesNotThrow(() => validatePage(html, options));
+});
+
+test("still rejects a real w3.org asset reference despite the xmlns exemption", () => {
+  // Stripping xmlns must not blanket-allow www.w3.org: a genuine src/href to it
+  // is an un-allow-listed fetch and must reject.
+  const html = goodHtml().replace(
+    'src="https://cdn.example.com/logo.png"',
+    'src="https://www.w3.org/Icons/logo.png"',
+  );
+  assert.throws(() => validatePage(html, options), /not allow-listed/);
+});
+
 test("rejects an unverified quote that leaks onto the page", () => {
   const html = goodHtml().replace(
     "<p>Reply to the outreach email and we walk it through together.</p>",
