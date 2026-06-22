@@ -10,8 +10,19 @@ verified across 30 sampled inputs (22 plausible + 8 stressors); every case holds
 construction inside `compute` (there is no rendering-layer clamp; the page validator requires every
 figure verbatim, see [[roi-overstatement-live]]). Model id: `founder_led_sales`.
 
-**FROZEN G1 NUMBERS (the harness asserts these):**
-- headline ROI multiple in [1x, 20x] (observed band across samples: [1.47, 5.21])
+**CALIBRATION CORRECTION (2026-06-21, T3):** The original frozen constants (acv_price_rate=0.006,
+price_per_prospect_base=9, hours range up to 2.0) FAILED G1 on a full 1,125-point grid sweep: 46
+cases dipped the headline multiple to 0.82x, below the 1x floor, all at the worst-value corner
+(reply 0.02, hours 0.5, ACV >= $20k), because the 0.006 ACV-scaled usage price overcharged
+thin-volume high-ACV founders. The original [1.47, 5.21] band came from only 30 samples that missed
+the corners. CORRECTED constants below hold the full grid (579,420 dense interior points, zero
+breaches): headline multiple band [1.47, 13.85], payback max 8.2 mo, aggressive display multiple
+peaks 16.26x (still <= 20). The fix lowers acv_price_rate to 0.003, raises base to 8, and narrows
+the hours input to [0.5, 1.5] (the 2.0 upper bound let one founder "reclaim" ~1,900 hrs/yr of time
+value, inflating the ceiling toward the fantasy ROI the reposition exists to kill).
+
+**FROZEN G1 NUMBERS (the harness asserts these; CORRECTED):**
+- headline ROI multiple in [1x, 20x] (observed band across the dense grid: [1.47, 13.85])
 - payback months: positive finite, <= 24 (observed max: 8.2)
 - team_size (headcount) input <= 5; compute clamps to [1,5] regardless
 - every headline figure named and sourced (no figure without a traceable derivation)
@@ -21,14 +32,15 @@ figure verbatim, see [[roi-overstatement-live]]). Model id: `founder_led_sales`.
 - prospects_per_month (8-80): personalized one-pagers sent per month.
 - avg_deal_value ($1.5k-$30k): annual contract value of one closed deal.
 - baseline_reply_rate (0.02-0.06): share of cold prospects that reply -> meeting today.
-- hours_per_personalized_touch (0.5-2.0): hours the founder spends researching+writing one one-pager.
+- hours_per_personalized_touch (0.5-1.5): hours the founder spends researching+writing one one-pager.
+  CORRECTED upper bound 1.5 (was 2.0).
 
 **MODULE CONSTANTS (model structure, NOT economics; named like employee-service deflection consts):**
 - MEETING_TO_CLOSE_RATE = 0.20
 - FOUNDER_HOURLY_VALUE = 150
 - PROSPECTS_PER_SEAT_YEAR = 240
-- price_per_prospect_base = 9
-- acv_price_rate = 0.006
+- price_per_prospect_base = 8   (CORRECTED, was 9)
+- acv_price_rate = 0.003        (CORRECTED, was 0.006)
 
 **DEFAULT ECONOMICS (tunable per-customer; validateEconomics requires the two effectiveness keys):**
 - annual_license = 0, implementation_fee = 1000, price_per_seat_year = 600
@@ -82,4 +94,22 @@ profile edits. ACV above ~$30k is out of the calibrated range; research guidance
 founder-scale. Activity-based billed seats make the raw seat count less legible; show effective
 first-year cost, not seat count.
 
-See [[codebase-map]] for the seam this fits and [[baseline-green]] for test conventions.
+**WORKED EXAMPLE TO PIN IN UNIT TESTS (corrected constants, default economics):**
+Inputs: team_size=3, prospects_per_month=40, avg_deal_value=12000, baseline_reply_rate=0.04,
+hours_per_personalized_touch=1.0.
+- prospectsYear=480, billedSeats=2 (ceil(480/240)=2, <= team 3), pricePerProspect=44.0,
+  usageAnnual=21120, seatAnnual=1200, effectiveLicense=22320, firstYearCost=23320 ("$23K")
+- Conservative: gross 66240 ("$66K"), net 43920 ("$44K"), 2.8x
+- Expected:     gross 99072 ("$99K"), net 76752 ("$77K"), 4.2x  <- headline
+- Aggressive:   gross 126144 ("$126K"), net 103824 ("$104K"), 5.4x
+- headlineMultiple "4.2x"; payback 2.82 -> "2.8 mo"
+- hoursReclaimed(Expected)=384, timeValue 57600 ("$58K"); incrementalDeals(Expected)=3.46
+- 5yr cumulative displays: ["$45K","$114K","$190K","$267K","$344K"]
+
+The headline tile is the MULTIPLE ("4.2x"), not a percent. Supporting metric tiles (graft the
+Twenty-Second Ledger winner, see [[tournament-results]]): "Payback period" "2.8 mo", "Hours returned
+per year" (formatted plain, e.g. "384 hrs" or via a dedicated formatter), and the dollar headline net.
+Keep EXACTLY three Conservative/Expected/Aggressive scenarios (D49). Footnote fires when estimated.
+
+See [[codebase-map]] for the seam this fits, [[baseline-green]] for test conventions, and
+[[tournament-results]] for the copy that grafts onto this block.
