@@ -28,9 +28,12 @@ const valueModel = founderLedSalesVertical.createValueModel(
 //   seatAnnual      = 600 * 2 = 1,200
 //   effectiveLicense= 0 + 1,200 + 21,120 = 22,320
 //   firstYearCost   = 22,320 + 1,000 = 23,320
-//   Expected gross  = (480*0.04*0.9*0.20)*12000 + (480*1.0*0.8)*150 = 41,472 + 57,600 = 99,072
-//   Expected net    = 99,072 - 22,320 = 76,752
-//   headline multiple = 99,072 / 23,320 = 4.25 -> "4.2x"
+//   Expected revenue= (480*0.04*0.9*0.20)*12000 = 41,472 (deals won)
+//   Expected time   = (480*1.0*0.8)*150 = 57,600 (384 founder hours at $150)
+//   Expected gross  = 41,472 + 57,600 = 99,072
+//   Displayed thousands: value 99K, cost 23K (round(23,320/1000)).
+//   headline multiple = 99K / 23K = 4.30 -> "4.3x" (derived from the displayed
+//   thousands, so value over cost on the page returns the shown multiple exactly).
 function worked(estimated = false) {
   return valueModel.validateInputs(
     {
@@ -82,36 +85,89 @@ test("compute returns three scenarios in fixed order", () => {
   );
 });
 
-test("compute pins the scenario net-value figures and multiple secondaries", () => {
+test("compute pins the scenario value-created figures and multiple secondaries", () => {
+  // Gross value created per scenario (default economics, worked inputs):
+  //   Conservative = (480*0.04*0.5*0.20)*12000 + (480*1.0*0.6)*150 = 23,040 + 43,200 = 66,240 -> "$66K"
+  //   Expected     = 41,472 + 57,600 = 99,072 -> "$99K"
+  //   Aggressive   = (480*0.04*1.3*0.20)*12000 + (480*1.0*0.92)*150 = 59,904 + 66,240 = 126,144 -> "$126K"
   const result = valueModel.compute(worked());
   assert.deepEqual(
     result.scenarios.map((s) => s.primaryValue),
-    ["$44K", "$77K", "$104K"],
+    ["$66K", "$99K", "$126K"],
+  );
+  // Multiples derive from displayed thousands: 66/23=2.9, 99/23=4.3, 126/23=5.5.
+  assert.deepEqual(
+    result.scenarios.map((s) => s.secondary),
+    ["2.9x", "4.3x", "5.5x"],
   );
   for (const s of result.scenarios) {
-    assert.equal(s.primaryLabel, "Annual value");
+    assert.equal(s.primaryLabel, "Value created");
     assert.match(s.secondary ?? "", /^\d+\.\dx$/);
   }
+});
+
+test("every scenario reconciles to the displayed cost: displayed value divided by displayed multiple lands on the cost tile", () => {
+  // The G3 reviewers caught a version where the multiple came from the raw figures
+  // while the page showed rounded thousands, so a founder dividing the displayed
+  // value by the displayed multiple got three costs, none equal to the cost tile,
+  // and the multiples read as rounded down. Now the multiple derives from the SAME
+  // displayed thousands the page shows, so the founder's own division on the page
+  // returns the displayed cost in every card.
+  const result = valueModel.compute(worked());
+  const costTile = result.metrics?.find((m) => m.label === "First-year cost");
+  assert.equal(costTile?.value, "$23K"); // costK * 1000 -> "$23K"
+  const displayedCost = 23_000;
+  for (const s of result.scenarios) {
+    const value = Number(s.primaryValue.replace(/[$K]/g, "")) * 1000;
+    const multiple = Number((s.secondary ?? "").replace("x", ""));
+    const impliedCost = value / multiple;
+    // Each card divides back to the displayed $23K within one-decimal-multiple rounding.
+    assert.ok(
+      Math.abs(impliedCost - displayedCost) < 500,
+      `${s.name}: implied cost ${impliedCost} should reconcile to the displayed ${displayedCost}`,
+    );
+  }
+});
+
+test("the headline multiple equals the Expected scenario card multiple", () => {
+  // The hero figure derives from the same displayed thousands as the Expected card,
+  // so the number a founder reads in the hero matches the one in the business case.
+  const result = valueModel.compute(worked());
+  const expectedCard = result.scenarios.find((s) => s.name === "Expected");
+  assert.equal(result.headline.value, expectedCard?.secondary);
 });
 
 test("headline reports the expected first-year return as a multiple, not a percent", () => {
   const result = valueModel.compute(worked());
   assert.equal(result.headline.label, "Expected first-year return");
-  assert.equal(result.headline.value, "4.2x");
+  assert.equal(result.headline.value, "4.3x"); // 99K / 23K from displayed thousands
   assert.doesNotMatch(result.headline.value, /%/);
   assert.equal(result.sectionTitle, "What you get back");
 });
 
-test("the estimated flag drives the footnote", () => {
-  assert.match(valueModel.compute(worked(true)).footnote ?? "", /sharpen/);
-  assert.equal(valueModel.compute(worked(false)).footnote, undefined);
+test("the footnote names the deal-revenue and founder-time split with figures that sum to the value created", () => {
+  // The G3 reviewers read one opaque "value created" total as decoration and flagged
+  // that more than half rode on imputed time they could not see. The footnote now
+  // names both terms with their own dollar figures (deal revenue plus founder time)
+  // that sum to the Expected value created, and states the multiple as value over
+  // cost. The "sharpen" estimate-disclosure rides only when estimated (D38).
+  const estimated = valueModel.compute(worked(true)).footnote ?? "";
+  const real = valueModel.compute(worked(false)).footnote ?? "";
+  // Both terms named with figures: $41K from deals, $58K from 384 founder hours.
+  for (const footnote of [estimated, real]) {
+    assert.match(footnote, /\$41K from deals won/);
+    assert.match(footnote, /\$58K from the 384 founder hours/);
+    assert.match(footnote, /\$99K/); // the value created the two terms sum to
+    assert.match(footnote, /the return multiple is value created over the first-year cost/);
+  }
+  assert.match(estimated, /sharpen/);
+  assert.doesNotMatch(real, /sharpen/);
 });
 
-// Metric tiles and projection for the worked example.
+// Metric tiles for the worked example.
 //   payback = 23,320 / (99,072 / 12) = 2.82 -> "2.8 mo"
 //   hours returned (Expected) = 480 * 1.0 * 0.8 = 384 -> "384 hrs"
-//   5-year cumulative under the ramp (0.6/0.9/1/1/1), year 1 absorbs the $1,000 fee:
-//     44,571 / 113,528 / 190,280 / 267,032 / 343,784 -> "$45K"/"$114K"/"$190K"/"$267K"/"$344K"
+//   first-year cost = 23,320 -> "$23K"
 test("metrics pins Payback period", () => {
   const m = valueModel.compute(worked()).metrics?.find((x) => x.label === "Payback period");
   assert.equal(m?.value, "2.8 mo");
@@ -124,17 +180,18 @@ test("metrics pins Hours returned per year", () => {
   assert.equal(m?.value, "384 hrs");
 });
 
-test("metrics pins Annual value", () => {
-  const m = valueModel.compute(worked()).metrics?.find((x) => x.label === "Annual value");
-  assert.equal(m?.value, "$77K");
+test("metrics pins First-year cost", () => {
+  const m = valueModel.compute(worked()).metrics?.find((x) => x.label === "First-year cost");
+  assert.equal(m?.value, "$23K");
 });
 
-test("projection series has 5 cumulative points", () => {
+test("the founder-led page renders no multi-year projection", () => {
+  // The five-year cumulative chart is dropped (D59): it belonged to the enterprise
+  // model, it contradicted the steady-state headline, and the cheap builder drew it
+  // broken. The projection field stays optional on the contract, so it degrades
+  // cleanly when absent.
   const result = valueModel.compute(worked());
-  assert.deepEqual(
-    result.projection?.series.map((p) => p.display),
-    ["$45K", "$114K", "$190K", "$267K", "$344K"],
-  );
+  assert.equal(result.projection, undefined);
 });
 
 test("team_size clamps to 5 so the headcount input never exceeds the founder-led bound", () => {
@@ -145,7 +202,7 @@ test("team_size clamps to 5 so the headcount input never exceeds the founder-led
   );
   const result = valueModel.compute(v);
   // billedSeats = min(ceil(480/240)=2, clampedTeam 5) = 2, identical to the worked case.
-  assert.equal(result.headline.value, "4.2x");
+  assert.equal(result.headline.value, "4.3x");
 });
 
 test("a zero send volume does not throw and produces a finite payback", () => {

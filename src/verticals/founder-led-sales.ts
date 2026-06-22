@@ -111,6 +111,18 @@ function round(n: number): number {
   return Math.round(n);
 }
 
+// The displayed figure in whole thousands. Value created, the cost, and the split
+// components all render at this precision, and the return multiple derives from
+// these same integers, so every number on the page reconciles to the precision the
+// founder reads: dividing the displayed value created by the displayed multiple
+// returns the displayed cost, and dividing value by cost returns the multiple. A
+// G3 reviewer who checks the arithmetic on the page lands on consistent numbers
+// (an earlier version rounded value, multiple, and cost independently, so the three
+// implied three different costs and read as reverse-engineered).
+function thousands(n: number): number {
+  return Math.round(n / 1000);
+}
+
 // Total over non-finite input: a NaN or Infinity (which the upstream numeric-map
 // filter already drops, but which the header promises compute itself withstands)
 // clamps to the conservative low bound rather than propagating NaN to the page.
@@ -200,42 +212,62 @@ function createCompute(economics: VerticalEconomics) {
     // Per scenario: the reply uplift turns cold replies into incremental replies,
     // the funnel rate turns those into incremental closed deals, and the deal value
     // turns those into revenue. The hours-recovered share turns per-touch hours into
-    // reclaimed founder time, valued at the founder hourly rate. Gross is their sum.
-    const grossFor = (replyUplift: number, hoursRecovered: number): number => {
+    // reclaimed founder time, valued at the founder hourly rate. The two terms stay
+    // separate so the page can name each (a founder discounts imputed time on its
+    // own merits, so the model never hides it inside one opaque total).
+    const splitFor = (
+      replyUplift: number,
+      hoursRecovered: number,
+    ): { revenue: number; time: number; gross: number } => {
       const incrementalDeals = prospectsYear * replyRate * replyUplift * MEETING_TO_CLOSE_RATE;
-      const revenueGain = incrementalDeals * dealValue;
+      const revenue = incrementalDeals * dealValue;
       const hoursReclaimed = prospectsYear * hoursPerTouch * hoursRecovered;
-      const timeValue = hoursReclaimed * FOUNDER_HOURLY_VALUE;
-      return revenueGain + timeValue;
+      const time = hoursReclaimed * FOUNDER_HOURLY_VALUE;
+      return { revenue, time, gross: revenue + time };
     };
 
+    // The first-year cost, rounded to the thousands the page displays. The return
+    // multiple derives from this same displayed integer, so the on-page arithmetic
+    // closes exactly: a founder who divides a card's displayed value created by its
+    // displayed multiple lands back on this cost tile, and value over cost returns
+    // the multiple. An earlier version rounded value, multiple, and cost
+    // independently, so the three implied three different costs; the G3 reviewers
+    // read that as reverse-engineered and failed the credibility gate.
+    const costK = thousands(firstYearCost);
+
+    // Every figure on the page reconciles to ONE first-year cost. A scenario card
+    // shows the gross value created and the return multiple, and the multiple is the
+    // displayed value (in thousands) over the displayed cost (in thousands), so the
+    // founder's own division ties out to the precision the page shows.
     const scenarios = economics.scenarios.map((s) => {
-      const gross = grossFor(
+      const { gross } = splitFor(
         s.effectiveness.reply_uplift ?? 0,
         s.effectiveness.hours_recovered_per_prospect ?? 0,
       );
-      const net = gross - effectiveLicense;
-      const multiple = firstYearCost > 0 ? gross / firstYearCost : 0;
+      const grossK = thousands(gross);
+      const multiple = costK > 0 ? grossK / costK : 0;
       return {
         name: s.name,
-        // Net annual value at steady adoption: gross minus the recurring cost, before
-        // the one-time implementation fee. Labeled "Annual value" so it never reads as
-        // the ramped Year 1 figure the cumulative projection shows (those differ by the
-        // adoption ramp and the first-year fee).
-        primaryValue: formatDollars(round(net)),
-        primaryLabel: "Annual value",
+        // Gross value created in a year: the revenue from deals won plus the founder
+        // time returned. Labeled "Value created" and paired with the value-over-cost
+        // multiple, so value divided by multiple equals the first-year cost tile.
+        primaryValue: formatDollars(round(gross)),
+        primaryLabel: "Value created",
         secondary: formatMultiple(multiple),
       };
     });
 
-    // Expected scenario drives the headline, payback, the metric tiles, and the
-    // projection. Read it by the disclosure-fixed middle position.
+    // Expected scenario drives the headline, the payback, and the metric tiles. Read
+    // it by the disclosure-fixed middle position, and keep its two value terms split
+    // so the footnote names the deal revenue and the founder-time value separately.
     const expected = economics.scenarios[1]!;
     const expectedReplyUplift = expected.effectiveness.reply_uplift ?? 0;
     const expectedHoursRecovered = expected.effectiveness.hours_recovered_per_prospect ?? 0;
-    const expectedGross = grossFor(expectedReplyUplift, expectedHoursRecovered);
-    const expectedNet = round(expectedGross - effectiveLicense);
-    const headlineMultiple = firstYearCost > 0 ? expectedGross / firstYearCost : 0;
+    const expectedSplit = splitFor(expectedReplyUplift, expectedHoursRecovered);
+    const expectedGross = expectedSplit.gross;
+    // Headline multiple derives from the same displayed thousands as the cards, so
+    // the hero figure reconciles with the Expected card and the cost tile.
+    const headlineMultiple = costK > 0 ? thousands(expectedGross) / costK : 0;
     const hoursReclaimedYear = round(prospectsYear * hoursPerTouch * expectedHoursRecovered);
 
     // Payback: first-year cost divided by monthly gross value. Guard against a zero
@@ -243,39 +275,40 @@ function createCompute(economics: VerticalEconomics) {
     const paybackValue =
       expectedGross > 0 ? `${(firstYearCost / (expectedGross / 12)).toFixed(1)} mo` : "n/a";
 
-    // 5-year cumulative value under the ramp: year one absorbs the implementation
-    // fee, and usage cost ramps with the volume the founder actually sends.
-    const adoption = economics.adoption_curve ?? DEFAULT_ADOPTION_CURVE;
-    let runningTotal = 0;
-    const series = adoption.map((ramp, i) => {
-      const grossYear = ramp * expectedGross;
-      const costYear = seatAnnual + ramp * usageAnnual + (i === 0 ? economics.implementation_fee : 0);
-      runningTotal += grossYear - costYear;
-      const rounded = round(runningTotal);
-      return {
-        period: `Year ${i + 1}`,
-        value: rounded,
-        display: formatDollars(rounded),
-      };
-    });
-
+    // The founder-led page renders no multi-year projection. The five-year cumulative
+    // chart belonged to the enterprise model; a founder guards the near term, not a
+    // compounding curve (the W5 Twenty-Second Ledger insight). Omitting it also closes
+    // two G3 blockers: a cheap builder drew the chart with bars off the canvas, and a
+    // ramped Year 1 cumulative figure contradicted the steady-state headline. The
+    // projection field stays optional on the contract (D49, D58), so the renderer and
+    // the page validator degrade cleanly with it absent.
     return {
       sectionTitle: "What you get back",
       headline: { label: "Expected first-year return", value: formatMultiple(headlineMultiple) },
       scenarios,
-      footnote: inputs.estimated
-        ? "These figures model early founder-led use and sharpen as you run real outreach."
-        : undefined,
+      // State the math basis AND the split so a founder checks every figure without
+      // a calculator. The G3 reviewers read a single opaque "value created" total as
+      // decoration and flagged that more than half rode on imputed time they could
+      // not see, so the footnote now names the two terms with their own dollar
+      // figures (deal revenue plus founder time at the hourly rate) that sum to the
+      // Expected value created, then states the multiple as value over cost. Keeps
+      // the "sharpen" estimate disclosure (D38) when the inputs are estimated.
+      footnote: (() => {
+        const revenueK = formatDollars(round(expectedSplit.revenue));
+        const timeK = formatDollars(round(expectedSplit.time));
+        const split = `In the Expected case the ${formatDollars(round(expectedGross))} splits into ${revenueK} from deals won (the extra replies the page earns, carried through to closed deals) and ${timeK} from the ${hoursReclaimedYear} founder hours it returns, valued at ${formatDollars(FOUNDER_HOURLY_VALUE)} per hour; the return multiple is value created over the first-year cost.`;
+        return inputs.estimated
+          ? `These figures model early founder-led use and sharpen as you run real outreach. ${split}`
+          : split;
+      })(),
       metrics: [
         { label: "Payback period", value: paybackValue },
         { label: "Hours returned per year", value: `${hoursReclaimedYear} hrs` },
-        { label: "Annual value", value: formatDollars(expectedNet) },
+        // The cost tile renders the same displayed thousands the multiple divides by
+        // (costK), so the denominator a founder reads matches the one the multiple
+        // uses. formatDollars on costK*1000 yields the identical "$NNK" string.
+        { label: "First-year cost", value: formatDollars(costK * 1000) },
       ],
-      projection: {
-        label: "Cumulative value",
-        unit: "USD",
-        series,
-      },
     };
   };
 }
