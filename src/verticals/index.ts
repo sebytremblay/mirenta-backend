@@ -6,6 +6,7 @@
 import { genericVertical } from "./generic.ts";
 import { employeeServiceVertical } from "./employee-service.ts";
 import { salesMarketingVertical } from "./sales-marketing.ts";
+import { founderLedSalesVertical } from "./founder-led-sales.ts";
 import type { VerticalSpec } from "./types.ts";
 
 export type {
@@ -32,6 +33,7 @@ export const VERTICALS: Record<string, VerticalSpec> = {
   [genericVertical.id]: genericVertical,
   [employeeServiceVertical.id]: employeeServiceVertical,
   [salesMarketingVertical.id]: salesMarketingVertical,
+  [founderLedSalesVertical.id]: founderLedSalesVertical,
 };
 
 export function isKnownVertical(id: string): boolean {
