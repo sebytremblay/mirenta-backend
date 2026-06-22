@@ -6,7 +6,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildUserPrompt, type BuildSiteInput, type PromptAssets } from "../../src/agents/builder-prompt.ts";
+import { buildUserPrompt, DESIGN_BRIEF, type BuildSiteInput, type PromptAssets } from "../../src/agents/builder-prompt.ts";
 import type { ValueResult } from "../../src/verticals/index.ts";
 import type { ResearchObject } from "../../src/domain/research.ts";
 import type { ProductProfile } from "../../src/domain/entities.ts";
@@ -103,6 +103,19 @@ test("buildUserPrompt carries every value figure verbatim", () => {
   for (const fig of figures) {
     assert.ok(prompt.includes(fig), `prompt should carry the figure ${fig}`);
   }
+});
+
+test("buildUserPrompt serializes a precomputed height fraction per projection point", () => {
+  // The chart geometry is precomputed so the cheap builder never invents its own
+  // pixel scale (which overflowed the plot in the G3 sample). Each point carries a
+  // fraction in [0,1]: its share of the tallest bar. The tallest point ($10.1M)
+  // gets 1.00 and the smallest ($374K) gets 374000/10136400 = 0.04.
+  const prompt = buildUserPrompt(input, value, assets);
+  assert.match(prompt, /height fraction in \[0,1\]/);
+  assert.ok(prompt.includes('Year 5: height fraction 1.00, display "$10.1M"'));
+  assert.ok(prompt.includes('Year 1: height fraction 0.04, display "$374K"'));
+  // The brief instructs anchoring every bar to one baseline, the fix for overflow.
+  assert.match(DESIGN_BRIEF, /anchor every bar to one shared baseline/);
 });
 
 test("buildUserPrompt carries the resolved assets and required anchors", () => {

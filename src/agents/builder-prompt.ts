@@ -84,7 +84,7 @@ REQUIRED SECTIONS, IN THIS ORDER, WITH THESE EXACT ids
 
 BUSINESS CASE DETAIL
 - Metric tiles: one tile per supplied metric. Show the value prominently in var(--font-display) and the label beneath. For the count-up animation, add to each tile value element a data-count attribute (the numeric part of the figure) and optional data-prefix, data-suffix, and data-decimals attributes. ALWAYS also render the exact supplied display string as the element text content, so the figure stays correct without animation.
-- SVG chart: draw a bar chart of the cumulative projection series. Scale the geometry from the numeric value of each point. Label each bar with the point period and its exact display string. Add <title> and <desc> for accessibility. Theme the bars with var(--brand) and var(--accent).
+- SVG chart: draw a bar chart of the cumulative projection series. Each point carries a height fraction in [0,1]. Pick a fixed plot height, anchor every bar to one shared baseline, and set each bar height to its fraction times that plot height, so no bar overflows the plot or runs off the top. Use the supplied fraction and invent no other scale. Label each bar with the point period and its exact display string. Add <title> and <desc> for accessibility. Theme the bars with var(--brand) and var(--accent).
 - Scenario cards: one card per scenario showing its name, primary value, primary label, and secondary metric when present, all verbatim.
 
 FIGURES
@@ -92,6 +92,7 @@ FIGURES
 
 READING TIME
 - Target roughly 600 to 750 words of body copy, a read under three minutes. Prefer scannable cards and tight sentences over long paragraphs.
+- Earn every section. State the seller value proposition once, then never restate it. Give each section a distinct job: the priorities name what the reader cares about, the challenges name the pressure each one creates, and the point-of-view section ties each to the solution. Do not repeat the same researched fact across sections; each card advances the argument rather than restating it. A reader who skims must meet new information in every section.
 
 ACCESSIBILITY
 - Use landmark roles (banner, main, contentinfo). Tie aria-labelledby on each section to its heading id. Provide a visually hidden .sr-only utility. Apply :focus-visible outlines on links. Respect prefers-reduced-motion for any transition.
@@ -114,11 +115,20 @@ export function renderValueBlock(value: ValueResult): string {
   }
 
   if (value.projection && value.projection.series.length > 0) {
+    // Precompute each bar's height fraction (its share of the tallest bar) so the
+    // model never invents its own pixel scale. A cheap model that derives the scale
+    // itself drifts: bars overflow the plot and the tallest gets a negative top
+    // coordinate. The fraction in [0,1] makes the geometry deterministic and load
+    // bearing, the same principle the page validator applies to the figures (D54).
+    const maxValue = Math.max(...value.projection.series.map((p) => p.value), 0);
     lines.push(
-      `Cumulative projection "${value.projection.label}" (${value.projection.unit}); draw an SVG bar chart from these points, scaling height by the numeric value and labeling each bar with its display string:`,
+      `Cumulative projection "${value.projection.label}" (${value.projection.unit}); draw an SVG bar chart. Each point carries a height fraction in [0,1] (its share of the tallest bar). Set each bar height to fraction times the fixed plot height, anchor every bar to one baseline, and label each bar with its display string. Use the supplied fraction; invent no scale:`,
     );
     for (const p of value.projection.series) {
-      lines.push(`- ${p.period}: numeric ${p.value}, display "${p.display}"`);
+      const fraction = maxValue > 0 ? Math.max(0, Math.min(1, p.value / maxValue)) : 0;
+      lines.push(
+        `- ${p.period}: height fraction ${fraction.toFixed(2)}, display "${p.display}"`,
+      );
     }
   }
 
