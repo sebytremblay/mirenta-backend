@@ -4,16 +4,18 @@ Date opened: 2026-06-21
 
 ## Phase
 
-DESIGN done (T1 frozen). W5 tournament done (T2 DONE; winners/losers in
-loop/memory/tournament-results.md). Next: IMPLEMENT (T3).
+DESIGN done (T1). W5 tournament done (T2). MODEL implemented (T3) + G1 harness (T7),
+188 tests pass, typecheck 0. Next: COPY (T4) and research prompt (T5), then framing +
+customer zero (T6), then gates G2/G3 (T8/T9), decisions (T10), report (T11).
 
 ## Single next action
 
-Run Workflow 2 to IMPLEMENT the founder_led_sales value model (T3) per the frozen
-design in loop/memory/founder-led-roi-model.md: add src/verticals/founder-led-sales.ts,
-register it, point customer zero at it later (T6), write unit tests pinning the worked
-example, and build the G1 harness (>= 20 sampled inputs, zero breaches). Then proceed to
-T4 (graft tournament-winning hero copy into the builder) and T5 (research prompt).
+Rewrite the Website Builder copy/brief (T4) for founder-to-founder: graft the
+tournament winners (Shared Scar opener + Mirror-First ordering in the hero; the
+Twenty-Second Ledger hours/conversation framing onto the business case, keeping the
+G1 multiple). Then rewrite the Research Agent prompt (T5). Both must be G2 blocklist
+clean. The founder_led_sales value model already renders the founder-legible block
+("What you get back", multiple headline, hours-returned tile).
 
 ## Health note
 
