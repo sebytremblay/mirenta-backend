@@ -36,12 +36,16 @@ function parsePaybackMonths(s: string): number {
 // The calibrated input grid. Volume and deal value carry the most points because the
 // floor breach the calibration closed lived at their corners (light volume, high
 // deal value). Includes deliberate out-of-range stressors (team 40, volume 200, deal
-// $80k) so the harness confirms the clamp, not just the in-range path.
-const TEAM_SIZES = [1, 2, 3, 4, 5, 40];
-const PROSPECTS = [8, 12, 20, 28, 36, 44, 52, 60, 68, 80, 200];
-const DEAL_VALUES = [1500, 3000, 5000, 8000, 12000, 16000, 20000, 25000, 30000, 80000];
-const REPLY_RATES = [0.02, 0.03, 0.04, 0.05, 0.06];
-const HOURS = [0.5, 0.75, 1.0, 1.25, 1.5, 3.0];
+// $80k) AND pathological non-finite and negative corners (NaN, Infinity, -1), so the
+// harness confirms compute clamps every input by construction rather than leaking a
+// "NaNx" headline or an inflated return. The upstream numeric-map filter drops
+// non-finite values before compute, but the model promises G1 holds inside compute
+// itself, so the harness exercises that promise directly.
+const TEAM_SIZES = [1, 2, 3, 4, 5, 40, -1, NaN];
+const PROSPECTS = [8, 12, 20, 28, 36, 44, 52, 60, 68, 80, 200, 0, -5, NaN];
+const DEAL_VALUES = [1500, 3000, 5000, 8000, 12000, 16000, 20000, 25000, 30000, 80000, -100, NaN, Infinity];
+const REPLY_RATES = [0.02, 0.03, 0.04, 0.05, 0.06, 0, NaN];
+const HOURS = [0.5, 0.75, 1.0, 1.25, 1.5, 3.0, -2, NaN];
 
 test("G1: headline multiple, payback, and headcount bounds hold across the full input sweep", () => {
   let samples = 0;

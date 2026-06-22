@@ -1,16 +1,20 @@
 // End-to-end pipeline runner for the Mirenta self-sell demo. Seeds an org whose
-// product profile IS Mirenta, submits one lead (a Salesforce account executive),
-// drives the worker tick loop until the job reaches done or failed, then fetches
-// the published S3 URL and confirms it renders. Exercises the real pipeline
-// against Claude Managed Agents (research), the Messages API (build), Exa,
-// Supabase, and S3. Run: node scripts/run-pipeline-mirenta.ts
+// product profile IS Mirenta, submits one lead (a founder running founder-led sales
+// to other founders), drives the worker tick loop until the job reaches done or
+// failed, then fetches the published S3 URL and confirms it renders. Exercises the
+// real pipeline against Claude Managed Agents (research), the Messages API (build),
+// Exa, Supabase, and S3. Run: node scripts/run-pipeline-mirenta.ts
 //
 // Customer (seller): the Mirenta team, selling Mirenta itself.
-// Lead: Masafumi Kawashima, Account Executive at Salesforce.
-// The profile declares the sales_marketing vertical: Mirenta sells outbound
-// personalization to revenue and demand-generation leaders, so the page
-// researches Salesforce through a Sales and Marketing lens and the value model
-// renders pipeline-uplift ROI, with no HR/ITSM framing.
+// Lead: Devin Park, Co-Founder and CEO at Cedar, a seed-stage fintech building
+// banking and corporate cards for early-stage founders. Cedar sells to founders, so
+// Devin runs founder-led sales to other founders, exactly Mirenta's prospect after
+// the reposition (D59). This is an illustrative self-sell target on an RFC-2606
+// .example domain; a human swaps in a real lead and website for a live run.
+// The profile declares the founder_led_sales vertical: Mirenta sells outbound
+// personalization to founders, so the page researches Cedar through a founder-led
+// lens and the value model renders a first-year return as a multiple plus the hours
+// the tool returns, with no enterprise or HR/ITSM framing.
 
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -44,7 +48,7 @@ try {
     ],
     cta_text: "Book a working session",
     brand: { primary_color: "#3b5bdb" },
-    vertical: "sales_marketing",
+    vertical: "founder_led_sales",
   });
   console.log("  org:", org.id);
 
@@ -53,12 +57,12 @@ try {
     source: "manual",
     leads: [
       {
-        first_name: "Masafumi",
-        last_name: "Kawashima",
-        role: "Account Executive",
-        company: "Salesforce",
-        website_url: "https://www.salesforce.com",
-        email: "mkawashima@salesforce.com",
+        first_name: "Devin",
+        last_name: "Park",
+        role: "Co-Founder and CEO",
+        company: "Cedar",
+        website_url: "https://cedar.example",
+        email: "devin@cedar.example",
       },
     ],
   });
@@ -93,12 +97,14 @@ try {
     console.log("\n=== 4. Fetch the published page ===");
     const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
     const html = await res.text();
-    const company = "Salesforce";
+    const company = "Cedar";
     const checks = {
       http200: res.status === 200,
       isHtml: /^<!doctype html/i.test(html.trim()) || /^<html/i.test(html.trim()),
       hasCompany: html.includes(company),
-      hasRoi: /\$\d/.test(html),
+      // The founder-led page leads with a return expressed as a multiple ("4.2x") and
+      // carries dollar figures on the scenario cards, so confirm both shapes appear.
+      hasReturn: /\d+\.\dx/.test(html) && /\$\d/.test(html),
       selfContained: !/<link[^>]+stylesheet/i.test(html) && !/<script[^>]+src=/i.test(html),
     };
     console.log("  checks:", JSON.stringify(checks));

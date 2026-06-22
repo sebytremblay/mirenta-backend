@@ -32,8 +32,13 @@ test("getVertical returns the spec for a known id", () => {
   assert.equal(typeof spec.defaultEconomics, "function");
 });
 
-test("the registry holds the generic, employee-service, and sales-marketing specs", () => {
-  for (const id of ["generic", "salesforce_employee_service", "sales_marketing"]) {
+test("the registry holds the generic, employee-service, sales-marketing, and founder-led specs", () => {
+  for (const id of [
+    "generic",
+    "salesforce_employee_service",
+    "sales_marketing",
+    "founder_led_sales",
+  ]) {
     assert.ok(isKnownVertical(id), `${id} must be registered`);
     assert.equal(getVertical(id).id, id);
   }

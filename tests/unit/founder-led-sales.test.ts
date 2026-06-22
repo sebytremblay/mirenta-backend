@@ -89,7 +89,7 @@ test("compute pins the scenario net-value figures and multiple secondaries", () 
     ["$44K", "$77K", "$104K"],
   );
   for (const s of result.scenarios) {
-    assert.equal(s.primaryLabel, "Value in year one");
+    assert.equal(s.primaryLabel, "Annual value");
     assert.match(s.secondary ?? "", /^\d+\.\dx$/);
   }
 });
@@ -124,8 +124,8 @@ test("metrics pins Hours returned per year", () => {
   assert.equal(m?.value, "384 hrs");
 });
 
-test("metrics pins Value in year one", () => {
-  const m = valueModel.compute(worked()).metrics?.find((x) => x.label === "Value in year one");
+test("metrics pins Annual value", () => {
+  const m = valueModel.compute(worked()).metrics?.find((x) => x.label === "Annual value");
   assert.equal(m?.value, "$77K");
 });
 

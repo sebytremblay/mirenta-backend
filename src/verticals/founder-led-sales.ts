@@ -111,7 +111,11 @@ function round(n: number): number {
   return Math.round(n);
 }
 
+// Total over non-finite input: a NaN or Infinity (which the upstream numeric-map
+// filter already drops, but which the header promises compute itself withstands)
+// clamps to the conservative low bound rather than propagating NaN to the page.
 function clamp(n: number, lo: number, hi: number): number {
+  if (!Number.isFinite(n)) return lo;
   return Math.min(hi, Math.max(lo, n));
 }
 
@@ -214,8 +218,12 @@ function createCompute(economics: VerticalEconomics) {
       const multiple = firstYearCost > 0 ? gross / firstYearCost : 0;
       return {
         name: s.name,
+        // Net annual value at steady adoption: gross minus the recurring cost, before
+        // the one-time implementation fee. Labeled "Annual value" so it never reads as
+        // the ramped Year 1 figure the cumulative projection shows (those differ by the
+        // adoption ramp and the first-year fee).
         primaryValue: formatDollars(round(net)),
-        primaryLabel: "Value in year one",
+        primaryLabel: "Annual value",
         secondary: formatMultiple(multiple),
       };
     });
@@ -261,7 +269,7 @@ function createCompute(economics: VerticalEconomics) {
       metrics: [
         { label: "Payback period", value: paybackValue },
         { label: "Hours returned per year", value: `${hoursReclaimedYear} hrs` },
-        { label: "Value in year one", value: formatDollars(expectedNet) },
+        { label: "Annual value", value: formatDollars(expectedNet) },
       ],
       projection: {
         label: "Cumulative value",
