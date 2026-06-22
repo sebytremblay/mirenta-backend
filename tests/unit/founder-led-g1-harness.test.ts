@@ -6,9 +6,11 @@
 // input to its calibrated range, with no rendering-layer clamp, D54), so this
 // harness proves the construction rather than patching a leak after the fact.
 //
-// The sweep spans the full input grid (5 * 19 * 20 * 5 * 6 = 57,000 points), well
+// The sweep spans the full input grid (8 * 14 * 13 * 7 * 8 = 81,536 points), well
 // past the >= 20 the gate asks for, so a future change to a constant that reopens
-// the floor breach the calibration closed fails here loudly.
+// the floor breach the calibration closed fails here loudly. The grid grew past the
+// original 57,000 when the non-finite and out-of-range stressor corners (NaN,
+// Infinity, negative, team 40) joined each axis to prove compute clamps by construction.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

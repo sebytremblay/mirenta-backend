@@ -34,6 +34,7 @@ BUSINESS CASE DETAIL
 
 FIGURES
 - Every dollar figure, percent, payback, and projection value is PRECOMPUTED and supplied as an exact display string. Render each string verbatim. Never invent, recompute, or reformat a figure.
+- Researched prose numbers carry the same rigor. Every count, date, headcount, round size, batch name, and named quantity in the research is a checkable fact about the lead. Copy each one exactly as the research states it. Never round it, restate it as a different number, spell a digit as a different word, or invent a number the research does not state. The page reads as hand-researched only when each figure about the lead survives the lead checking it against their own knowledge.
 
 READING TIME
 - Target roughly 600 to 750 words of body copy, a read under three minutes. Prefer scannable cards and tight sentences over long paragraphs.

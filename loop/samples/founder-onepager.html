@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cedar — Founder-Led Banking</title>
+  <title>Banking built by founders, for founders</title>
   <link rel="icon" href="https://cedar.example/favicon.ico">
   <style>
     :root {
@@ -39,6 +39,17 @@
       line-height: 1.6;
     }
 
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+      * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
     .sr-only {
       position: absolute;
       width: 1px;
@@ -48,7 +59,7 @@
       overflow: hidden;
       clip: rect(0, 0, 0, 0);
       white-space: nowrap;
-      border-width: 0;
+      border: 0;
     }
 
     .container {
@@ -57,568 +68,595 @@
       padding: 0 2rem;
     }
 
-    a {
-      color: var(--brand);
-      text-decoration: none;
-      transition: color 0.2s ease;
-    }
-
-    a:hover {
-      color: var(--accent);
-    }
-
     a:focus-visible {
       outline: 2px solid var(--brand);
       outline-offset: 2px;
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      * {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
-      }
+      border-radius: 2px;
     }
 
     /* Hero */
     header[role="banner"] {
-      background: var(--surface);
+      background-color: var(--surface);
       border-bottom: 1px solid var(--border);
-      padding: 3rem 0;
+      padding: 3rem 0 2rem;
+      margin-bottom: 3rem;
     }
 
-    header .container {
+    .hero-content {
       display: flex;
       flex-direction: column;
       gap: 2rem;
     }
 
-    .hero-text {
-      max-width: 62ch;
+    .hero-opening {
+      max-width: 70ch;
+      line-height: 1.8;
     }
 
-    .hero-text p {
+    .hero-opening p {
       margin-bottom: 1rem;
       font-size: clamp(1rem, 2vw, 1.125rem);
-      line-height: 1.7;
-      color: var(--text);
     }
 
-    .hero-text p:first-child {
-      font-weight: 500;
-      color: var(--muted);
-    }
-
-    .hero-lockup {
-      display: flex;
-      align-items: center;
-      gap: 1.5rem;
-      padding: 1.5rem 0;
-      border-top: 1px solid var(--border);
-      border-bottom: 1px solid var(--border);
-      margin: 1.5rem 0;
-    }
-
-    .logo-text {
-      font-family: var(--font-display);
-      font-size: 1.25rem;
+    .hero-opening p:first-child {
       font-weight: 600;
       color: var(--text);
     }
 
-    .seller-badge {
-      font-size: 0.875rem;
+    .hero-opening p:nth-child(2) {
       color: var(--muted);
-      background: var(--surface-muted);
-      padding: 0.5rem 1rem;
-      border-radius: var(--radius);
+      font-size: clamp(0.95rem, 1.8vw, 1.05rem);
+    }
+
+    .hero-opening p:nth-child(3) {
+      color: var(--text);
+    }
+
+    .lockup {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      margin: 1.5rem 0 0 0;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .wordmark {
+      font-family: var(--font-display);
+      font-size: clamp(1.25rem, 3vw, 1.75rem);
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .lockup-separator {
+      width: 2px;
+      height: 2rem;
+      background-color: var(--border);
+    }
+
+    .seller-name {
+      font-family: var(--font-display);
+      font-size: clamp(1rem, 2vw, 1.25rem);
+      font-weight: 600;
+      color: var(--text);
     }
 
     h1 {
       font-family: var(--font-display);
-      font-size: clamp(1.75rem, 4vw, 2.5rem);
-      font-weight: 600;
+      font-size: clamp(1.75rem, 5vw, 2.5rem);
+      font-weight: 700;
       line-height: 1.2;
-      color: var(--text);
       margin-bottom: 1rem;
+      color: var(--text);
+      margin-top: 0;
     }
 
-    .hero-links {
-      display: flex;
-      gap: 1rem;
-      flex-wrap: wrap;
-      margin-top: 2rem;
-    }
-
-    .hero-links a {
-      display: inline-block;
-      padding: 0.75rem 1.5rem;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      font-weight: 500;
-      transition: all 0.2s ease;
-    }
-
-    .hero-links a:first-child {
-      background: var(--brand);
-      color: var(--brand-fg);
-      border-color: var(--brand);
-    }
-
-    .hero-links a:first-child:hover {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: var(--brand-fg);
-    }
-
-    .hero-links a:last-child:hover {
-      background: var(--brand-tint);
-      border-color: var(--brand);
-    }
-
-    /* Main content */
-    main {
-      padding: 3rem 0;
-    }
-
-    section {
-      margin-bottom: 4rem;
-    }
-
-    section h2 {
-      font-family: var(--font-display);
-      font-size: clamp(1.5rem, 3vw, 2rem);
-      font-weight: 600;
+    .hero-lede {
+      font-size: clamp(1rem, 2vw, 1.125rem);
+      color: var(--muted);
+      max-width: 70ch;
+      line-height: 1.7;
       margin-bottom: 2rem;
-      color: var(--text);
     }
 
-    section h3 {
-      font-family: var(--font-display);
-      font-size: 1.125rem;
+    .quick-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .quick-link {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.75rem 1.5rem;
+      background-color: var(--brand);
+      color: var(--brand-fg);
+      text-decoration: none;
+      border-radius: var(--radius);
       font-weight: 600;
-      margin-bottom: 0.5rem;
-      color: var(--text);
-    }
-
-    /* Priorities Section */
-    #priorities {
-      background: var(--brand-tint);
-      padding: 2rem;
-      border-radius: var(--radius);
-    }
-
-    .cards-grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 1.5rem;
-    }
-
-    @media (min-width: 720px) {
-      .cards-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-
-    @media (min-width: 1000px) {
-      .cards-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 1.5rem;
+      font-size: 0.95rem;
       transition: all 0.3s ease;
     }
 
-    .card:hover {
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    .quick-link:hover {
+      background-color: var(--accent);
       transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(14, 116, 144, 0.2);
+    }
+
+    .quick-link:focus-visible {
+      outline: 2px solid var(--text);
+      outline-offset: 2px;
+    }
+
+    /* Main */
+    main {
+      display: flex;
+      flex-direction: column;
+      gap: 4rem;
+      margin-bottom: 4rem;
+    }
+
+    section {
+      scroll-margin-top: 80px;
+    }
+
+    section > h2 {
+      font-family: var(--font-display);
+      font-size: clamp(1.5rem, 4vw, 2rem);
+      font-weight: 700;
+      margin-bottom: 2rem;
+      color: var(--text);
+      line-height: 1.2;
+    }
+
+    /* Priorities */
+    #priorities .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .card {
+      background-color: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2rem;
+      transition: all 0.3s ease;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .card:hover {
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+      transform: translateY(-2px);
+      border-color: var(--brand);
+    }
+
+    .card h3 {
+      font-family: var(--font-display);
+      font-size: clamp(1.125rem, 2.5vw, 1.375rem);
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 0.75rem;
     }
 
     .card p {
-      color: var(--text);
-      line-height: 1.7;
-      max-width: 65ch;
-    }
-
-    .card-label {
-      font-size: 0.875rem;
       color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 0.5rem;
-      font-weight: 600;
+      font-size: 0.95rem;
+      line-height: 1.7;
     }
 
-    /* Challenges Section */
-    #challenges {
-      background: var(--surface);
+    .card .why-now {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.9rem;
+      color: var(--text);
+      font-weight: 500;
     }
 
-    #challenges .cards-grid {
+    /* Challenges */
+    #challenges .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
       gap: 1.5rem;
     }
 
     #challenges .card {
-      border-left: 4px solid var(--brand);
+      background-color: var(--brand-tint);
+      border: 1px solid transparent;
     }
 
-    /* POV Section */
+    #challenges .card h3 {
+      color: var(--brand);
+    }
+
+    /* Point of view */
     #pov {
-      background: var(--surface);
-    }
-
-    .pov-card {
-      background: var(--surface-muted);
+      background-color: var(--surface-muted);
+      padding: 3rem 2rem;
+      border-radius: var(--radius);
       border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 1.5rem;
-      margin-bottom: 1.5rem;
     }
 
-    .pov-card h3 {
-      color: var(--brand);
-      margin-bottom: 0.75rem;
-    }
-
-    .pov-card p {
-      color: var(--text);
-      line-height: 1.7;
-      max-width: 65ch;
-      margin-bottom: 1rem;
-    }
-
-    blockquote {
-      background: var(--surface);
-      border-left: 4px solid var(--accent);
-      padding: 1rem 1.5rem;
-      margin: 1rem 0;
-      font-size: 0.95rem;
-      color: var(--text);
-      font-style: italic;
-    }
-
-    blockquote p {
-      margin: 0 0 0.5rem 0;
-    }
-
-    .quote-attribution {
-      font-size: 0.875rem;
-      color: var(--muted);
-      font-style: normal;
-      font-weight: 500;
-    }
-
-    /* Business Case Section */
-    #business-case {
-      background: linear-gradient(135deg, var(--brand-tint) 0%, var(--bg) 100%);
-      padding: 2rem;
-      border-radius: var(--radius);
-    }
-
-    #business-case h2 {
-      margin-bottom: 1rem;
-    }
-
-    .business-headline {
-      font-family: var(--font-display);
-      font-size: clamp(1.5rem, 3vw, 2rem);
-      font-weight: 600;
-      color: var(--brand);
-      margin-bottom: 2rem;
-    }
-
-    .metrics-grid {
+    #pov .pov-items {
       display: grid;
-      grid-template-columns: 1fr;
-      gap: 1.5rem;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 2rem;
+    }
+
+    .pov-item {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .pov-item h3 {
+      font-family: var(--font-display);
+      font-size: clamp(1.125rem, 2.5vw, 1.375rem);
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .pov-item h3 span {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2rem;
+      height: 2rem;
+      background-color: var(--brand);
+      color: var(--brand-fg);
+      border-radius: 50%;
+      font-weight: 700;
+      font-size: 0.9rem;
+      flex-shrink: 0;
+    }
+
+    .pov-item p {
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.7;
+    }
+
+    /* Business case */
+    #business-case {
+      background-color: var(--brand-tint);
+      padding: 3rem 2rem;
+      border-radius: var(--radius);
+      border: 1px solid transparent;
+    }
+
+    .business-case-header {
       margin-bottom: 2rem;
     }
 
-    @media (min-width: 720px) {
-      .metrics-grid {
-        grid-template-columns: repeat(3, 1fr);
-      }
+    .business-case-header h3 {
+      font-family: var(--font-display);
+      font-size: clamp(1.375rem, 3vw, 1.75rem);
+      font-weight: 700;
+      color: var(--brand);
+      margin-bottom: 0.5rem;
+    }
+
+    .metric-tiles {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 2.5rem;
     }
 
     .metric-tile {
-      background: var(--surface);
+      background-color: var(--surface);
       border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      text-align: center;
+    }
+
+    .metric-value {
+      font-family: var(--font-display);
+      font-size: clamp(1.75rem, 4vw, 2.5rem);
+      font-weight: 700;
+      color: var(--brand);
+      margin-bottom: 0.5rem;
+      line-height: 1.1;
+    }
+
+    .metric-label {
+      font-size: 0.9rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+
+    .scenario-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .scenario-card {
+      background-color: var(--surface);
+      border: 2px solid var(--border);
       border-radius: var(--radius);
       padding: 1.5rem;
       text-align: center;
       transition: all 0.3s ease;
     }
 
-    .metric-tile:hover {
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    }
-
-    .metric-value {
-      font-family: var(--font-display);
-      font-size: clamp(1.75rem, 4vw, 2.25rem);
-      font-weight: 700;
-      color: var(--brand);
-      line-height: 1.2;
-    }
-
-    .metric-label {
-      font-size: 0.875rem;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-top: 0.75rem;
-      font-weight: 600;
-    }
-
-    .scenarios-grid {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 1rem;
-      margin-top: 2rem;
-      margin-bottom: 2rem;
-    }
-
-    @media (min-width: 720px) {
-      .scenarios-grid {
-        grid-template-columns: repeat(3, 1fr);
-      }
-    }
-
-    .scenario-card {
-      background: var(--surface);
-      border: 2px solid var(--brand);
-      border-radius: var(--radius);
-      padding: 1.5rem;
-      text-align: center;
+    .scenario-card:hover {
+      border-color: var(--brand);
+      box-shadow: 0 4px 12px rgba(14, 116, 144, 0.15);
     }
 
     .scenario-name {
       font-family: var(--font-display);
-      font-size: 1rem;
-      font-weight: 600;
-      color: var(--brand);
+      font-size: 1.125rem;
+      font-weight: 700;
+      color: var(--text);
       margin-bottom: 1rem;
     }
 
     .scenario-value {
       font-family: var(--font-display);
-      font-size: 1.75rem;
+      font-size: clamp(1.5rem, 3vw, 2rem);
       font-weight: 700;
-      color: var(--text);
-      line-height: 1.2;
+      color: var(--brand);
+      margin-bottom: 0.5rem;
     }
 
     .scenario-label {
-      font-size: 0.875rem;
+      font-size: 0.85rem;
       color: var(--muted);
-      margin: 0.5rem 0;
+      margin-bottom: 1rem;
     }
 
-    .scenario-metric {
-      font-family: var(--font-display);
-      font-size: 1.25rem;
-      font-weight: 600;
+    .scenario-multiple {
+      font-size: 1.375rem;
+      font-weight: 700;
       color: var(--accent);
-      margin-top: 0.75rem;
     }
 
-    .business-footnote {
-      font-size: 0.875rem;
-      color: var(--muted);
-      line-height: 1.8;
+    .business-case-footnote {
       margin-top: 2rem;
       padding: 1.5rem;
-      background: var(--surface);
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      max-width: 70ch;
+      background-color: var(--surface);
+      border-left: 4px solid var(--accent);
+      border-radius: 0 var(--radius) var(--radius) 0;
+      font-size: 0.9rem;
+      color: var(--text);
+      line-height: 1.7;
     }
 
-    /* CTA Section */
+    /* CTA */
     #book {
-      background: var(--brand);
-      color: var(--brand-fg);
-      padding: 3rem 2rem;
-      border-radius: var(--radius);
       text-align: center;
+      padding: 3rem 2rem;
+      background: linear-gradient(135deg, var(--brand-tint) 0%, var(--surface) 100%);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
     }
 
     #book h2 {
-      color: var(--brand-fg);
-      margin-bottom: 1.5rem;
+      margin-bottom: 1rem;
     }
 
-    #book p {
-      font-size: 1.125rem;
-      line-height: 1.8;
-      max-width: 65ch;
+    .cta-instruction {
+      font-size: clamp(1rem, 2vw, 1.125rem);
+      color: var(--muted);
+      max-width: 60ch;
       margin: 0 auto 2rem;
+      line-height: 1.8;
     }
 
-    .cta-button {
-      display: inline-block;
-      background: var(--brand-fg);
-      color: var(--brand);
-      padding: 1rem 2rem;
-      border-radius: var(--radius);
+    .cta-highlight {
       font-weight: 600;
-      transition: all 0.2s ease;
-      border: 2px solid var(--brand-fg);
-    }
-
-    .cta-button:hover {
-      background: transparent;
-      color: var(--brand-fg);
-    }
-
-    .cta-button:focus-visible {
-      outline: 2px solid var(--brand-fg);
-      outline-offset: 2px;
+      color: var(--text);
     }
 
     /* Footer */
-    footer {
-      background: var(--surface-muted);
-      padding: 2rem;
+    footer[role="contentinfo"] {
+      background-color: var(--surface);
       border-top: 1px solid var(--border);
+      padding: 3rem 2rem;
       margin-top: 4rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.7;
     }
 
-    footer p {
-      font-size: 0.875rem;
-      color: var(--muted);
-      line-height: 1.8;
-      max-width: 70ch;
+    .footer-content {
+      max-width: 1120px;
       margin: 0 auto;
+    }
+
+    /* Responsive */
+    @media (max-width: 720px) {
+      .container {
+        padding: 0 1.5rem;
+      }
+
+      header[role="banner"] {
+        padding: 2rem 0 1.5rem;
+        margin-bottom: 2rem;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+      }
+
+      main {
+        gap: 2.5rem;
+        margin-bottom: 2.5rem;
+      }
+
+      .lockup {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+        border-top: none;
+        padding-top: 0;
+        margin-top: 1rem;
+      }
+
+      .lockup-separator {
+        display: none;
+      }
+
+      #business-case,
+      #book {
+        padding: 2rem 1.5rem;
+      }
+
+      .metric-tiles {
+        grid-template-columns: 1fr;
+      }
+
+      .scenario-cards {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
 <body>
   <header role="banner">
     <div class="container">
-      <div class="hero-text">
-        <p>You are writing every founder touchpoint by hand while your team scales the product.</p>
-        <p>When you raised $4.5M from Basis Set last March, you bet the seed round on proving word of mouth works for banking built by founders. Fifty design partners shipped, weekly build-in-public updates posted, and every outbound message still carries your voice.</p>
-        <p>I started Mirenta for the same reason. I spend my hours on outreach and write every message myself; the personalization on one-pagers performs too well to delegate. You are worth far more on product and early customer calls. I built a tool that turns a lead list into one one-pager per prospect so founders like us can run outbound the way we actually do it: with enough personalization to open doors, without the hours.</p>
-      </div>
-      <div class="hero-lockup">
-        <div class="logo-text">Cedar</div>
-        <span class="seller-badge">Partner: Mirenta</span>
-      </div>
-      <h1>Run founder-to-founder outreach without the hours.</h1>
-      <div class="hero-links">
-        <a href="#business-case">See the math</a>
-        <a href="#book">Book a working session</a>
+      <div class="hero-content">
+        <div class="hero-opening">
+          <p>Waiting for your first business bank account opens the window to all the other scaling challenges ahead.</p>
+          <p>You need a banking partner who gets what it means to run on founder time, writing every message yourself when your team is three.</p>
+          <p>I reached out because Mirenta turns lead lists into one hyper-personalized one-pager per prospect. Every outbound touch opens with research they recognize as their own priorities. You already sell founder to founder and write your own outreach. This page proves the numbers that come back.</p>
+        </div>
+
+        <div class="lockup">
+          <div class="wordmark">Cedar</div>
+          <div class="lockup-separator"></div>
+          <div class="seller-name">Mirenta</div>
+        </div>
+
+        <div>
+          <h1>Your hours are the constraint on growth right now</h1>
+          <p class="hero-lede">Every founder you could reach writes a message back when the outreach proves you know their stage. Mirenta cuts the writing time while the personalization deepens the replies.</p>
+          <nav class="quick-links">
+            <a href="#business-case" class="quick-link">See the business case</a>
+            <a href="#book" class="quick-link">Book a working session</a>
+          </nav>
+        </div>
       </div>
     </div>
   </header>
 
   <main>
     <div class="container">
-      <section id="priorities" aria-labelledby="priorities-heading">
-        <h2 id="priorities-heading">What you are chasing</h2>
-        <div class="cards-grid">
-          <div class="card">
-            <div class="card-label">Go-to-market</div>
-            <h3>Winning reference customers first.</h3>
-            <p>Early founders buy banking from names they trust. One trusted reference from the YC network opens more doors than any feature demo. Seed money runs out fast; you need proof that word of mouth works before the next raise.</p>
+      <section id="priorities">
+        <h2>What matters to Devin right now</h2>
+        <div class="cards">
+          <article class="card">
+            <h3>Winning the first reference customers</h3>
+            <p>Early founders buy banking from a name another founder trusts. The warm YC loop proved this: one founder introduces the next, all the way to 40 design partners shipped in the first wave.</p>
+            <div class="why-now">Seed runway is finite. Proof of word of mouth before the next raise is the move that shapes the round.</div>
+          </article>
+          <article class="card">
+            <h3>Reclaiming founder hours for product and design partners</h3>
+            <p>The outbound motion runs on Devin's hands right now. Every hour hand-writing a message is an hour not spent deepening relationships with the 40 design partners or building the next product surface they need.</p>
+            <div class="why-now">Three people cannot hire a growth function yet. The founder carries the growth work personally until you do not have to.</div>
+          </article>
+        </div>
+      </section>
+
+      <section id="challenges">
+        <h2>The pressure each priority creates</h2>
+        <div class="cards">
+          <article class="card">
+            <h3>Reference customers require genuine discovery</h3>
+            <p>A cold banking pitch reaches any founder once. A pitch that opens with something specific to their stage, their burn rate, their last funding round, earns another minute of attention. The discovery takes time to write well.</p>
+          </article>
+          <article class="card">
+            <h3>Founder time is not renewable</h3>
+            <p>Devin writes every outbound message by hand and runs the first calls personally. The cost of that is not just this week's velocity. It is the design partners not visited, the product ideas not shipped, the team not leveled up before the next raise.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="pov">
+        <h2>How Mirenta fits into the work you already do</h2>
+        <div class="pov-items">
+          <div class="pov-item">
+            <h3><span>1</span>Start with your list</h3>
+            <p>You have the list: the 150 pre-seed and seed founders you want to talk to this quarter. Mirenta runs the research behind you, building one personalized one-pager per prospect without adding discovery work to your day.</p>
           </div>
-          <div class="card">
-            <div class="card-label">Growth</div>
-            <h3>Unblock your own hours.</h3>
-            <p>Every hour you spend hand-writing outbound is an hour you do not spend on product or with design partners. The team is three people; you carry growth personally right now. Shipping that motion differently frees you to move where you matter most.</p>
+          <div class="pov-item">
+            <h3><span>2</span>Send the page in the first touch</h3>
+            <p>Your message stays in your voice. The page proves you know their stage, their burn rate, their last round, the team size they are hiring around. They see a founder who did the work to learn them.</p>
+          </div>
+          <div class="pov-item">
+            <h3><span>3</span>Watch the reply rate move</h3>
+            <p>When the page reaches them with evidence you know their priorities, the next email lands differently. The meeting books. Now you spend the founder time on the founders who said yes, not writing the message that opens the door.</p>
           </div>
         </div>
       </section>
 
-      <section id="challenges" aria-labelledby="challenges-heading">
-        <h2 id="challenges-heading">The pressure each one creates</h2>
-        <div class="cards-grid">
-          <div class="card">
-            <div class="card-label">Getting replies</div>
-            <h3>Generic outreach does not land.</h3>
-            <p>You write every message by hand because form letters bounce off founders who see 10 pitches a day. Personalization works. But manual personalization scales only as far as your calendar lets it, and you hit the ceiling fast.</p>
-          </div>
-          <div class="card">
-            <div class="card-label">Your time</div>
-            <h3>One message takes an hour.</h3>
-            <p>Banking for founders is a new category. You research each prospect, learn what matters to them, write a custom narrative, and land every reference to their business. Nineteen days waiting for a bank account taught you what founders face; now you spend your weeks teaching it to the next batch.</p>
-          </div>
+      <section id="business-case">
+        <div class="business-case-header">
+          <h2 style="margin-bottom: 0; font-size: 1rem;">What you get back</h2>
+          <h3>Expected first-year return: 4.3x</h3>
         </div>
-      </section>
 
-      <section id="pov" aria-labelledby="pov-heading">
-        <h2 id="pov-heading">How we solve it</h2>
-        <div class="pov-card">
-          <h3>Research every prospect.</h3>
-          <p>Mirenta pulls the public story of each founder and company and builds a one-pager that mirrors their world back to them. You see your own priorities on the first page. That recognition opens the conversation and earns replies in a way generic templates do not.</p>
-        </div>
-        <div class="pov-card">
-          <h3>Write founder to founder.</h3>
-          <p>The one-pager carries the voice of a peer who hit the same wall. It reads like advice from someone in the trenches, not a vendor pitch. Every concrete detail (the 19-day bank wait, the design-partner loop, the weekly build-in-public updates) lands because it proves we have watched founders and know what matters to you.</p>
-        </div>
-        <div class="pov-card">
-          <h3>Free your hours.</h3>
-          <p>You spend 10 seconds instead of an hour on customization. The engine researches and builds while you sleep. You still own the voice and the decision; Mirenta handles the research lift. That shift alone lets you run outreach at scale without losing the personalization that makes it work.</p>
-        </div>
-      </section>
-
-      <section id="business-case" aria-labelledby="business-case-heading">
-        <h2 id="business-case-heading">What you get back</h2>
-        <div class="business-headline">Expected first-year return: 4.3x</div>
-        <div class="metrics-grid">
+        <div class="metric-tiles">
           <div class="metric-tile">
-            <div class="metric-value" data-count="2.8" data-suffix=" mo">2.8 mo</div>
+            <div class="metric-value" data-count="2.8" data-suffix=" mo" data-decimals="1">2.8 mo</div>
             <div class="metric-label">Payback period</div>
           </div>
           <div class="metric-tile">
-            <div class="metric-value" data-count="384" data-suffix=" hrs">384 hrs</div>
+            <div class="metric-value" data-count="384" data-suffix=" hrs" data-decimals="0">384 hrs</div>
             <div class="metric-label">Hours returned per year</div>
           </div>
           <div class="metric-tile">
-            <div class="metric-value" data-prefix="$" data-count="23" data-suffix="K">$23K</div>
+            <div class="metric-value" data-prefix="$" data-count="23" data-suffix="K" data-decimals="0">$23K</div>
             <div class="metric-label">First-year cost</div>
           </div>
         </div>
-        <div class="scenarios-grid">
+
+        <div class="scenario-cards">
           <div class="scenario-card">
             <div class="scenario-name">Conservative</div>
             <div class="scenario-value">$66K</div>
             <div class="scenario-label">Value created</div>
-            <div class="scenario-metric">2.9x</div>
+            <div class="scenario-multiple">2.9x</div>
           </div>
           <div class="scenario-card">
             <div class="scenario-name">Expected</div>
             <div class="scenario-value">$99K</div>
             <div class="scenario-label">Value created</div>
-            <div class="scenario-metric">4.3x</div>
+            <div class="scenario-multiple">4.3x</div>
           </div>
           <div class="scenario-card">
             <div class="scenario-name">Aggressive</div>
             <div class="scenario-value">$126K</div>
             <div class="scenario-label">Value created</div>
-            <div class="scenario-metric">5.5x</div>
+            <div class="scenario-multiple">5.5x</div>
           </div>
         </div>
-        <div class="business-footnote">
+
+        <div class="business-case-footnote">
           <p>These figures model early founder-led use and sharpen as you run real outreach. In the Expected case the $99K splits into $41K from deals won (the extra replies the page earns, carried through to closed deals) and $58K from the 384 founder hours it returns, valued at $150 per hour; the return multiple is value created over the first-year cost.</p>
         </div>
       </section>
 
-      <section id="book" aria-labelledby="book-heading">
-        <h2 id="book-heading">Work through it together</h2>
-        <p>Reply to the outreach email and let us walk through how Mirenta runs in your motion. You will see it work on a real prospect from your list.</p>
+      <section id="book">
+        <h2>Let us work through this together</h2>
+        <div class="cta-instruction">
+          <p>Reply to this email and let us pick a time. We can walk your list, your sales stage, and the messaging you have been running. One hour, founder to founder, on the work you already do.</p>
+        </div>
       </section>
     </div>
   </main>
 
   <footer role="contentinfo">
-    <div class="container">
+    <div class="footer-content">
       <p>Mirenta prepares this page for Cedar. The value figures model industry benchmarks and serve as illustration pending discovery. Confirm them against your own operational data before external use.</p>
     </div>
   </footer>
