@@ -4,13 +4,14 @@ Date opened: 2026-06-21
 
 ## Phase
 
-BOOTSTRAP complete. Entering DESIGN + DIVERGE (W1 design, W5 idea tournament).
+DESIGN done (T1 frozen). W5 tournament Judge phase running in Workflow 1.
 
 ## Single next action
 
-Run Workflow 1 (design the founder-led ROI model, freeze G1 numbers, run the W5
-idea tournament with two-reviewer judging). Adopt winners into the implementation
-brief.
+Read Workflow 1's tournament results (ranked ideas vs baseline), record winners and
+losers in loop/memory, then run Workflow 2 to IMPLEMENT the founder_led_sales value
+model (T3) per the frozen design in loop/memory/founder-led-roi-model.md, with the
+G1 harness and unit tests.
 
 ## Health note
 
