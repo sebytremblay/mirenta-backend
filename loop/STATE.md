@@ -4,18 +4,18 @@ Date opened: 2026-06-21
 
 ## Phase
 
-DESIGN done (T1). W5 tournament done (T2). MODEL implemented (T3) + G1 harness (T7),
-188 tests pass, typecheck 0. Next: COPY (T4) and research prompt (T5), then framing +
-customer zero (T6), then gates G2/G3 (T8/T9), decisions (T10), report (T11).
+DESIGN (T1), tournament (T2), MODEL+G1 harness (T3,T7), COPY (T4), research framing
+(T5), customer zero (T6) all DONE. Adversarial review applied (clamp hardened, harness
+extended to non-finite corners, labels honest). 191 tests pass, typecheck 0. Remaining:
+G2 grep harness (T8), G3 production gate (T9), DECISIONS.md + D59 (T10), HTML report (T11).
 
 ## Single next action
 
-Rewrite the Website Builder copy/brief (T4) for founder-to-founder: graft the
-tournament winners (Shared Scar opener + Mirror-First ordering in the hero; the
-Twenty-Second Ledger hours/conversation framing onto the business case, keeping the
-G1 multiple). Then rewrite the Research Agent prompt (T5). Both must be G2 blocklist
-clean. The founder_led_sales value model already renders the founder-legible block
-("What you get back", multiple headline, hours-returned tile).
+Build the G2 blocklist grep harness (T8): a runnable check that greps the enterprise
+blocklist (see g2-blocklist memory) over generated founder-facing samples and returns
+zero matches. To stay within cost discipline, generate sample one-pager copy with a
+workflow subagent (no live pipeline), then grep it plus the founder-led spec's
+rider fields. Then run the G3 two-reviewer production gate (T9) on an end-to-end sample.
 
 ## Health note
 

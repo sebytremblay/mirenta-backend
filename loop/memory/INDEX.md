@@ -9,3 +9,4 @@ One line per memory file: `- [slug](file.md) — hook`.
 - [g2-blocklist](g2-blocklist.md) — the enterprise-sales blocklist and word-boundary matching rules for the G2 grep
 - [founder-led-roi-model](founder-led-roi-model.md) — the frozen founder-led ROI design, formula, default economics, and G1 numbers
 - [tournament-results](tournament-results.md) — W5 winners (Shared Scar + Mirror-First hero, Twenty-Second Ledger) and losers (both investor-quote bets, fabrication blockers)
+- [review-fixes](review-fixes.md) — adversarial review of the founder-led model: clamp hardened, harness extended, labels made honest; all majors fixed
