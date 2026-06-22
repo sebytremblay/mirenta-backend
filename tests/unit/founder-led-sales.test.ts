@@ -236,12 +236,32 @@ test("compute satisfies the D38/D49 disclosure contract (estimated=false)", () =
 });
 
 test("the spec carries no enterprise-sales or HR/ITSM framing", () => {
+  // Every spec field that rides into the research kickoff or the generated page copy
+  // must be blocklist-clean (G2), including the hero narrative guidance.
   const haystack =
     `${founderLedSalesVertical.domains.join(" ")} ${founderLedSalesVertical.domainGuidance} ` +
-    `${founderLedSalesVertical.executiveTargeting} ${founderLedSalesVertical.inputGuidance}`;
+    `${founderLedSalesVertical.executiveTargeting} ${founderLedSalesVertical.inputGuidance} ` +
+    `${founderLedSalesVertical.narrativeGuidance ?? ""}`;
   assert.doesNotMatch(haystack, /\b(HR|ITSM|CHRO|CIO|ticket|deflection)\b/i);
   assert.doesNotMatch(
     haystack,
-    /\b(quota|reps?|enablement|procurement|RFP|MQL|SDR|BDR|territory|six-figure|enterprise-grade)\b/i,
+    /\b(quota|reps?|ramp(s|ing|ed)?|enablement|procurement|RFP|MQL|SDR|BDR|territory|six-figure|enterprise-grade|account executives?)\b/i,
   );
+  // House style: no contractions, no em dashes in the founder-facing guidance.
+  // Match only the unambiguous contraction suffixes; possessive 's (founder's,
+  // lead's) is valid English and not a contraction, so it stays out of the pattern.
+  assert.doesNotMatch(haystack, /\b\w+'(t|re|ve|ll|d|m)\b/i);
+  assert.doesNotMatch(haystack, /\b(it|that|there|here|what|who)'s\b/i);
+  assert.doesNotMatch(haystack, /—/);
+});
+
+test("the founder-led narrative grafts the tournament winners without a fabrication path", () => {
+  const narrative = founderLedSalesVertical.narrativeGuidance ?? "";
+  // The Mirror-First and Shared Scar winners: open on the lead's reality, demote the seller.
+  assert.match(narrative, /mirror line/i);
+  assert.match(narrative, /first person/i);
+  // The rejected investor-quote bets leave no trace: the hero invents nothing and
+  // states only researched facts, with an explicit fallback.
+  assert.match(narrative, /invent (no|nothing)|never manufacture/i);
+  assert.match(narrative, /fallback/i);
 });

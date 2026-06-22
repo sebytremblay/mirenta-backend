@@ -294,12 +294,24 @@ export const founderLedSalesVertical: VerticalSpec = {
   id: "founder_led_sales",
   label: "Founder-led sales",
   domains: ["Go-to-market", "Growth"],
-  domainGuidance: `Surface the founder's top priorities through a peer lens: winning the first reference customers, starting real conversations with the people they most want to reach, protecting the founder's own hours, and building proof that the product works. Frame each priority as a point of view (POV): a stance on what the founder recognizes as their own priority, and why now.`,
+  domainGuidance: `Surface the founder's top priorities through a peer lens: winning the first reference customers, starting real conversations with the people they most want to reach, protecting the founder's own hours, and building proof that the product works. Frame each priority as a point of view (POV): a stance on what the founder recognizes as their own priority, and why now.
+Capture two things the page opens on, sourced and never invented: the language the founder uses to describe their own work (set account.self_description_language from their site, posts, or launch copy), and one concrete moment the founder has personally lived (a prior build, an exit, the funding round, the first hire) in account.recent_moves or the lead executive profile. State only what the research confirms; a missing moment falls back cleanly downstream.`,
   executiveTargeting: `Prioritize the founder and the people who run growth beside them:
 - The founder or co-founder (CEO, technical co-founder)
 - An early growth or go-to-market hire, when one exists
 - The first revenue owner, when the founder has handed it off`,
   defaultAccentColor: "#0f766e",
+  // Hero narrative grafted from the W5 idea tournament (D59): the Shared Scar opener
+  // and the Mirror-First ordering, the two bets that cleared the founder rubric with
+  // zero blockers. Both demote the seller below a moment the founder has lived, so
+  // the page reads as a peer who recognized the problem, not a vendor broadcast. The
+  // rejected investor-quote bets add no fabrication path: the hero invents nothing.
+  narrativeGuidance: `HERO NARRATIVE (founder-to-founder). Open the hero by reflecting the lead's own reality back, then introduce the seller second as a peer who hit the same wall. Order the hero this way:
+- First, a single mirror line in the lead's own framing: name the concrete problem the founder wakes up thinking about, drawn from the account self-description and the top priority POV and why-now. Reference ONLY the lead. Write no seller name and no product name in this first line.
+- Second, one line that names a specific moment the lead has personally lived (a prior build, an exit, the funding round), drawn strictly from the researched recent moves or the lead executive profile. State one real fact; invent no exit, valuation, backer, or outcome.
+- Third, the seller in first person, admitting the same stage plainly (for example, a founder who runs their own outreach and writes every message by hand), then why they reached out. Only here do the seller name and the product appear.
+Keep the prospect-and-seller lockup, but place it as a slim band under those lines rather than as the first thing the eye meets. The <h1> states the recognized problem, not a seller value claim. Keep both hero quick-links (one to the business case, one to the booking action).
+FALLBACK: when the research surfaces no usable self-description and no concrete lived moment, open on the strongest verified account fact instead, and keep the first-person seller admission, which rests only on the seller's own facts. Never manufacture a problem or a moment the research does not support.`,
   inputGuidance, // exposed directly for the research agent kickoff
   validateInputs, // exposed directly for the validateResearch early gate
   createValueModel,

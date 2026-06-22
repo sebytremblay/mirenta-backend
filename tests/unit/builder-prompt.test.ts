@@ -121,3 +121,23 @@ test("buildUserPrompt falls back to a wordmark and reply-to-email when assets ar
   assert.ok(/text wordmark/i.test(prompt));
   assert.ok(/reply to the outreach email/i.test(prompt));
 });
+
+test("buildUserPrompt injects the vertical hero narrative when the spec carries one", () => {
+  const withNarrative: BuildSiteInput = {
+    ...input,
+    vertical: {
+      defaultAccentColor: "#0f766e",
+      narrativeGuidance: "HERO NARRATIVE (founder-to-founder). Open with a mirror line.",
+    } as BuildSiteInput["vertical"],
+  };
+  const prompt = buildUserPrompt(withNarrative, value, assets);
+  assert.ok(prompt.includes("HERO NARRATIVE (founder-to-founder)"));
+  // The narrative sits ahead of the business case so the hero context precedes the figures.
+  assert.ok(prompt.indexOf("HERO NARRATIVE") < prompt.indexOf("BUSINESS CASE"));
+});
+
+test("buildUserPrompt omits the hero narrative cleanly when the spec carries none", () => {
+  // The default input vertical carries only defaultAccentColor, no narrativeGuidance.
+  const prompt = buildUserPrompt(input, value, assets);
+  assert.ok(!prompt.includes("HERO NARRATIVE"));
+});

@@ -74,7 +74,7 @@ LAYOUT AND STYLE
 - Give cards subtle borders, soft shadows, rounded corners (var(--radius)), and a gentle hover lift transition. Fill some sections with var(--brand-tint) or a dark on-brand panel for rhythm. Vary the component styling section to section.
 
 REQUIRED SECTIONS, IN THIS ORDER, WITH THESE EXACT ids
-1. Hero: a header element with role="banner". Include the prospect and seller lockup, an eyebrow that names the lead by name and role, an <h1>, and a short lede. Include a quick-link group with TWO links: one with href="#business-case" and one with href="#book". Both targets must resolve in this document.
+1. Hero: a header element with role="banner". Include the prospect and seller lockup, an eyebrow, an <h1>, and a short lede. Include a quick-link group with TWO links: one with href="#business-case" and one with href="#book". Both targets must resolve in this document. By default the eyebrow names the lead by name and role and the hero leads with the lockup. When the user message carries a HERO NARRATIVE block, follow its opening order and emphasis instead, while still rendering the lockup, the <h1>, the lede, the two quick-links, and the banner landmark.
 2. Priorities: the researched domain priorities as scannable cards.
 3. Challenges: the pressure each priority creates, as cards.
 4. Point of view and goals: tie each priority to the seller solution. Place each VERIFIED quote INSIDE the section it supports, as a styled blockquote with attribution. Never render a standalone quote list.
@@ -140,7 +140,7 @@ export function buildUserPrompt(
   value: ValueResult,
   assets: PromptAssets,
 ): string {
-  const { lead, profile, research } = input;
+  const { lead, profile, research, vertical } = input;
   const fullName = `${lead.first_name} ${lead.last_name}`;
   const role = lead.role ? escapeHtml(lead.role) : "";
 
@@ -192,6 +192,13 @@ export function buildUserPrompt(
 
   const disclaimer = `Mirenta prepares this page for ${escapeHtml(lead.company)}. The value figures model industry benchmarks and serve as illustration pending discovery. Confirm them against your own operational data before external use.`;
 
+  // The active vertical may carry a hero narrative (how the page opens for this
+  // segment). It rides as data so the cache-stable DESIGN_BRIEF stays neutral; a
+  // vertical that omits it keeps the brief's default lockup-first hero.
+  const narrativeBlock = vertical.narrativeGuidance
+    ? `\n\n${vertical.narrativeGuidance}`
+    : "";
+
   return `LEAD
 ${escapeHtml(fullName)}${role ? `, ${role}` : ""} at ${escapeHtml(lead.company)}.
 
@@ -214,7 +221,7 @@ DOMAIN PRIORITIES (${research.extension.domains.map((d) => escapeHtml(d)).join("
 ${priorityLines || "None available."}
 
 VERIFIED QUOTES (place each inside the section it supports)
-${quoteLines}
+${quoteLines}${narrativeBlock}
 
 BUSINESS CASE (render these exact strings verbatim; do not recompute or reformat)
 ${renderValueBlock(value)}

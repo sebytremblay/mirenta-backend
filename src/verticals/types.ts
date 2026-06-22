@@ -122,6 +122,15 @@ export interface VerticalSpec {
   domainGuidance: string; // Research Agent Phase 1 fragment (what to surface per domain)
   executiveTargeting: string; // Research Agent Phase 2 fragment (which leaders to find)
   defaultAccentColor: string; // page accent when the seller supplies none
+  // Optional Website Builder fragment: how the page opens its hero for this
+  // vertical (the opening order, the emphasis, which element leads). The
+  // vertical-neutral DESIGN_BRIEF stays cache-stable and defers the hero opening to
+  // this guidance when the per-lead prompt carries it; a vertical that omits it
+  // keeps the brief's default lockup-first hero. The guidance refines the opening
+  // within the brief's structural requirements (the lockup, the <h1>, the lede, the
+  // two quick-links, and the banner landmark all still render), so it changes the
+  // narrative, never the validated skeleton.
+  narrativeGuidance?: string;
   // Phase 4 prompt fragment: names the numeric value_inputs keys the research agent
   // must gather and how to estimate them when they are not public. Exposed directly
   // on the spec (not on the bound value model) so the research agent can inject it
