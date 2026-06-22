@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mirenta Backend: Hard-Coding & Generalization Audit</title>
+<style>
+  :root{
+    --ink:#13151a; --sub:#5b6270; --line:#e7e9ee; --bg:#fbfbfd; --card:#fff;
+    --accent:#0176d3; --good:#1a8a4a; --good-bg:#e8f6ee; --low:#9a6b00; --low-bg:#fbf3df;
+    --med:#b4480e; --med-bg:#fbede3;
+    --mono:"SFMono-Regular", Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:880px;margin:0 auto;padding:56px 28px 96px}
+  header{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:36px}
+  .eyebrow{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--sub);font-weight:600}
+  h1{font-size:30px;line-height:1.2;margin:10px 0 8px;letter-spacing:-.01em}
+  .meta{color:var(--sub);font-size:14px}
+  .verdict{display:flex;gap:18px;align-items:center;background:var(--good-bg);
+    border:1px solid #cdebd9;border-radius:14px;padding:22px 24px;margin:28px 0}
+  .verdict .badge{flex:0 0 auto;background:var(--good);color:#fff;border-radius:999px;
+    font-weight:700;font-size:13px;padding:7px 14px;letter-spacing:.02em}
+  .verdict p{margin:0;font-size:15px}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:28px 0 8px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  .stat .n{font-size:32px;font-weight:700;letter-spacing:-.02em}
+  .stat .l{font-size:13px;color:var(--sub);margin-top:2px}
+  h2{font-size:20px;margin:44px 0 6px;letter-spacing:-.01em}
+  .lead{color:var(--sub);font-size:14px;margin:0 0 18px}
+  ul.clean{list-style:none;padding:0;margin:0}
+  ul.clean li{position:relative;padding:10px 0 10px 28px;border-bottom:1px solid var(--line);font-size:15px}
+  ul.clean li:last-child{border-bottom:0}
+  ul.clean li::before{content:"";position:absolute;left:2px;top:17px;width:9px;height:9px;
+    border-radius:2px;background:var(--good)}
+  ul.clean code{font-family:var(--mono);font-size:12.5px;background:#f1f3f7;padding:1px 5px;border-radius:4px;color:#2a2f3a}
+  .theme{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin:16px 0}
+  .theme h3{margin:0 0 4px;font-size:17px;display:flex;align-items:center;gap:10px}
+  .chip{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    padding:3px 9px;border-radius:999px;background:var(--low-bg);color:var(--low)}
+  .chip.med{background:var(--med-bg);color:var(--med)}
+  .chip.high{background:#fbe3e3;color:#b42318}
+  .theme.med{border-color:#f0cdb4}
+  .theme.high{border-color:#f0b4b4}
+  .seamnote{font-size:13px;color:var(--sub);margin:2px 0 0}
+  .seamnote code{font-family:var(--mono);font-size:12px}
+  .correction{background:var(--med-bg);border:1px solid #f0cdb4;border-radius:14px;
+    padding:18px 22px;margin:28px 0;font-size:14.5px}
+  .correction b{color:var(--med)}
+  .theme p{margin:8px 0 0;font-size:14.5px;color:#2f343d}
+  .ex{margin:14px 0 0;border-left:3px solid var(--line);padding:2px 0 2px 14px}
+  .ex div{font-family:var(--mono);font-size:12px;color:#445;line-height:1.7}
+  .ex b{color:var(--accent);font-weight:600}
+  .rec{margin-top:14px;font-size:14px;background:#f7f9fc;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .rec b{color:var(--ink)}
+  footer{margin-top:48px;padding-top:22px;border-top:1px solid var(--line);color:var(--sub);font-size:13px}
+  footer code{font-family:var(--mono);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Mirenta Backend &middot; System Audit</div>
+    <h1>Is the system hard-coded and under-generalized?</h1>
+    <div class="meta">Generated 2026-06-21 &middot; multi-agent workflow: 5 dimension auditors &rarr; 44 candidate findings &rarr; per-finding adversarial verification &rarr; synthesis &middot; revised after manual review of the value model</div>
+  </header>
+
+  <div class="verdict">
+    <span class="badge">GENERIC CORE, A FAMILY OF SEAM GAPS</span>
+    <p>The system's broad structure is well generalized: the <strong>vertical</strong> (a data-only registry) and the <strong>deployment and provider knobs</strong> (env-overridable config) sit cleanly behind seams that settled D-decisions sanction. But a targeted second pass found <strong>six places</strong> where a constant feeds a customer-facing value yet bypasses an existing per-customer or per-vertical seam built to hold its siblings. Two are high severity, both inside the ROI math. This is a recurring pattern, not one stray literal.</p>
+  </div>
+
+  <div class="correction">
+    <b>Why this section grew.</b> The first automated pass graded every value-model constant "acceptable," leaning on D49's language that the ticket and interaction <em>volumes</em> are fixed. That over-reached: D49 fixes the volumes for the MVP <em>model fidelity</em>, not as a statement that the economics are customer-invariant. A skeptic told to default to "acceptable" rationalized real gaps against an adjacent decision. A second workflow inverted the bias, hunting specifically for constants that bypass an existing seam, and surfaced the family below. Per the founder's direction the code stays as-is; this report records the gaps honestly so the decision is explicit, not implicit.</p>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="n">6</div><div class="l">confirmed seam-asymmetry gaps (2 high, 3 medium, 1 low)</div></div>
+    <div class="stat"><div class="n">3</div><div class="l">false positives the skeptic correctly rejected</div></div>
+    <div class="stat"><div class="n">3</div><div class="l">low-severity hygiene themes worth optional cleanup</div></div>
+  </div>
+
+  <h2>What is already well generalized</h2>
+  <p class="lead">The audit credits the seams that hold the product's real variation.</p>
+  <ul class="clean">
+    <li><b>Vertical registry is genuinely data-only.</b> <code>src/verticals/index.ts</code> resolves any spec by id and <code>DEFAULT_VERTICAL_ID</code> derives from the spec rather than repeating a literal. Adding a vertical is a registry add with no core edit (D2, D20).</li>
+    <li><b>Per-customer economics are lifted out of constants.</b> <code>VerticalEconomics</code> reads from <code>profile.economics</code> through a factory with a <code>defaultEconomics()</code> fallback (migration 0007, D57), so two customers share one vertical with different numbers.</li>
+    <li><b>Provider and deployment knobs are env-overridable config.</b> Model ids, base URLs, the S3 bucket and region, and the worker lease, batch, poll, and attempts bounds all flow through <code>optional()</code> and <code>intOptional()</code> in <code>src/config/env.ts</code> (D47, D35, D50, D16).</li>
+    <li><b>Brand theming follows the D48 precedence chain</b> (prospect &rarr; seller &rarr; vertical &rarr; house), each token falling back independently, with <code>HOUSE_NEUTRAL</code> as a documented backstop rather than a buried magic value.</li>
+    <li><b>Status strings and usage labels are compile-time unions.</b> <code>JobStatus</code> and <code>TokenUsageAgent</code> make the literals type-checked members, so a typo fails the build.</li>
+    <li><b>Multi-tenancy resolves server-side.</b> The gateway derives <code>org_id</code> from a verified Supabase session, never from the path or a client assertion, so the route table is tenant-invariant by design.</li>
+    <li><b>The host security boundary is an intentional fixed allow-list.</b> Always-allowed hosts and the CSP are coordinated and enforced independently of theming (D54). The <em>font</em> allow-list rides on this boundary but doubles as a closed curation table; finding 6 below treats that curation, not the host check, as the gap.</li>
+    <li><b>Disclosure policy is centralized.</b> A single <code>DISCLOSURE_SCENARIO_NAMES</code> constant feeds both the save-time economics gate and the build-time render gate, so the two enforcement points cannot drift (D38, D49, D57).</li>
+  </ul>
+
+  <h2>The seam-asymmetry family</h2>
+  <p class="lead">One shape repeats: a constant feeds a customer-facing computed or rendered value, the value varies by customer / vertical / region, yet the constant sits <em>outside</em> the seam (<code>VerticalEconomics</code>, <code>VerticalSpec</code>, <code>ProductProfile.brand</code>) that already holds its siblings. None blocks the build today; each lets a value render that a customer cannot correct. Ordered by severity.</p>
+
+  <div class="theme high">
+    <h3>1 &middot; Per-contact cost basis bypasses per-customer economics <span class="chip high">high</span></h3>
+    <p>The ROI figure is <code>employees &times; volume &times; cost-per-contact &times; deflection</code>. D57 lifted <em>pricing</em>, <em>effectiveness</em>, and the <em>adoption curve</em> into <code>VerticalEconomics</code>, but the per-contact cost, the largest single dollar lever, stayed a module constant. A customer sets their license price and deflection rates yet cannot touch the cost their savings derive from. D49 sanctions the cost as a "defensible blended estimate," not as <em>customer-invariant</em>.</p>
+    <p class="seamnote">Bypassed seam: <code>VerticalEconomics</code> (D57). Inline <code>1.08</code> NPV discount rate (line 219) has the same shape: cost of capital is customer-specific.</p>
+    <div class="ex">
+      <div><b>src/verticals/employee-service.ts:30-31</b> &mdash; IT_BLENDED_COST_PER_TICKET=22, HR_BLENDED_COST_PER_INTERACTION=18</div>
+      <div><b>src/verticals/employee-service.ts:163-164</b> &mdash; createCompute multiplies them into itAnnualCost / hrAnnualCost</div>
+    </div>
+    <div class="rec"><b>Fix:</b> add the cost basis (and the discount rate) to <code>VerticalEconomics</code>, with <code>defaultEconomics()</code> supplying today's 22 / 18 / 0.08 as the fallback.</div>
+  </div>
+
+  <div class="theme high">
+    <h3>2 &middot; Per-employee contact volumes bypass the same seam <span class="chip high">high</span></h3>
+    <p>The cost basis's own multiplicative co-factor, on the line directly above it. <code>IT_TICKETS_PER_EMPLOYEE_YEAR=10</code> and <code>HR_INTERACTIONS_PER_EMPLOYEE_YEAR=8</code> propagate through the identical ROI chain: every scenario gross/net/ROI, the headline, payback, the five-year cumulative, the rendered projection, and the NPV. A regulated bank or a field-heavy manufacturer generates a different ticket rate than a software firm, yet a customer can override price and effectiveness but not volume. Same severity as the cost basis because it rides the same chain.</p>
+    <p class="seamnote">Bypassed seam: <code>VerticalEconomics</code> (D57). D49 fixes the volumes for MVP <em>fidelity</em>, which is not the same as declaring them customer-invariant.</p>
+    <div class="ex">
+      <div><b>src/verticals/employee-service.ts:24-25</b> &mdash; the two volume constants, labeled only "Reference assumptions from the workflow doc"</div>
+    </div>
+    <div class="rec"><b>Fix:</b> add <code>it_tickets_per_employee_year</code> / <code>hr_interactions_per_employee_year</code> to <code>VerticalEconomics</code>, validate them in <code>validateEconomics</code>, read through <code>createValueModel</code> with the current values as defaults.</div>
+  </div>
+
+  <div class="theme med">
+    <h3>3 &middot; "5-year net savings" label hardcodes a horizon the adoption curve can contradict <span class="chip med">medium</span></h3>
+    <p>The cumulative figure correctly sums over however many years the <code>adoption_curve</code> supplies, and <code>validateEconomics</code> imposes no five-element constraint. But the metric tile always reads "5-year net savings." A customer who sets a 3- or 7-year curve via <code>profile.economics</code> gets a tile labeled "5-year" showing a different horizon's number, on a trust-sensitive prospect-facing ROI tile. The math is right; the label lies.</p>
+    <p class="seamnote">Bypassed seam: <code>VerticalEconomics.adoption_curve</code> (the data is dynamic, the label is static).</p>
+    <div class="ex">
+      <div><b>src/verticals/employee-service.ts:229</b> &mdash; literal "5-year net savings" label against the dynamic cumulative5 series</div>
+    </div>
+    <div class="rec"><b>Fix:</b> derive the horizon from the curve length, e.g. <code>`${adoption.length}-year net savings`</code>, so the claim always matches the summed series.</div>
+  </div>
+
+  <div class="theme med">
+    <h3>4 &middot; Surface palette neutrals bypass the brand seam the accent uses <span class="chip med">medium</span></h3>
+    <p>The primary color resolves through the full D48 chain (prospect &rarr; seller &rarr; vertical &rarr; house). Its companion neutrals do not: <code>bg</code> and <code>text</code> fall from a prospect override straight to a module literal with no seller or vertical tier, and <code>surface</code>, <code>surfaceMuted</code>, <code>muted</code>, <code>border</code>, <code>radius</code> have no override path at all. A vertical or brand with a dark or high-contrast identity renders its accent through the seam while the neutrals stay light-gray, a palette mismatch on the page. Medium because <code>bg</code>/<code>text</code> keep a prospect override and no money figure is touched.</p>
+    <p class="seamnote">Bypassed seam: <code>VerticalSpec.defaultAccentColor</code> already proves the spec can hold render tokens (D20); only the accent uses it.</p>
+    <div class="ex">
+      <div><b>src/agents/brand-tokens.ts:141-162</b> &mdash; surface neutrals as module literals, only primary routes through the fallback chain</div>
+    </div>
+    <div class="rec"><b>Fix:</b> extend <code>VerticalSpec</code> (and optionally <code>profile.brand</code>) with the surface neutrals so they resolve through the same tiered fallback, keeping today's literals as the house default.</div>
+  </div>
+
+  <div class="theme med">
+    <h3>5 &middot; formatDollars ignores the per-result currency unit that already exists <span class="chip med">medium</span></h3>
+    <p><code>formatDollars</code> hardcodes the <code>$</code> glyph, the K/M suffixes, and <code>toLocaleString("en-US")</code>, and feeds every customer-facing dollar string. Meanwhile <code>ValueProjection.unit</code> already declares the series currency ("USD") and the renderer ignores it. An EU prospect should see euro grouping and EUR. This is the same single-currency posture the low-severity theme below describes, but graded medium here because a partial seam (<code>unit</code>) already exists and is bypassed, rather than absent.</p>
+    <p class="seamnote">Bypassed seam: <code>ValueProjection.unit</code> (declared per-vertical, unused by the formatter).</p>
+    <div class="ex">
+      <div><b>src/domain/format.ts:6-12</b> &mdash; $ glyph, K/M suffixes, en-US locale</div>
+      <div><b>src/verticals/types.ts:65</b> &mdash; ValueProjection.unit set to "USD" but never threaded into formatDollars</div>
+    </div>
+    <div class="rec"><b>Fix:</b> thread the unit into <code>formatDollars</code> (deriving symbol and locale) and propagate it to the headline, scenario, and metric sites that lack it. Larger than the others; pair with the currency theme below.</div>
+  </div>
+
+  <div class="theme">
+    <h3>6 &middot; Google Fonts allow-list is a closed table a customer brand cannot extend <span class="chip">low</span></h3>
+    <p>A brand whose typeface is absent from the 20-entry table silently wears the system stack instead of its own face. The renderable-font set varies by customer brand and a seam already exists (<code>profile.brand</code> carries the sibling color and logo tokens). The security objection does not sink it: the host boundary is enforced independently by the validator's allow-listed hosts and CSP (D54), so a per-customer extension can still supply structured, validated font records. Low because the failure mode is graceful degradation to a readable font, not a wrong figure or broken page.</p>
+    <p class="seamnote">Bypassed seam: <code>ProductProfile.brand</code> (holds <code>primary_color</code> and <code>logo_url</code> already).</p>
+    <div class="ex">
+      <div><b>src/agents/brand-tokens.ts:31-52</b> &mdash; GOOGLE_FONT_ALLOW_LIST as a frozen module table</div>
+    </div>
+    <div class="rec"><b>Fix:</b> allow validated per-customer font records via <code>profile.brand</code> or deployment config, keeping the 20 current entries as baseline.</div>
+  </div>
+
+  <h2>Correctly excluded</h2>
+  <p class="lead">The skeptic rejected three candidates that look similar but are not seam asymmetries. Recording them so the line stays clear.</p>
+  <ul class="clean">
+    <li><b>Footer disclaimer copy</b> (<code>builder-prompt.ts:193</code>) is a single product-level decision (D43, reaffirmed D54), not a stranded sibling. Letting the seller edit Mirenta's own liability notice would defeat its purpose.</li>
+    <li><b>Per-model USD rate table</b> (<code>pricing.ts:25-33</code>) is the vendor-fixed Anthropic price list, identical across every deployment, and it feeds internal telemetry (<code>cost_usd</code>), never a customer-facing figure (D33, D55).</li>
+    <li><b>Cache-write multiplier 1.25</b> (<code>pricing.ts:22</code>) feeds the same internal telemetry and is sanctioned by D8/D55 for the 5-minute TTL. The 1-hour-TTL undercount is hypothetical future coupling, not a present gap.</li>
+  </ul>
+
+  <h2>Residual themes (low severity)</h2>
+  <p class="lead">Every item below resolved to <em>acceptable</em> or <em>low</em>. None blocks a second vertical, customer, model, or region. They are hygiene, not coupling defects.</p>
+
+  <div class="theme">
+    <h3>USD / en-US is a system-wide posture, not just one formatter <span class="chip">low</span></h3>
+    <p>Finding 5 above names the bypassed <code>unit</code> seam at <code>formatDollars</code>. Stepping back, the single-currency assumption runs end to end: the economics fields are documented USD, no currency or locale field exists upstream on any profile or research input, and no decision scopes a non-US region. So the proper fix is not to patch one formatter but to introduce a currency/locale abstraction across the formatter, the economics shape, and the verbatim-figure validation gate together, as one scoped change. The honest <code>formatDollars</code> name makes the contract and the future migration explicit.</p>
+    <div class="ex">
+      <div><b>src/verticals/types.ts:102-103</b> &mdash; economics fields documented as USD with no currency field to thread</div>
+    </div>
+    <div class="rec"><b>Recommendation:</b> treat finding 5 as the entry point but defer the full multi-layer change until a non-USD customer is actually scoped, raised as a new open decision. Extracting one literal in isolation would be incoherent.</div>
+  </div>
+
+  <div class="theme">
+    <h3>Operator-brand and copy literals are single-deployment defaults <span class="chip">low</span></h3>
+    <p>The Mirenta operator name appears as literals in the builder brief and the footer, and copy defaults like the CTA fallback are fixed English. These are correct for a single-operator product: every dimension that actually varies (seller, lead, lead company, vertical, brand) is already parameterized, and Mirenta is the one fixed top-of-chain party. No decision sanctions white-labeling; D3 multi-tenancy means many sellers on one Mirenta-operated platform.</p>
+    <div class="ex">
+      <div><b>src/agents/builder-prompt.ts:57, 63, 193</b> &mdash; "Mirenta" in the system brief, animation line, and footer</div>
+      <div><b>src/agents/builder-prompt.ts:202</b> &mdash; CTA fallback for the empty optional cta_text</div>
+    </div>
+    <div class="rec"><b>Recommendation:</b> keep the operator literals; lift them to config only if white-label enters scope. One real wart worth fixing: the footer claims figures "model industry benchmarks" unconditionally, mildly inaccurate on non-estimated runs. Make that claim conditional on <code>inputs.estimated</code>.</div>
+  </div>
+
+  <div class="theme">
+    <h3>Duplicated-constant and stale-default hygiene nits <span class="chip">low</span></h3>
+    <p>A handful of constants are duplicated or stale enough to drift, though each is bounded by a loud-failure guard, a type check, or being unreachable. The clearest cases are an active-job status array re-listed inline, a dead <code>max_tokens</code> fallback that diverges from config, a duplicated AI-filler denylist, and <code>index.html</code> written twice. (The inline 8% discount rate, first listed here, is promoted into the cost-basis gap above, since cost of capital is also customer-specific.)</p>
+    <div class="ex">
+      <div><b>src/db/client.ts:154</b> &mdash; active-job status set inlined instead of derived from JobStatus (a new in-flight status forgotten here drops silently from dedupe)</div>
+      <div><b>src/providers/anthropic.ts:61</b> &mdash; max_tokens fallback 8000 diverges from config 16000; dead today but misleading</div>
+      <div><b>src/agents/builder-prompt.ts:100 &amp; src/agents/research.ts:93</b> &mdash; the same six filler words duplicated with order drift</div>
+      <div><b>src/providers/storage.ts:18-20, 46</b> &mdash; "index.html" literal written twice</div>
+    </div>
+    <div class="rec"><b>Recommendation:</b> optional opportunistic cleanup. Highest value: express the dedupe status set as "all statuses minus failed" so the intent is explicit, and drop the stale 8000 fallback by making <code>maxTokens</code> required. Do <em>not</em> couple the two byte-stable prompt prefixes to dedupe the filler list, since that would bust the prompt cache (D8, D50).</div>
+  </div>
+
+  <footer>
+    Method: two workflows. The first fanned out five broad auditors and judged 44 findings with a skeptic biased toward "acceptable," which confirmed nothing. That bias was the flaw: a verifier told to lean toward "acceptable" rationalized real gaps against an adjacent decision (D49). The second workflow inverted it, hunting one precise pattern, a constant feeding a customer-facing value that bypasses an existing seam, with a skeptic biased toward "gap" and required to name the seam. It found the six-gap family above and correctly rejected three look-alikes. Lesson: the bias you give a verifier decides what it can see; an audit needs the adversarial direction pointed at the answer you fear, not the one you expect. Machine-readable results: <code>tasks/whl3dtenc.output</code> (pass 1), <code>tasks/wabxwswk2.output</code> (pass 2).
+  </footer>
+</div>
+</body>
+</html>

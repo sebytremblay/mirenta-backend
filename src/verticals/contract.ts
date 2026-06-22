@@ -73,6 +73,15 @@ export function validateEconomicsShape(
   if (typeof e.implementation_fee !== "number" || e.implementation_fee < 0) {
     throw new ValueModelContractError("economics.implementation_fee must be a non-negative number");
   }
+  // Optional per-seat annual price. When present it must be a non-negative number;
+  // a vertical whose value applies org-wide regardless of headcount omits it.
+  if (e.price_per_seat_year !== undefined) {
+    if (typeof e.price_per_seat_year !== "number" || e.price_per_seat_year < 0) {
+      throw new ValueModelContractError(
+        "economics.price_per_seat_year must be a non-negative number",
+      );
+    }
+  }
   if (!Array.isArray(e.scenarios) || e.scenarios.length !== 3) {
     throw new ValueModelContractError(
       "economics.scenarios must be an array of exactly 3 scenarios",

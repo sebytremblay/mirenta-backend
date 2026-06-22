@@ -99,8 +99,16 @@ export interface ValueModel {
 // Moved from hardcoded vertical constants to support multi-customer use of the
 // same vertical with different product economics (Concern #1).
 export interface VerticalEconomics {
-  annual_license: number; // annual licensing cost in USD
+  annual_license: number; // fixed annual licensing cost in USD (a platform/base fee; 0 for a pure per-seat product)
   implementation_fee: number; // one-time implementation cost in USD
+  // Optional per-seat annual price in USD. When set, a value model that scales
+  // its impact with a seat or rep count (the sales-marketing pipeline-uplift
+  // model) adds price_per_seat_year * that count to the fixed annual_license, so
+  // the price scope tracks the impact scope: a page that targets one individual
+  // prices for one seat, a page that targets a leader prices for their whole span
+  // (D59). A vertical whose value applies org-wide regardless of headcount (the
+  // employee-service deflection model) omits it and uses the flat annual_license.
+  price_per_seat_year?: number;
   scenarios: Array<{
     name: string; // scenario label, e.g. "Conservative"
     effectiveness: Record<string, number>; // metric-specific effectiveness rates

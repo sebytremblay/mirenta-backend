@@ -45,6 +45,23 @@ try {
     cta_text: "Book a working session",
     brand: { primary_color: "#3b5bdb" },
     vertical: "sales_marketing",
+    // Mirenta's own list price: $100 per seat per month ($1,200 per year), no
+    // platform fee, no implementation fee for the self-serve motion. The per-seat
+    // price scales the license with the rep count the page addresses, so a page
+    // targeting one account executive prices for one seat and the ROI stays honest
+    // against a single rep's incremental pipeline (D57, D59). These match the
+    // sales-marketing default economics; the script sets them explicitly so the
+    // demo declares its price rather than inheriting a fallback.
+    economics: {
+      annual_license: 0,
+      implementation_fee: 0,
+      price_per_seat_year: 1_200,
+      scenarios: [
+        { name: "Conservative", effectiveness: { meeting_uplift: 0.1 } },
+        { name: "Expected", effectiveness: { meeting_uplift: 0.2 } },
+        { name: "Aggressive", effectiveness: { meeting_uplift: 0.35 } },
+      ],
+    },
   });
   console.log("  org:", org.id);
 

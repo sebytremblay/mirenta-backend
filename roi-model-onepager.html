@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mirenta: How We Calculate Projected ROI</title>
+<style>
+  :root{
+    --ink:#13151a; --sub:#5b6270; --line:#e7e9ee; --bg:#fbfbfd; --card:#fff;
+    --accent:#0176d3; --good:#1a8a4a; --good-bg:#e8f6ee;
+    --warn:#b4480e; --warn-bg:#fbede3; --warn-line:#f0cdb4;
+    --mono:"SFMono-Regular", Consolas,"Liberation Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:880px;margin:0 auto;padding:56px 28px 96px}
+  header{border-bottom:1px solid var(--line);padding-bottom:28px;margin-bottom:36px}
+  .eyebrow{font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--sub);font-weight:600}
+  h1{font-size:30px;line-height:1.2;margin:10px 0 8px;letter-spacing:-.01em}
+  .meta{color:var(--sub);font-size:14px}
+  .tldr{display:flex;gap:18px;align-items:center;background:var(--good-bg);
+    border:1px solid #cdebd9;border-radius:14px;padding:22px 24px;margin:28px 0}
+  .tldr .badge{flex:0 0 auto;background:var(--good);color:#fff;border-radius:999px;
+    font-weight:700;font-size:13px;padding:7px 14px;letter-spacing:.02em}
+  .tldr p{margin:0;font-size:15px}
+  h2{font-size:20px;margin:44px 0 6px;letter-spacing:-.01em}
+  h3{font-size:17px;margin:0 0 4px}
+  .lead{color:var(--sub);font-size:14px;margin:0 0 18px}
+  p{font-size:15px}
+  code{font-family:var(--mono);font-size:12.5px;background:#f1f3f7;padding:1px 5px;border-radius:4px;color:#2a2f3a}
+  .flow{font-family:var(--mono);font-size:13px;line-height:1.9;background:var(--card);
+    border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin:18px 0;color:#2f343d;white-space:pre-wrap}
+  .flow b{color:var(--accent)}
+  ol.rules{padding-left:20px;margin:14px 0}
+  ol.rules li{margin:8px 0;font-size:15px}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+  th{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--sub);font-weight:600}
+  td:first-child{font-weight:600}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin:18px 0}
+  .card .tag{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    padding:3px 9px;border-radius:999px;background:#eaf3fb;color:var(--accent);margin-left:8px;vertical-align:middle}
+  .formula{font-family:var(--mono);font-size:12.5px;color:#445;background:#f7f9fc;
+    border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;
+    padding:12px 16px;margin:14px 0;white-space:pre-wrap;line-height:1.7}
+  .ex{margin:12px 0 0;border-left:3px solid var(--line);padding:4px 0 4px 16px;font-size:14px}
+  .ex b{color:var(--accent)}
+  .caveat{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:14px;
+    padding:20px 24px;margin:28px 0;font-size:14.5px}
+  .caveat h3{color:var(--warn)}
+  .caveat ol{padding-left:20px;margin:10px 0 0}
+  .caveat li{margin:6px 0}
+  footer{margin-top:48px;padding-top:22px;border-top:1px solid var(--line);color:var(--sub);font-size:13px}
+  footer code{font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Mirenta Backend &middot; Value Model</div>
+    <h1>How we calculate projected ROI</h1>
+    <div class="meta">A walkthrough of the value model the backend runs today. Read top to bottom; no prior codebase knowledge required.</div>
+  </header>
+
+  <div class="tldr">
+    <span class="badge">THE ONE-SENTENCE VERSION</span>
+    <p>For each prospect, the research agent gathers a few company facts, the backend runs a fixed formula over those facts to produce net dollar value across three scenarios, and the website builder renders those numbers verbatim. The model never lets the AI invent a figure.</p>
+  </div>
+
+  <h2>The flow, end to end</h2>
+  <div class="flow"><b>RESEARCH</b>  &rarr;  the agent fills value_inputs (e.g. total_employees) for the lead
+<b>COMPUTE</b>   &rarr;  the backend applies a deterministic formula + fixed assumptions
+<b>RENDER</b>    &rarr;  the builder prints the computed numbers; it recomputes nothing
+<b>VALIDATE</b>  &rarr;  every figure must appear verbatim in the page HTML</div>
+  <p>Two design rules anchor the whole thing:</p>
+  <ol class="rules">
+    <li><b>The math lives in code, not in the prompt.</b> The AI gathers inputs and writes copy. It does not do arithmetic. This keeps the figures auditable and reproducible (D9, D54).</li>
+    <li><b>Every assumption is a named constant.</b> Win rates, deflection rates, prices, and ramps all sit in clearly labeled variables, so changing one is a deliberate, visible edit (D58).</li>
+  </ol>
+
+  <h2>Three verticals, three behaviors</h2>
+  <p class="lead">The model picks one of three verticals depending on what we sell to the lead.</p>
+  <table>
+    <thead><tr><th>Vertical</th><th>Value model</th><th>Produces ROI numbers?</th></tr></thead>
+    <tbody>
+      <tr><td>Generic (default)</td><td>Qualitative point of view</td><td>No. Frames a narrative, runs no math.</td></tr>
+      <tr><td>Employee Service (HR / ITSM)</td><td>Support-cost deflection</td><td>Yes.</td></tr>
+      <tr><td>Sales and Marketing (our own segment)</td><td>Pipeline uplift</td><td>Yes.</td></tr>
+    </tbody>
+  </table>
+  <p>The two quantitative verticals feed a <b>shared financial engine</b> that turns a single "gross annual value" number into net value, ROI percent, payback period, a five-year projection, and NPV.</p>
+
+  <h2>Vertical 1: Employee Service <span style="font-weight:400;color:var(--sub);font-size:16px">(cost deflection)</span></h2>
+  <div class="card">
+    <p style="margin-top:0"><b>The idea:</b> every employee generates support tickets that cost money to handle. The product deflects a share of them. The deflected cost is the value.</p>
+    <p><b>Fixed assumptions</b> <code>src/verticals/employee-service.ts</code></p>
+    <table>
+      <tbody>
+        <tr><td>IT tickets per employee per year</td><td class="num">10</td></tr>
+        <tr><td>HR interactions per employee per year</td><td class="num">8</td></tr>
+        <tr><td>Blended cost per IT ticket</td><td class="num">$22</td></tr>
+        <tr><td>Blended cost per HR interaction</td><td class="num">$18</td></tr>
+        <tr><td>Default annual license</td><td class="num">$1.5M</td></tr>
+        <tr><td>Default implementation fee</td><td class="num">$200K</td></tr>
+        <tr><td>Deflection rates (Conservative / Expected / Aggressive)</td><td class="num">IT 40 / 55 / 70%, HR 45 / 60 / 72%</td></tr>
+      </tbody>
+    </table>
+    <div class="formula">Gross savings = (employees &times; 10 &times; $22 &times; IT deflection)
+              + (employees &times; 8  &times; $18 &times; HR deflection)
+Net savings   = Gross savings &minus; annual license
+ROI %         = Net savings &divide; first-year cost   (license + implementation)</div>
+    <div class="ex"><b>Worked example, 20,000 employees, Expected case:</b><br>
+      IT pool: 20,000 &times; 10 &times; $22 = $4.4M; recover 55% = $2.42M<br>
+      HR pool: 20,000 &times; 8 &times; $18 = $2.88M; recover 60% = $1.73M<br>
+      Gross = $4.15M, net = $4.15M &minus; $1.5M = <b>$2.65M</b>, ROI = $2.65M &divide; $1.7M = <b>156%</b></div>
+    <p style="margin-bottom:0;font-size:14px;color:var(--sub)">Only <code>total_employees</code> comes from research. Everything else is a fixed constant or a per-customer override.</p>
+  </div>
+
+  <h2>Vertical 2: Sales and Marketing <span style="font-weight:400;color:var(--sub);font-size:16px">(pipeline uplift)</span></h2>
+  <div class="card">
+    <p style="margin-top:0"><b>The idea:</b> the product lifts the rate at which reps book qualified meetings. More meetings become more closed-won deals. The added revenue is the value.</p>
+    <p><b>Fixed assumptions</b> <code>src/verticals/sales-marketing.ts</code></p>
+    <table>
+      <tbody>
+        <tr><td>Meeting-to-won funnel rate</td><td class="num">5%</td></tr>
+        <tr><td>Default baseline meetings per rep per year</td><td class="num">60</td></tr>
+        <tr><td>Default annual license</td><td class="num">$150K</td></tr>
+        <tr><td>Default implementation fee</td><td class="num">$30K</td></tr>
+        <tr><td>Meeting uplift (Conservative / Expected / Aggressive)</td><td class="num">10 / 20 / 35%</td></tr>
+      </tbody>
+    </table>
+    <div class="formula">Baseline meetings = reps &times; meetings per rep per year
+Incremental deals = Baseline meetings &times; uplift &times; 5% funnel rate
+Gross revenue     = Incremental deals &times; average deal size
+Net revenue       = Gross revenue &minus; annual license
+ROI %             = Net revenue &divide; first-year cost</div>
+    <div class="ex"><b>Worked example, 100 reps, $50K deal, Expected case:</b><br>
+      Baseline: 100 &times; 60 = 6,000 meetings; uplift 20% = 1,200 incremental<br>
+      Deals: 1,200 &times; 5% = 60; revenue: 60 &times; $50K = $3.0M<br>
+      Net = $3.0M &minus; $150K = <b>$2.85M</b>, ROI = $2.85M &divide; $180K = <b>1,583%</b></div>
+    <p style="margin-bottom:0;font-size:14px;color:var(--sub)">Research supplies <code>quota_carrying_reps</code>, <code>avg_deal_size</code>, and optionally the baseline meeting rate.</p>
+  </div>
+
+  <h2>The shared financial engine</h2>
+  <p class="lead">Both quantitative verticals hand their "gross annual value" to <code>src/verticals/financial-model.ts</code>, which adds the rest of the business case.</p>
+  <table>
+    <tbody>
+      <tr><td>Payback period</td><td>First-year cost &divide; monthly gross value.</td></tr>
+      <tr><td>Five-year cumulative</td><td>Ramped by an adoption curve of [50%, 80%, 100%, 100%, 100%]. Year one also absorbs the implementation fee.</td></tr>
+      <tr><td>NPV</td><td>Discounted at 8%.</td></tr>
+    </tbody>
+  </table>
+  <p>These surface on the page as four metric tiles plus an SVG bar chart of the cumulative projection.</p>
+
+  <h2>Where the numbers come from</h2>
+  <table>
+    <thead><tr><th>Input class</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>Company facts (headcount, reps, deal size)</td><td>The research agent, into <code>extension.value_inputs</code></td></tr>
+      <tr><td>Conversion and deflection rates</td><td>Fixed scenario constants in code</td></tr>
+      <tr><td>Pricing (license, implementation)</td><td>Defaults in code, overridable per customer (<code>product_profiles.economics</code>, D57)</td></tr>
+      <tr><td>Ticket volumes, funnel rate, adoption ramp</td><td>Fixed reference constants</td></tr>
+    </tbody>
+  </table>
+  <p>When the agent estimates a figure rather than finding it, the page carries a footnote saying so (D38).</p>
+
+  <div class="caveat">
+    <h3>One honest caveat to discuss</h3>
+    <p style="margin-top:6px">The ROI <b>percentages run very high</b> (the Sales example above lands at 1,583%), for two structural reasons worth our attention:</p>
+    <ol>
+      <li>The denominator is only the <b>first-year cost</b>, while the numerator is <b>full annual value</b>. That ratio inflates fast.</li>
+      <li>The Sales model applies the uplift to the <b>entire roster's entire meeting volume</b>, which likely overstates a realistic ramp.</li>
+    </ol>
+    <p style="margin-bottom:0">The dollar figures are defensible blended estimates. The percentage framing deserves a sanity pass before we put it in front of buyers. This is a known item, not a bug, and a good thing to align on.</p>
+  </div>
+
+  <footer>
+    The governing decisions live in <code>DECISIONS.md</code>: <b>D38</b> (estimation and disclosure), <b>D49</b> (MVP model fidelity: fixed 10/8 volumes, three scenarios, payback, NPV, five-year), <b>D57</b> (per-customer pricing overrides), <b>D58</b> (the three verticals and the named-constant discipline).
+  </footer>
+</div>
+</body>
+</html>

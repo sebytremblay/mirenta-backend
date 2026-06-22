@@ -42,12 +42,17 @@ const REQUIRED_EFFECTIVENESS_KEYS = ["meeting_uplift"] as const;
 
 // Default economics for the sales-marketing vertical. Phase 1 always returns these;
 // a profile.economics override (migration 0007) replaces them when present and
-// validateEconomics passes. The license and implementation fee reflect a mid-market
-// outbound-tooling deal; the per-scenario meeting_uplift bounds the estimate.
+// validateEconomics passes. Mirenta prices per seat, so the price scope tracks the
+// impact scope: a page that targets one rep prices for one seat, a page that targets
+// a leader prices for the leader's whole span (the same quota_carrying_reps the
+// uplift multiplies through). The default is Mirenta's own list price, $100 per seat
+// per month ($1,200 per year), with no fixed platform fee and no implementation fee
+// for the self-serve motion. The per-scenario meeting_uplift bounds the estimate (D59).
 function defaultEconomics(): VerticalEconomics {
   return {
-    annual_license: 150_000,
-    implementation_fee: 30_000,
+    annual_license: 0,
+    implementation_fee: 0,
+    price_per_seat_year: 1_200,
     scenarios: [
       { name: "Conservative", effectiveness: { meeting_uplift: 0.1 } },
       { name: "Expected", effectiveness: { meeting_uplift: 0.2 } },
@@ -63,7 +68,11 @@ function validateEconomics(raw: unknown): VerticalEconomics {
 
 // Narrow the generic numeric map to the sales-marketing inputs. The rep roster and
 // the average deal size drive the model and are required; the baseline meetings per
-// rep falls back to a benchmark when the research does not surface it.
+// rep falls back to a benchmark when the research does not surface it. The rep
+// roster is the count within the lead's span of control (1 for an individual
+// contributor, the team for a leader, the whole org for a C-level), not a
+// company-wide headcount: inputGuidance instructs the research agent to scope it
+// that way, since the uplift multiplies through it (D58).
 function validateInputs(raw: Record<string, number>, estimated: boolean): ValidatedInputs {
   if (typeof raw.quota_carrying_reps !== "number") {
     throw new Error("research.extension.value_inputs.quota_carrying_reps missing");
@@ -92,6 +101,12 @@ function validateInputs(raw: Record<string, number>, estimated: boolean): Valida
 // funnel rate turns incremental meetings into closed-won deals, and the deal size
 // turns those into gross new annual revenue. The shared financial engine turns
 // that gross value into the net, ROI, payback, projection, and NPV the page renders.
+//
+// Price scopes with impact: when economics carry a per-seat price, the effective
+// annual license is the fixed base plus the per-seat price times the rep count the
+// page addresses, so a single-rep page prices for one seat and a leader page prices
+// for the whole span. Folding it into annual_license here keeps the shared financial
+// engine (which reads annual_license) unchanged (D59).
 function createCompute(economics: VerticalEconomics) {
   return (inputs: ValidatedInputs): ValueResult => {
     const reps = Math.max(0, Math.floor(inputs.values.quota_carrying_reps ?? 0));
@@ -99,13 +114,19 @@ function createCompute(economics: VerticalEconomics) {
     const meetingsPerRep = Math.max(0, inputs.values.baseline_meetings_per_rep_year ?? 0);
     const baselineMeetings = reps * meetingsPerRep;
 
+    const perSeat = Math.max(0, economics.price_per_seat_year ?? 0);
+    const effectiveEconomics: VerticalEconomics = {
+      ...economics,
+      annual_license: economics.annual_license + perSeat * reps,
+    };
+
     const grossFor = (effectiveness: Record<string, number>): number => {
       const incrementalMeetings = baselineMeetings * (effectiveness.meeting_uplift ?? 0);
       const incrementalWonDeals = incrementalMeetings * MEETING_TO_WON_RATE;
       return incrementalWonDeals * dealSize;
     };
 
-    return projectFinancials(economics, inputs, grossFor, {
+    return projectFinancials(effectiveEconomics, inputs, grossFor, {
       primaryLabel: "Net new annual revenue",
       headlineLabel: "Expected net new annual revenue",
       fiveYearLabel: "5-year net new revenue",
@@ -116,8 +137,14 @@ function createCompute(economics: VerticalEconomics) {
   };
 }
 
-const inputGuidance = `Gather the outbound funnel drivers as numeric value_inputs:
-- quota_carrying_reps: the number of quota-carrying sales reps running outbound (required). Source from job postings, the sales-team page, or LinkedIn headcount.
+const inputGuidance = `Gather the outbound funnel drivers as numeric value_inputs.
+
+Scope every figure to the SPAN OF CONTROL of the lead this page targets, not the whole company. The value model multiplies quota_carrying_reps by the baseline meeting rate and the scenario uplift, so a company-wide rep count for a page that targets one individual overstates the opportunity by orders of magnitude. Size the rep roster to what the lead actually owns, reading their role and seniority from the kickoff:
+- An individual contributor (Account Executive, Sales Development Representative, rep): scope to that one person. Set quota_carrying_reps to 1.
+- A team or function leader (Director of Sales, VP of Sales, Head of Sales Development): scope to the reps who report to them. Set quota_carrying_reps to that team's size.
+- A C-level or company-wide leader (CRO, CEO, CMO, President, COO): scope to the whole revenue org. Set quota_carrying_reps to the company's total quota-carrying rep count.
+
+- quota_carrying_reps: the number of quota-carrying reps within the lead's span of control, per the rule above (required). For an individual contributor this is 1. For a leader, source the team or company headcount from job postings, the sales-team page, LinkedIn, or org structure.
 - avg_deal_size: average annual contract or deal value in USD (required). Source from pricing pages, case studies, or filings; estimate from the segment when not public.
 - baseline_meetings_per_rep_year: booked qualified meetings per rep per year today. Usually not public; estimate from benchmarks when unavailable.
 Use actual figures when you find them and set estimated: false. Otherwise estimate and set estimated: true.`;
