@@ -22,7 +22,7 @@ Status: TODO | DOING | DONE | BLOCKED.
 |----|-------|--------|------|------------|-------|
 | T0 | Bootstrap loop state + map codebase | DONE | - | loop/ files exist; baseline test+typecheck exit 0 captured | tests 167 pass; typecheck 0 |
 | T1 | Design founder-led ROI model + freeze G1 numbers | DONE | T0 | G1 bounds frozen in loop/memory; unit-economics design defensible to a skeptical founder; headcount input <= 5 | founder_led_sales model; 30 samples all in bounds (worst 5.21x, payback 8.2mo); frozen in memory |
-| T2 | W5 idea tournament: diverge + judge structural bets | DOING | T0 | 3-5 distinct bets prototyped on sample copy; two-reviewer G3 scoring; winners + losers logged in memory | seed: investor-quote section; Judge phase running |
+| T2 | W5 idea tournament: diverge + judge structural bets | DONE | T0 | 3-5 distinct bets prototyped on sample copy; two-reviewer G3 scoring; winners + losers logged in memory | 5 bets judged; baseline 1.3; ADOPT Shared Scar (7.95) + Mirror-First (7.43) hero, partial Ledger (5.03); REJECT both investor-quote bets (fabrication blockers). See tournament-results memory |
 | T3 | Implement founder-led value model (code) | TODO | T1 | new/repointed vertical computes within G1 bounds across >= 20 inputs; unit tests green; disclosure contract holds | |
 | T4 | Rewrite Website Builder copy/brief for founder-to-founder | TODO | T2,T3 | DESIGN_BRIEF + prompt assembly speak founder-to-founder; blocklist-clean; sample passes G3 | |
 | T5 | Rewrite Research Agent prompt for founder-led frame | TODO | T2,T3 | system prompt + kickoff default to founder-led; investor-quote phase wired with fallback | |

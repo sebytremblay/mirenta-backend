@@ -4,14 +4,16 @@ Date opened: 2026-06-21
 
 ## Phase
 
-DESIGN done (T1 frozen). W5 tournament Judge phase running in Workflow 1.
+DESIGN done (T1 frozen). W5 tournament done (T2 DONE; winners/losers in
+loop/memory/tournament-results.md). Next: IMPLEMENT (T3).
 
 ## Single next action
 
-Read Workflow 1's tournament results (ranked ideas vs baseline), record winners and
-losers in loop/memory, then run Workflow 2 to IMPLEMENT the founder_led_sales value
-model (T3) per the frozen design in loop/memory/founder-led-roi-model.md, with the
-G1 harness and unit tests.
+Run Workflow 2 to IMPLEMENT the founder_led_sales value model (T3) per the frozen
+design in loop/memory/founder-led-roi-model.md: add src/verticals/founder-led-sales.ts,
+register it, point customer zero at it later (T6), write unit tests pinning the worked
+example, and build the G1 harness (>= 20 sampled inputs, zero breaches). Then proceed to
+T4 (graft tournament-winning hero copy into the builder) and T5 (research prompt).
 
 ## Health note
 
