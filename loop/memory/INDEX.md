@@ -10,3 +10,4 @@ One line per memory file: `- [slug](file.md) — hook`.
 - [founder-led-roi-model](founder-led-roi-model.md) — the frozen founder-led ROI design, formula, default economics, and G1 numbers
 - [tournament-results](tournament-results.md) — W5 winners (Shared Scar + Mirror-First hero, Twenty-Second Ledger) and losers (both investor-quote bets, fabrication blockers)
 - [review-fixes](review-fixes.md) — adversarial review of the founder-led model: clamp hardened, harness extended, labels made honest; all majors fixed
+- [g3-iterations](g3-iterations.md) — the G3 founder-review iterations and the structural fix each failure drove (reconcile to displayed precision, name the value split)

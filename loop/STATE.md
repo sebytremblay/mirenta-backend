@@ -5,17 +5,20 @@ Date opened: 2026-06-21
 ## Phase
 
 DESIGN (T1), tournament (T2), MODEL+G1 harness (T3,T7), COPY (T4), research framing
-(T5), customer zero (T6) all DONE. Adversarial review applied (clamp hardened, harness
-extended to non-finite corners, labels honest). 191 tests pass, typecheck 0. Remaining:
-G2 grep harness (T8), G3 production gate (T9), DECISIONS.md + D59 (T10), HTML report (T11).
+(T5), customer zero (T6), G2 grep (T8), G3 gate (T9) all DONE. 194 tests pass, typecheck 0.
+G3 passed on iteration 4 of 5 (8.25 / 8.15, zero blockers, spread 0.10) after a source fix
+that makes every on-page figure reconcile to the precision the founder reads. Remaining:
+finish DECISIONS.md note + commit the validated work (T10), then ship the HTML report (T11).
 
 ## Single next action
 
-Build the G2 blocklist grep harness (T8): a runnable check that greps the enterprise
-blocklist (see g2-blocklist memory) over generated founder-facing samples and returns
-zero matches. To stay within cost discipline, generate sample one-pager copy with a
-workflow subagent (no live pipeline), then grep it plus the founder-led spec's
-rider fields. Then run the G3 two-reviewer production gate (T9) on an end-to-end sample.
+Finish T10: extend the D59 note with the reconcile-to-displayed-precision principle and
+the deal/time split, then commit the validated work in focused commits (T8 harness + emit
+script; the G3 value-model rewrite + tests; D59 + loop state). Then write the G5 HTML
+report (T11): before/after copy, the four-iteration G3 score timeline, the commit log,
+gate results (G1 57k-point sweep, G2 exit 0, G3 8.25/8.15), and residual risks (the
+sales_marketing overstatement still live; the cheap builder put an em dash in the <title>;
+the $41K deals figure is the softest input pending discovery).
 
 ## Health note
 
