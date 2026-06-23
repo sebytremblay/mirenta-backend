@@ -6,15 +6,6 @@
 // Exa, Supabase, and S3. Run: node scripts/run-pipeline-mirenta.ts
 //
 // Customer (seller): the Mirenta team, selling Mirenta itself.
-// Lead: Devin Park, Co-Founder and CEO at Cedar, a seed-stage fintech building
-// banking and corporate cards for early-stage founders. Cedar sells to founders, so
-// Devin runs founder-led sales to other founders, exactly Mirenta's prospect after
-// the reposition (D59). This is an illustrative self-sell target on an RFC-2606
-// .example domain; a human swaps in a real lead and website for a live run.
-// The profile declares the founder_led_sales vertical: Mirenta sells outbound
-// personalization to founders, so the page researches Cedar through a founder-led
-// lens and the value model renders a first-year return as a multiple plus the hours
-// the tool returns, with no enterprise or HR/ITSM framing.
 
 import { setTimeout as sleep } from "node:timers/promises";
 
@@ -57,12 +48,12 @@ try {
     source: "manual",
     leads: [
       {
-        first_name: "Devin",
-        last_name: "Park",
+        first_name: "Finn",
+        last_name: "Mallery",
         role: "Co-Founder and CEO",
-        company: "Cedar",
-        website_url: "https://cedar.example",
-        email: "devin@cedar.example",
+        company: "Origiami",
+        website_url: "https://origami.chat/",
+        email: "finn@origami.chat",
       },
     ],
   });
@@ -97,7 +88,7 @@ try {
     console.log("\n=== 4. Fetch the published page ===");
     const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
     const html = await res.text();
-    const company = "Cedar";
+    const company = "Origami";
     const checks = {
       http200: res.status === 200,
       isHtml: /^<!doctype html/i.test(html.trim()) || /^<html/i.test(html.trim()),
