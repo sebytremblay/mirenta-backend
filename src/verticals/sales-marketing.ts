@@ -82,10 +82,18 @@ function validateInputs(
 function createCompute(economics: VerticalEconomics) {
   const bandHours = (economics as { band_hours: Record<string, [number, number]> }).band_hours;
   return (inputs: ValidatedInputs): ValueResult => {
-    // validateInputs already narrowed stage_band to a known band, so the lookup
-    // resolves; fall back to the seed band defensively for the type checker.
-    const band = inputs.context.stage_band ?? "seed";
-    const [lo, hi] = bandHours[band] ?? bandHours.seed ?? [0, 0];
+    // validateInputs narrows stage_band to a known band before compute runs.
+    // Re-narrow here and throw rather than default, so a bypassed gate surfaces
+    // loud instead of emitting a fabricated range.
+    const band = inputs.context.stage_band;
+    if (!band || !isStageBand(band)) {
+      throw new Error("sales_marketing compute reached without a validated stage_band");
+    }
+    const hours = bandHours[band];
+    if (!hours) {
+      throw new Error(`sales_marketing economics carries no band_hours for ${band}`);
+    }
+    const [lo, hi] = hours;
     return {
       sectionTitle: "What this frees up",
       headline: {
