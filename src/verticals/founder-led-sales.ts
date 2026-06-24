@@ -352,7 +352,19 @@ Capture two things the page opens on, sourced and never invented: the language t
 - Second, one line that names a specific moment the lead has personally lived (a prior build, an exit, the funding round), drawn strictly from the researched recent moves or the lead executive profile. State one real fact; invent no exit, valuation, backer, or outcome.
 - Third, the seller in first person, admitting the same stage plainly (for example, a founder who runs their own outreach and writes every message by hand), then why they reached out. Only here do the seller name and the product appear.
 Keep the prospect-and-seller lockup, but place it as a slim band under those lines rather than as the first thing the eye meets. The <h1> states the recognized problem, not a seller value claim. Keep both hero quick-links (one to the business case, one to the booking action).
-FALLBACK: when the research surfaces no usable self-description and no concrete lived moment, open on the strongest verified account fact instead, and keep the first-person seller admission, which rests only on the seller's own facts. Never manufacture a problem or a moment the research does not support.`,
+FALLBACK: when the research surfaces no usable self-description and no concrete lived moment, open on the strongest verified account fact instead, and keep the first-person seller admission, which rests only on the seller's own facts. Never manufacture a problem or a moment the research does not support.
+LENGTH: keep each of the three hero lines to ONE tight sentence. The three lines together run under 40 words before the <h1>. A founder reads the hero in one breath; an overlong opener reads as a wall of text and the page rejects on it.`,
+  // Source quotes from third-party voices, never the lead's own words (D60). A
+  // founder-to-founder page that quotes the founder back to himself reads as a
+  // form letter; a verified voice from his own world (an investor, a peer, a
+  // high-signal industry post) carries social proof the lead trusts. The D37
+  // re-fetch rigor is unchanged: this names whose words to capture, never whether
+  // to verify them.
+  quoteTargeting: `Source every quote from a THIRD-PARTY voice in the lead's world, never the lead's own words. Prioritize, in order:
+- The lead's named investors or backers (the partners at the funds that backed the company): a public statement on the company, the founder, or the market.
+- A respected peer operator or founder in the lead's segment whose view the lead would recognize and trust.
+- A high-engagement public post or article on the trend the lead is riding (for example AI-era outbound, cold-email effectiveness), attributed to its real author.
+Do NOT quote the lead back to themselves: a quote whose speaker is the lead does not belong in the quote band. Apply the same D37 rigor to every quote: re-fetch the source, confirm the wording, set verified true only on a confirmed match, and drop any quote that fails. Invent no quote, speaker, or source. When no third-party quote verifies, return no quotes rather than falling back to the lead's own words.`,
   inputGuidance, // exposed directly for the research agent kickoff
   validateInputs, // exposed directly for the validateResearch early gate
   createValueModel,

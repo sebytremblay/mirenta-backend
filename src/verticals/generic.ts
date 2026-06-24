@@ -103,6 +103,7 @@ export const genericVertical: VerticalSpec = {
 - The decision maker and likely champion (the leader whose team feels the problem)
 - Relevant functional leaders the seller's value proposition names
 - C-suite (CEO, President, COO) when the priority is company-wide`,
+  quoteTargeting: `Source quotes from the prospect company's executives or official spokespeople: a direct statement from an interview, a press release, a LinkedIn post, or a company blog that speaks to the priorities your research surfaces. Apply the D37 rigor to every quote: re-fetch the source, confirm the wording, set verified true only on a confirmed match, and drop any quote that fails. Invent no quote, speaker, or source. Return no quotes rather than weaken the bar.`,
   defaultAccentColor: "#3b5bdb",
   inputGuidance, // exposed directly for the research agent kickoff
   validateInputs, // exposed directly for the validateResearch early gate

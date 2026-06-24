@@ -154,3 +154,22 @@ test("buildUserPrompt omits the hero narrative cleanly when the spec carries non
   const prompt = buildUserPrompt(input, value, assets);
   assert.ok(!prompt.includes("HERO NARRATIVE"));
 });
+
+test("DESIGN_BRIEF directs bespoke design and warns off the clustered AI looks", () => {
+  // The brief steers toward one committed aesthetic direction and a single
+  // signature element, and names the AI-default looks to avoid.
+  assert.match(DESIGN_BRIEF, /DESIGN DIRECTION/);
+  assert.match(DESIGN_BRIEF, /AVOID THE AI-GENERATED LOOK/);
+  assert.match(DESIGN_BRIEF, /signature element/i);
+  // The three clustered looks are called out by their tells.
+  assert.match(DESIGN_BRIEF, /terracotta/i);
+  assert.match(DESIGN_BRIEF, /broadsheet/i);
+});
+
+test("DESIGN_BRIEF drops the generic-SaaS layout mandate", () => {
+  // The old brief forced every page into the same look: a fixed 1120px container
+  // and soft-shadow hover-lift cards. The rewrite cuts that prescription so pages
+  // vary; the load-bearing skeleton and figure geometry stay (asserted elsewhere).
+  assert.ok(!DESIGN_BRIEF.includes("1120px"));
+  assert.ok(!/gentle hover lift transition/i.test(DESIGN_BRIEF));
+});

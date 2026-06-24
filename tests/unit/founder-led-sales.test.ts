@@ -298,7 +298,7 @@ test("the spec carries no enterprise-sales or HR/ITSM framing", () => {
   const haystack =
     `${founderLedSalesVertical.domains.join(" ")} ${founderLedSalesVertical.domainGuidance} ` +
     `${founderLedSalesVertical.executiveTargeting} ${founderLedSalesVertical.inputGuidance} ` +
-    `${founderLedSalesVertical.narrativeGuidance ?? ""}`;
+    `${founderLedSalesVertical.narrativeGuidance ?? ""} ${founderLedSalesVertical.quoteTargeting ?? ""}`;
   assert.doesNotMatch(haystack, /\b(HR|ITSM|CHRO|CIO|ticket|deflection)\b/i);
   assert.doesNotMatch(
     haystack,
@@ -310,6 +310,20 @@ test("the spec carries no enterprise-sales or HR/ITSM framing", () => {
   assert.doesNotMatch(haystack, /\b\w+'(t|re|ve|ll|d|m)\b/i);
   assert.doesNotMatch(haystack, /\b(it|that|there|here|what|who)'s\b/i);
   assert.doesNotMatch(haystack, /—/);
+});
+
+test("the founder-led quote targeting sources third-party voices, never the lead", () => {
+  const quotes = founderLedSalesVertical.quoteTargeting ?? "";
+  assert.notEqual(quotes, "", "founder-led vertical carries a quote-sourcing brief");
+  // Third-party voices: investors, peers, industry posts.
+  assert.match(quotes, /investor|backer/i);
+  assert.match(quotes, /peer|operator|founder/i);
+  // Never the lead's own words shown back to the lead (D60).
+  assert.match(quotes, /not quote the lead|never the lead/i);
+  // D37 rigor is preserved, not relaxed: re-fetch and verify still apply.
+  assert.match(quotes, /re-fetch|verif/i);
+  // No fabrication path: omit rather than invent when nothing verifies.
+  assert.match(quotes, /invent no|return no quotes/i);
 });
 
 test("the founder-led narrative grafts the tournament winners without a fabrication path", () => {

@@ -185,6 +185,7 @@ export async function buildSite(input: BuildSiteInput): Promise<BuildSiteResult>
         assetHosts,
         requiredAnchors: REQUIRED_ANCHORS,
         stopReason,
+        leadName: `${lead.first_name} ${lead.last_name}`,
       });
     } catch (err) {
       // A truncated document is transient: a corrective retry with the same token

@@ -59,6 +59,7 @@ const options: ValidatePageOptions = {
   assetHosts: ["cdn.example.com"],
   requiredAnchors: ["#business-case", "#book"],
   stopReason: "end_turn",
+  leadName: "Jordan Avery",
 };
 
 // A compliant, sample-grade document: brand-themed, all figures present, required
@@ -231,6 +232,101 @@ test("rejects runaway body copy over the reading-time budget", () => {
   const filler = `<p>${"savings ".repeat(1300)}</p>`;
   const html = goodHtml().replace("</main>", `${filler}</main>`);
   assert.throws(() => validatePage(html, options), /runs long/);
+});
+
+test("rejects an em dash in model output as an AI tell", () => {
+  const html = goodHtml().replace(
+    "<p>Reply to the outreach email and we walk it through together.</p>",
+    "<p>Reply to the outreach email — we walk it through together.</p>",
+  );
+  assert.throws(
+    () => validatePage(html, options),
+    (e: unknown) => e instanceof PageValidationError && /em or en dash/.test((e as Error).message),
+  );
+});
+
+test("rejects an en dash too", () => {
+  const html = goodHtml().replace("4.9 mo", "4.9 mo–ish");
+  // The figure check still passes (4.9 mo is present as substring); the dash trips the tell gate.
+  assert.throws(() => validatePage(html, options), /em or en dash/);
+});
+
+test("rejects an emoji card icon as an AI tell", () => {
+  const html = goodHtml().replace(
+    '<article>Conservative $1.6M Net Annual Savings 97% ROI</article>',
+    '<article>\u{1F3C6} Conservative $1.6M Net Annual Savings 97% ROI</article>',
+  );
+  assert.throws(
+    () => validatePage(html, options),
+    (e: unknown) => e instanceof PageValidationError && /emoji/.test((e as Error).message),
+  );
+});
+
+test("rejects a dingbat-range emoji with a variation selector", () => {
+  const html = goodHtml().replace("Book a call", "Book a call \u{2705}\u{FE0F}");
+  assert.throws(() => validatePage(html, options), /emoji/);
+});
+
+test("accepts plain ASCII hyphens and math symbols (not dashes)", () => {
+  // The tell gate must not false-positive on a hyphen or a minus sign.
+  const html = goodHtml().replace("5-year net savings", "5-year cost-saving net savings");
+  assert.doesNotThrow(() => validatePage(html, options));
+});
+
+test("rejects a quote attributed to the lead (self-quoting)", () => {
+  const html = goodHtml().replace(
+    "<p>Reply to the outreach email and we walk it through together.</p>",
+    '<blockquote>finding prospects takes longer than closing them<cite>Finn Mallery</cite></blockquote>',
+  );
+  assert.throws(
+    () => validatePage(html, { ...options, leadName: "Finn Mallery" }),
+    (e: unknown) => e instanceof PageValidationError && /attributed to the lead/.test((e as Error).message),
+  );
+});
+
+test("allows a third-party cite even when a leadName is set", () => {
+  const html = goodHtml().replace(
+    "<p>Reply to the outreach email and we walk it through together.</p>",
+    '<blockquote>The new bar is naming their workflow<cite>Garry Tan, Y Combinator</cite></blockquote>',
+  );
+  assert.doesNotThrow(() => validatePage(html, { ...options, leadName: "Finn Mallery" }));
+});
+
+test("allows a third-party cite that does not name the lead", () => {
+  const html = goodHtml().replace(
+    "<p>Reply to the outreach email and we walk it through together.</p>",
+    '<blockquote>A quote<cite>Anyone At All</cite></blockquote>',
+  );
+  assert.doesNotThrow(() => validatePage(html, options));
+});
+
+test("rejects a hero intro that runs long before the headline", () => {
+  const longIntro =
+    '<p class="hero-mirror">Your best outreach earns replies because it names the exact workflow ' +
+    'the prospect runs today, but building that depth for every target still takes an hour you do ' +
+    'not have, and the math never closes across a real founder send volume of seventy seven a day.</p>' +
+    '<p class="hero-moment">You proved the demand before the product even existed, on hundreds of ' +
+    'calls across the first three months of the company.</p>';
+  const html = goodHtml().replace(
+    '<header class="hero" role="banner">',
+    `<header class="hero" role="banner">${longIntro}`,
+  );
+  assert.throws(
+    () => validatePage(html, options),
+    (e: unknown) => e instanceof PageValidationError && /hero intro runs long/.test((e as Error).message),
+  );
+});
+
+test("accepts a tight three-line hero intro under the cap", () => {
+  const tightIntro =
+    '<p>Finding qualified prospects takes longer than closing them.</p>' +
+    '<p>You proved demand on 493 calls before the product shipped.</p>' +
+    '<p>At Mirenta we write every page by hand, so we built the research engine.</p>';
+  const html = goodHtml().replace(
+    '<header class="hero" role="banner">',
+    `<header class="hero" role="banner">${tightIntro}`,
+  );
+  assert.doesNotThrow(() => validatePage(html, options));
 });
 
 test("injectRuntimeAssets welds in the CSP meta and the count-up script", () => {

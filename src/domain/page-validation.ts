@@ -41,6 +41,13 @@ const ALWAYS_ALLOWED_HOSTS = ["fonts.googleapis.com", "fonts.gstatic.com"];
 // normal page never trips and only a runaway essay triggers a corrective retry.
 const MAX_BODY_WORDS = 1100;
 
+// The hero intro is the prose before the <h1> inside the banner (the founder-led
+// mirror, moment, and seller lines, plus the lockup wordmark). Three tight
+// sentences run near 40 words; this ceiling sits above a compliant hero and below
+// the runaway 90-word opener the unbounded narrative produced, so the
+// lockup-first verticals (a short eyebrow and lockup only) never trip it.
+const MAX_HERO_INTRO_WORDS = 55;
+
 export interface ValidatePageOptions {
   value: ValueResult;
   research: ResearchObject;
@@ -52,6 +59,11 @@ export interface ValidatePageOptions {
   requiredAnchors: string[];
   // The Messages API stop_reason for this generation, used to detect truncation.
   stopReason?: string | null;
+  // The lead's full name. The quote band carries verified third-party voices, never
+  // the lead's own words shown back to the lead (D60), so a blockquote attribution
+  // that names the lead is a contract violation. Every page is built for a named
+  // lead, so this is required and the check runs on one path.
+  leadName: string;
 }
 
 function escapeRegExp(s: string): string {
@@ -139,6 +151,26 @@ export function validatePage(html: string, opts: ValidatePageOptions): void {
     }
   }
 
+  // 3b. No AI tells. The house style forbids em dashes and the page must read as a
+  // hand-built artifact, so reject the two giveaways a reader registers instantly:
+  // the em or en dash (—, –) and any emoji. The builder's own prompt assembly no
+  // longer injects an em dash into quote attributions, so a dash here means the
+  // model wrote one; a corrective retry strips it. The emoji scan covers the
+  // pictographic and dingbat ranges plus a trailing variation selector. ASCII
+  // hyphens, the minus sign, and math symbols stay legal.
+  const tells: Array<[RegExp, string]> = [
+    [/[–—]/, "em or en dash"],
+    [
+      /[\u{1F300}-\u{1FAFF}\u{1F000}-\u{1F0FF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{1F1E6}-\u{1F1FF}]\u{FE0F}?/u,
+      "emoji",
+    ],
+  ];
+  for (const [re, label] of tells) {
+    if (re.test(html)) {
+      throw new PageValidationError(`forbidden ${label} in model output (AI tell)`);
+    }
+  }
+
   // 4. External assets resolve only to allow-listed hosts. Anything else is an
   // invented or unexpected fetch the page must not make. Strip XML namespace
   // declarations first: an inline SVG carries xmlns="http://www.w3.org/2000/svg"
@@ -164,6 +196,17 @@ export function validatePage(html: string, opts: ValidatePageOptions): void {
     if (!q.verified && q.text && q.text.trim().length >= 12 && html.includes(q.text)) {
       throw new PageValidationError("unverified quote text appears on the page");
     }
+  }
+
+  // 5b. No self-quoting. The quote band carries verified third-party voices (the
+  // lead's investors, peers, and industry posts), never the lead's own words shown
+  // back to the lead (D60). A <cite> that names the lead means the model surfaced a
+  // self-quote; reject so a corrective retry sources a third-party voice instead.
+  const leadCite = new RegExp(`<cite[^>]*>[^<]*${escapeRegExp(opts.leadName)}`, "i");
+  if (leadCite.test(html)) {
+    throw new PageValidationError(
+      `quote attributed to the lead (${opts.leadName}); the quote band carries third-party voices only`,
+    );
   }
 
   // 6. The hero banner and every required anchor resolve as both a section id and
@@ -194,6 +237,26 @@ export function validatePage(html: string, opts: ValidatePageOptions): void {
     throw new PageValidationError(
       `body copy runs long (${words} words, budget under ~750); tighten the page`,
     );
+  }
+
+  // 7b. Hero intro length. The founder-led hero opens on three prose lines before
+  // the <h1>; an unbounded narrative bloats them into a ~90-word paragraph the eye
+  // bounces off. Count the words between the banner open and the first <h1> (the
+  // mirror, moment, and seller lines plus the lockup) and reject a hero that runs
+  // long, so a corrective retry tightens each line to one sentence. A page with no
+  // prose before the <h1> (lockup-first verticals) counts zero and passes.
+  const bannerMatch = /<header[^>]*role\s*=\s*["']banner["'][^>]*>([\s\S]*?)<h1[\s>]/i.exec(html);
+  if (bannerMatch) {
+    const heroIntro = bannerMatch[1]!
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const heroWords = heroIntro === "" ? 0 : heroIntro.split(" ").length;
+    if (heroWords > MAX_HERO_INTRO_WORDS) {
+      throw new PageValidationError(
+        `hero intro runs long (${heroWords} words before the headline, budget under ~${MAX_HERO_INTRO_WORDS}); tighten each hero line to one sentence`,
+      );
+    }
   }
 }
 

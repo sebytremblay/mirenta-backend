@@ -1,127 +1,54 @@
-// Live smoke test for the Website Builder: builds a complete HTML page from a
-// hardcoded ResearchObject (including a prospect brand) and ProductProfile, writes
-// it to /tmp/mirenta-smoke.html, and runs the real page validator over the result.
-// Proves the model emits a sample-grade self-contained page that wears the prospect
-// brand and passes every load-bearing invariant. Run: node scripts/smoke-builder.ts
+// Cost-free smoke for the Website Builder prompt. Spends no tokens: no model call.
+// It assembles the EXACT prompt the builder runs for the customer-zero lead
+// (Finn Mallery at Origami, Mirenta selling Mirenta on the founder_led_sales
+// vertical) and prints it to stdout, so `pnpm smoke:builder | pbcopy` captures the
+// prompt ready to paste into a fresh Claude Code session. The lead and seller
+// mirror scripts/run-pipeline-mirenta.ts.
 //
-// Develop and test on Opus via config only: set ANTHROPIC_BUILDER_MODEL to an Opus
-// id in .env. The builder reads config.anthropic.builderModel; this script changes
-// no model.
+// This is the second half of the two-step smoke. Run `pnpm smoke:research` first,
+// run that prompt in a Claude Code session, and have it write the research object
+// to /tmp/mirenta-research.json (the research prompt instructs exactly that). This
+// script reads that file and assembles the builder prompt over the REAL researched
+// object, the same handoff the live pipeline makes (research -> builder). Override
+// the path with MIRENTA_RESEARCH_JSON. Every research-derived field in the prompt
+// (account, executives, quotes, priorities, value inputs, prospect brand) comes
+// from that file, so the script hard fails when it is missing rather than smoke
+// testing a hollow placeholder.
 
-import { buildSite } from "../src/agents/builder.ts";
-import { resolveLogoUrl, resolveFaviconHref } from "../src/agents/brand-tokens.ts";
+import { readFileSync } from "node:fs";
 import {
-  validatePage,
-  PageValidationError,
-} from "../src/domain/page-validation.ts";
-import { employeeServiceVertical } from "../src/verticals/employee-service.ts";
-import type { ResearchObject } from "../src/domain/research.ts";
+  deriveTokens,
+  renderTokenBlock,
+  resolveLogoUrl,
+  resolveFaviconHref,
+  resolveGoogleFontHref,
+} from "../src/agents/brand-tokens.ts";
+import { DESIGN_BRIEF, buildUserPrompt } from "../src/agents/builder-prompt.ts";
+import { founderLedSalesVertical } from "../src/verticals/founder-led-sales.ts";
+import { validateResearch } from "../src/domain/research.ts";
 import type { ProductProfile } from "../src/domain/entities.ts";
-import { writeFileSync } from "node:fs";
 
-const vertical = employeeServiceVertical;
+const vertical = founderLedSalesVertical;
+const RESEARCH_JSON_PATH =
+  process.env.MIRENTA_RESEARCH_JSON ?? "/tmp/mirenta-research.json";
 
-// Construct a realistic sample ResearchObject (Plexus Corp).
-const sampleResearch: ResearchObject = {
-  vertical: "salesforce_employee_service",
-  account: {
-    summary:
-      "Plexus Corp is a global electronics manufacturing services provider with operations across North America, Europe, and Asia. The company serves aerospace, defense, healthcare, and industrial sectors with advanced manufacturing and supply chain solutions. Recent initiatives focus on operational efficiency and digital transformation.",
-    recent_moves: [
-      "Expanded automation capabilities in manufacturing facilities",
-      "Invested in supply chain visibility tools",
-      "Launched employee training programs for digital tools",
-    ],
-    self_description_language:
-      "Plexus describes itself as a customer-focused provider of innovative engineering solutions and manufacturing services.",
-  },
-  executives: [
-    {
-      name: "Todd Kelsey",
-      title: "President and CEO",
-      owns: "Corporate strategy and operational excellence",
-      profile:
-        "Todd Kelsey drives strategic growth and operational improvements across Plexus. He has emphasized digital transformation and workforce enablement as key priorities.",
-    },
-    {
-      name: "Patrick Jermain",
-      title: "CFO and Chief Administrative Officer",
-      owns: "Financial operations and administrative functions",
-      profile:
-        "Patrick Jermain oversees finance and administrative processes. He focuses on cost efficiency and leveraging technology to streamline operations.",
-    },
-    {
-      name: "Angelo Ninivaggi",
-      title: "SVP and CIO",
-      owns: "IT infrastructure and enterprise systems",
-      profile:
-        "Angelo Ninivaggi leads IT strategy and infrastructure modernization. He prioritizes system reliability, security, and employee productivity tools.",
-    },
-  ],
-  quotes: [
-    {
-      text: "Our success depends on empowering our people with the right tools and information to serve our customers effectively.",
-      speaker: "Todd Kelsey",
-      source_url: "https://www.plexus.com/about-us/leadership",
-      verified: true,
-    },
-    {
-      text: "We are committed to operational excellence and continuous improvement across all functions.",
-      speaker: "Patrick Jermain",
-      source_url: "https://www.plexus.com/investor-relations",
-      verified: true,
-    },
-  ],
-  extension: {
-    domains: ["HR", "ITSM"],
-    priorities: [
-      {
-        domain: "HR",
-        pov: "Plexus needs to scale HR service delivery without proportional headcount growth. AI-powered self-service can deflect repetitive inquiries and improve onboarding efficiency.",
-        why_now:
-          "The company is expanding globally and onboarding new employees rapidly. HR teams face increasing volumes of routine requests.",
-      },
-      {
-        domain: "ITSM",
-        pov: "Plexus requires faster IT support resolution to minimize downtime in manufacturing environments. Automating low-tier tickets frees skilled engineers for strategic projects.",
-        why_now:
-          "Operational uptime is critical. The IT service desk handles high ticket volumes, with many repetitive issues that can be automated.",
-      },
-    ],
-    value_inputs: {
-      total_employees: 20000,
-      it_staff: 80,
-      hr_staff: 25,
-    },
-    estimated: false,
-  },
-  // Prospect brand read from the prospect site (D48). The builder resolves these
-  // into the per-lead :root token block, so the page wears Plexus colors and font,
-  // not the seller default.
-  brand: {
-    primary_color: "#005596",
-    accent_color: "#00a3e0",
-    font_family: "Montserrat",
-    logo_url: "https://www.plexus.com/assets/logo.svg",
-    favicon_url: "https://www.plexus.com/favicon.ico",
-  },
-};
-
-// Construct a sample ProductProfile (Salesforce Agentforce).
+// Construct the sample ProductProfile: Mirenta sells Mirenta on the
+// founder_led_sales vertical. Mirrors scripts/run-pipeline-mirenta.ts.
 const sampleProfile: ProductProfile = {
   org_id: "00000000-0000-0000-0000-000000000000",
-  company_name: "Salesforce",
-  product_name: "Agentforce for IT Service and HR Service",
-  value_prop: "AI-powered employee support that deflects routine requests, accelerates resolution, and scales service delivery without adding headcount.",
+  company_name: "Mirenta",
+  product_name: "Mirenta",
+  value_prop:
+    "Mirenta turns a lead list into one hyper-personalized one-pager website per prospect, so every outbound touch opens with research the prospect recognizes as their own priorities",
   positioning:
-    "Agentforce transforms employee service by combining AI agents with deep enterprise integrations, enabling self-service at scale.",
+    "The outbound personalization platform that researches each prospect and builds a prospect-facing one-pager that pitches in the prospect's own language",
   proof_points: [
-    { claim: "85% ticket deflection rate for low-priority IT issues", source: "customer case studies" },
-    { claim: "50% reduction in onboarding coordination time", source: "Salesforce research" },
+    { claim: "One researched, brand-matched one-pager per lead, generated end to end" },
+    { claim: "Every quote on the page is re-fetched and verified before it ships" },
   ],
-  cta_text: "Schedule a personalized demo",
-  brand: { primary_color: "#0176d3" },
-  vertical: "salesforce_employee_service",
+  cta_text: "Book a working session",
+  brand: { primary_color: "#3b5bdb" },
+  vertical: "founder_led_sales",
   economics: null,
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
@@ -129,97 +56,65 @@ const sampleProfile: ProductProfile = {
 
 // Sample lead.
 const sampleLead = {
-  first_name: "Angelo",
-  last_name: "Ninivaggi",
-  role: "SVP and CIO",
-  company: "Plexus Corp",
-  website_url: "https://www.plexus.com",
+  first_name: "Finn",
+  last_name: "Mallery",
+  role: "Co-Founder and CEO",
+  company: "Origami",
+  website_url: "https://origami.chat/",
 };
 
-// Run the builder, then re-run the real validator over the output and report each
-// check. The builder injects the count-up script and CSP meta after it validates,
-// so the published page carries the one approved <script>; re-validating the final
-// bytes confirms only the figures, anchors, brand assets, and quote rules, never
-// the absence of that injected script.
-try {
-  console.log("Building site for Plexus Corp...");
-
-  const { html, usage } = await buildSite({
-    lead: sampleLead,
-    profile: sampleProfile,
-    research: sampleResearch,
-    vertical,
-    onStep: (s) => console.log(`  [${s.phase}] ${s.detail}`),
-  });
-
-  // Write to /tmp/mirenta-smoke.html for visual comparison against the gold sample
-  // (sample-sites/employee-service/tractor_supply.html).
-  const outputPath = "/tmp/mirenta-smoke.html";
-  writeFileSync(outputPath, html, "utf8");
-  console.log(`\nOutput written to ${outputPath} (${html.length} bytes)`);
-  console.log(
-    `Token usage: ${usage.requests} requests, ${usage.input_tokens} in / ${usage.output_tokens} out, ` +
-      `cache ${usage.cache_creation_tokens} write / ${usage.cache_read_tokens} read`,
-  );
-
-  // Recompute the value model and resolve the brand assets exactly as the builder
-  // does, so the validator inspects the published page against the same contract.
-  const valueModel = vertical.createValueModel(sampleProfile);
-  const validatedInputs = valueModel.validateInputs(
-    sampleResearch.extension.value_inputs,
-    sampleResearch.extension.estimated,
-  );
-  const value = valueModel.compute(validatedInputs);
-  const logoUrl = resolveLogoUrl(sampleProfile, sampleResearch.brand);
-  const faviconHref = resolveFaviconHref(sampleLead.website_url, sampleResearch.brand);
-  const hostOf = (u: string | undefined): string | undefined => {
-    if (!u || !/^https?:\/\//i.test(u)) return undefined;
-    try {
-      return new URL(u).host.toLowerCase();
-    } catch {
-      return undefined;
-    }
-  };
-  const assetHosts = [logoUrl, faviconHref, sampleLead.website_url]
-    .map(hostOf)
-    .filter((h): h is string => Boolean(h));
-
-  // Per-check report. Each named probe runs an independent slice of the validator
-  // by failing fast on the first violation; reading the messages shows which check
-  // tripped.
-  const check = (name: string, fn: () => void): boolean => {
-    try {
-      fn();
-      console.log(`  PASS  ${name}`);
-      return true;
-    } catch (e) {
-      const transient = e instanceof PageValidationError && e.transient ? " (transient)" : "";
-      console.log(`  FAIL  ${name}: ${(e as Error).message}${transient}`);
-      return false;
-    }
-  };
-
-  console.log("\nValidator report (final published bytes):");
-  const ok = check("page passes every load-bearing invariant", () =>
-    validatePage(html, {
-      value,
-      research: sampleResearch,
-      assetHosts,
-      requiredAnchors: ["#business-case", "#book"],
-      stopReason: "end_turn",
-    }),
-  );
-
-  // A few human-readable spot checks beyond the validator.
-  const wearsBrand = html.includes("#005596") || html.includes("--brand");
-  const containsCompany = html.includes("Plexus Corp");
-  console.log(`  ${wearsBrand ? "PASS" : "FAIL"}  page references the prospect brand token`);
-  console.log(`  ${containsCompany ? "PASS" : "FAIL"}  page names the prospect company`);
-
-  const pass = ok && wearsBrand && containsCompany;
-  console.log(pass ? "\nSMOKE BUILDER: PASS" : "\nSMOKE BUILDER: FAIL");
-  if (!pass) process.exitCode = 1;
-} catch (e) {
-  console.error("SMOKE BUILDER: FAIL", (e as Error).constructor.name, (e as Error).message);
-  process.exitCode = 1;
+// Resolve the booking target for the CTA exactly as builder.ts does: prefer a
+// seller-supplied scheduling URL, else null so the CTA falls back to reply-to-email.
+function bookingUrl(profile: ProductProfile): string | null {
+  const link = profile.brand?.["cta_url"];
+  return typeof link === "string" && /^https?:\/\//.test(link) ? link : null;
 }
+
+// Load the researched object the research step produced, validated through the
+// same schema the worker runs (validateResearch). Hard fail when the file is
+// missing: the builder prompt is only meaningful over a real research object.
+// Diagnostics go to stderr so stdout stays a clean prompt for `| pbcopy`.
+let raw: string;
+try {
+  raw = readFileSync(RESEARCH_JSON_PATH, "utf8");
+} catch {
+  process.stderr.write(
+    `[smoke:builder] ${RESEARCH_JSON_PATH} not found. Run \`pnpm smoke:research\`, run that prompt in a Claude Code session, and write its research object to ${RESEARCH_JSON_PATH} (or set MIRENTA_RESEARCH_JSON) before running this.\n`,
+  );
+  process.exit(1);
+}
+let research;
+try {
+  research = validateResearch(JSON.parse(raw), vertical);
+} catch (e) {
+  process.stderr.write(
+    `[smoke:builder] ${RESEARCH_JSON_PATH} does not match the research contract: ${(e as Error).message}. Re-run \`pnpm smoke:research\` and follow its output schema exactly.\n`,
+  );
+  process.exit(1);
+}
+process.stderr.write(`[smoke:builder] loaded research from ${RESEARCH_JSON_PATH}\n`);
+
+// Assemble the prompt with no model call, mirroring buildSite step for step, then
+// print the system brief and per-lead user message to stdout.
+const valueModel = vertical.createValueModel(sampleProfile);
+const validatedInputs = valueModel.validateInputs(
+  research.extension.value_inputs,
+  research.extension.estimated,
+);
+const value = valueModel.compute(validatedInputs);
+
+const brand = research.brand;
+const tokens = deriveTokens(sampleProfile, brand, vertical.defaultAccentColor);
+const tokenBlock = renderTokenBlock(tokens);
+const logoUrl = resolveLogoUrl(sampleProfile, brand);
+const faviconHref = resolveFaviconHref(sampleLead.website_url, brand);
+const fontHref = resolveGoogleFontHref(brand?.font_family);
+const booking = bookingUrl(sampleProfile);
+
+const userPrompt = buildUserPrompt(
+  { lead: sampleLead, profile: sampleProfile, research, vertical },
+  value,
+  { tokenBlock, logoUrl, faviconHref, fontHref, booking },
+);
+
+process.stdout.write(`${DESIGN_BRIEF}\n\n${userPrompt}\n`);

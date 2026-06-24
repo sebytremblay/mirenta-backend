@@ -52,7 +52,7 @@ The Research Agent runs server-side on Claude Managed Agents (D9, D13, D50). Ant
 | `pnpm worker` | Start the worker tick loop. |
 | `pnpm pipeline` | Run one lead end to end and print the published URL. |
 
-The smoke scripts in `scripts/` exercise each external dependency on its own (`smoke-db`, `smoke-loop`, `smoke-research`, `smoke-builder`). They make real calls and cost a few cents each.
+The smoke scripts in `scripts/` exercise each piece on its own. `smoke-db` round-trips the durability layer against the live Supabase project. `smoke-research` and `smoke-builder` run NO live generation and spend no tokens: each assembles the exact prompt its agent would send and writes it to `/tmp`, so you can paste the prompt into a fresh Claude Code session and watch the model run the work by hand.
 
 ## API
 

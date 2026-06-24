@@ -69,6 +69,7 @@ test("an arbitrary stub spec computes through the value-model contract", () => {
     domains: ["Demand"],
     domainGuidance: "Surface demand-side priorities.",
     executiveTargeting: "Prioritize the VP of Demand.",
+    quoteTargeting: "Source verified quotes from the prospect's own executives.",
     defaultAccentColor: "#123456",
     inputGuidance: "Gather pipeline_value.",
     validateInputs: (raw, estimated) => ({

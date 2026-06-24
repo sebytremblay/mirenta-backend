@@ -67,7 +67,7 @@ Find up to ${EXECUTIVE_SLOTS} key executives at the company, prioritizing the ro
 
 ## Phase 3: Verifiable Quotes
 
-Extract public quotes from executives or spokespeople. Each quote must be a direct statement from interviews, press releases, LinkedIn posts, or blog posts, and must carry a source_url pointing to the original publication.
+Follow the quote-sourcing brief in your task message: it names whose voices to capture. Each quote must be a direct statement from interviews, press releases, LinkedIn posts, or blog posts, and must carry a source_url pointing to the original publication.
 
 Strict quote rigor (D37): after extracting a quote, re-fetch the source page with the Exa fetch tool and confirm the wording matches. Set verified: true only when the re-fetch confirms it. Any quote that fails re-fetch verification drops. Do not invent or paraphrase quotes.
 
@@ -77,13 +77,13 @@ Gather the numeric value inputs your task names and place them in extension.valu
 
 ## Phase 5: Brand Capture
 
-Read the prospect company's own website and capture its visual identity so the one-pager wears the prospect's brand, not a generic template. Populate the brand object:
-- primary_color, accent_color, background_color, text_color: the company's brand colors as #RRGGBB hex, read from their site's headers, buttons, and headings.
-- font_family: the primary typeface the site uses for headings or body.
-- logo_url: an absolute https URL to the company's logo image.
+Read the prospect company's own website and capture its visual identity so the one-pager wears the prospect's brand, not a generic template. A page that renders in a default system font on a generic palette reads as a template and fails; spend real effort here. Populate the brand object:
+- primary_color, accent_color, background_color, text_color: the company's brand colors as #RRGGBB hex, read from their site's headers, buttons, and headings. Capture the accent and text colors too, not the primary alone, so the page does not fall back to house grays.
+- font_family: the primary typeface the site uses for headings or body. Read it from the site's CSS, a Google Fonts link, or a font-family declaration.
+- logo_url: an absolute https URL to the company's logo image. Look in the header <img>, the og:image meta tag, the apple-touch-icon link, and common paths (/logo.svg, /logo.png, the favicon at higher resolution). Treat the logo as required effort: a one-pager with no prospect logo looks unfinished.
 - favicon_url: an absolute https URL to the company's favicon.
 
-Source every value from the prospect's real site. Omit any field you cannot confirm rather than guessing; a missing field falls back cleanly downstream. Provide absolute https URLs only, since the page serves over https.
+Source every value from the prospect's real site. Omit any field you genuinely cannot confirm rather than guessing, but exhaust the sources above before you omit the logo or a color. Provide absolute https URLs only, since the page serves over https.
 
 # Writing Style
 
@@ -126,6 +126,9 @@ ${vertical.domainGuidance}
 
 Executive targets (Phase 2):
 ${vertical.executiveTargeting}
+
+Quote sourcing (Phase 3):
+${vertical.quoteTargeting}
 
 Value inputs (Phase 4):
 ${vertical.inputGuidance}

@@ -131,6 +131,13 @@ export interface VerticalSpec {
   // two quick-links, and the banner landmark all still render), so it changes the
   // narrative, never the validated skeleton.
   narrativeGuidance?: string;
+  // Research Agent Phase 3 fragment: which voices to source quotes from. Required,
+  // so every vertical states its quote policy and the kickoff injects it on one
+  // path with no presence branch (D60). The founder-led vertical sources
+  // third-party voices and never the lead's own words; the others name their own
+  // targets. The D37 re-fetch verification rigor is orthogonal: this names whose
+  // words to capture, never whether to verify them.
+  quoteTargeting: string;
   // Phase 4 prompt fragment: names the numeric value_inputs keys the research agent
   // must gather and how to estimate them when they are not public. Exposed directly
   // on the spec (not on the bound value model) so the research agent can inject it

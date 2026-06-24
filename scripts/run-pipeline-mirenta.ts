@@ -51,7 +51,7 @@ try {
         first_name: "Finn",
         last_name: "Mallery",
         role: "Co-Founder and CEO",
-        company: "Origiami",
+        company: "Origami",
         website_url: "https://origami.chat/",
         email: "finn@origami.chat",
       },

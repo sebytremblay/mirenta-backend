@@ -74,6 +74,13 @@ test("tokens fall back independently on a partial prospect brand", () => {
   assert.equal(t.accent, VERTICAL_ACCENT); // accent defaults to the primary
 });
 
+test("deriveTokens carries the modernized neutral radius default", () => {
+  // The neutral baseline moved off the flat 10px toward a more contemporary scale.
+  // Property names stay fixed so var(--radius) and the token-paste contract hold.
+  const t = deriveTokens(profile(), { primary_color: "#aa0000" });
+  assert.equal(t.radius, "14px");
+});
+
 test("readableOn returns dark text on a light brand and white on a dark brand", () => {
   assert.equal(readableOn("#ffffff"), "#111111");
   assert.equal(readableOn("#fde047"), "#111111"); // light yellow

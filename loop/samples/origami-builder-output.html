@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Origami and Mirenta: hold the founder touch, take the hours back</title>
+  <link rel="icon" href="https://origami.chat/favicon.ico" />
+  <style>
+    :root {
+      --brand: #3b5bdb;
+      --brand-fg: #ffffff;
+      --accent: #3b5bdb;
+      --bg: #f7f8fa;
+      --surface: #ffffff;
+      --surface-muted: #f6f7f9;
+      --text: #1a1a1a;
+      --muted: #5b6472;
+      --border: #e7e9ee;
+      --radius: 14px;
+      --brand-tint: rgba(59, 91, 219, 0.05);
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: clamp(1rem, 0.96rem + 0.2vw, 1.0625rem);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .wrap {
+      width: min(1080px, 100% - 2.5rem);
+      margin-inline: auto;
+    }
+
+    h1, h2, h3 {
+      font-family: var(--font-display);
+      line-height: 1.08;
+      letter-spacing: -0.02em;
+      margin: 0;
+    }
+
+    p { margin: 0; }
+
+    a { color: var(--brand); }
+
+    a:focus-visible,
+    .quicklink:focus-visible {
+      outline: 2px solid var(--brand);
+      outline-offset: 3px;
+      border-radius: 4px;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    .eyebrow {
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--brand);
+      margin: 0 0 1.5rem;
+    }
+
+    /* Signature: a quiet crease rule that marks each section break. */
+    .crease {
+      position: relative;
+      height: 1px;
+      background: var(--border);
+      margin: 0;
+    }
+    .crease::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 64px;
+      height: 1px;
+      background: var(--brand);
+    }
+
+    section { padding-block: clamp(3.5rem, 2.5rem + 4vw, 5.5rem); }
+
+    .section-head {
+      display: grid;
+      gap: 0.75rem;
+      max-width: 46ch;
+      margin-bottom: 2.5rem;
+    }
+    .section-index {
+      font-family: var(--font-display);
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--brand);
+      letter-spacing: 0.04em;
+    }
+    .section-head h2 { font-size: clamp(1.6rem, 1.3rem + 1.4vw, 2.2rem); }
+    .section-head p { color: var(--muted); }
+
+    /* HERO */
+    header[role="banner"] {
+      background:
+        linear-gradient(180deg, var(--surface) 0%, var(--bg) 100%);
+      border-bottom: 1px solid var(--border);
+      padding-block: clamp(3.5rem, 2.5rem + 6vw, 6rem);
+    }
+    .hero-panel {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: clamp(1.75rem, 1.2rem + 3vw, 3.25rem);
+      overflow: hidden;
+      animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    }
+    /* the folded corner: Origami made literal, once, quietly */
+    .hero-panel::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 0;
+      height: 0;
+      border-style: solid;
+      border-width: 0 64px 64px 0;
+      border-color: transparent var(--brand-tint) transparent transparent;
+    }
+    .hero-panel::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 64px;
+      height: 64px;
+      background: linear-gradient(225deg, rgba(59, 91, 219, 0.12), transparent 60%);
+    }
+    .mirror-lines {
+      display: grid;
+      gap: 0.6rem;
+      max-width: 40ch;
+      margin-bottom: 1.75rem;
+    }
+    .mirror-lines p { font-size: clamp(1.05rem, 0.98rem + 0.5vw, 1.3rem); }
+    .mirror-lines .lead-line { color: var(--text); font-weight: 600; }
+    .mirror-lines .moment-line { color: var(--muted); }
+    .mirror-lines .seller-line { color: var(--text); }
+
+    .lockup {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding-block: 1rem;
+      margin-bottom: 1.75rem;
+      border-block: 1px solid var(--border);
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    .lockup img { height: 26px; width: auto; display: block; }
+    .lockup .seller-mark {
+      font-family: var(--font-display);
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+    .lockup .divider {
+      width: 1px;
+      height: 22px;
+      background: var(--border);
+    }
+
+    header h1 {
+      font-size: clamp(2rem, 1.4rem + 3vw, 3.25rem);
+      max-width: 18ch;
+      margin-bottom: 1.1rem;
+    }
+    .hero-lede {
+      color: var(--muted);
+      max-width: 52ch;
+      font-size: clamp(1.05rem, 1rem + 0.3vw, 1.2rem);
+      margin-bottom: 2rem;
+    }
+
+    .quicklinks { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+    .quicklink {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.7rem 1.15rem;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      text-decoration: none;
+    }
+    .quicklink.primary { background: var(--brand); color: var(--brand-fg); }
+    .quicklink.ghost {
+      background: transparent;
+      color: var(--brand);
+      border: 1px solid var(--border);
+    }
+    .quicklink .arrow { font-weight: 700; }
+
+    /* CARD GRIDS */
+    .cards {
+      display: grid;
+      gap: 1.25rem;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.75rem;
+      display: grid;
+      gap: 0.85rem;
+      align-content: start;
+    }
+    .card .marker {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 0.82rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--brand);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .card .marker::before {
+      content: "";
+      width: 24px;
+      height: 2px;
+      background: var(--brand);
+      display: inline-block;
+    }
+    .card h3 { font-size: 1.2rem; }
+    .card p { color: var(--muted); }
+
+    .challenges { background: var(--brand-tint); }
+    .challenges .card { background: var(--surface); }
+
+    /* POINT OF VIEW */
+    .pov-intro {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--brand);
+      border-radius: var(--radius);
+      padding: 1.75rem;
+      max-width: 60ch;
+      margin-bottom: 2rem;
+      font-size: clamp(1.05rem, 1rem + 0.3vw, 1.2rem);
+    }
+    .pov-grid {
+      display: grid;
+      gap: 1.5rem;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+    .pov-item { display: grid; gap: 0.75rem; align-content: start; }
+    .pov-item .tag {
+      font-family: var(--font-display);
+      font-weight: 700;
+      color: var(--text);
+      font-size: 1.05rem;
+    }
+    .pov-item .tag span { color: var(--brand); }
+    .pov-item p { color: var(--muted); }
+
+    /* BUSINESS CASE */
+    .case { background: var(--surface); border-block: 1px solid var(--border); }
+    .case-headline {
+      font-size: clamp(1.5rem, 1.2rem + 1.4vw, 2.1rem);
+      margin-bottom: 2.25rem;
+      max-width: 22ch;
+    }
+    .case-headline .figure { color: var(--brand); }
+
+    .tiles {
+      display: grid;
+      gap: 1.25rem;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      margin-bottom: 3rem;
+    }
+    .tile {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      background: var(--surface-muted);
+    }
+    .tile-value {
+      display: block;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: clamp(1.9rem, 1.5rem + 1.6vw, 2.6rem);
+      letter-spacing: -0.03em;
+      color: var(--text);
+    }
+    .tile-label {
+      display: block;
+      margin-top: 0.5rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    figure.chart { margin: 0 0 3rem; }
+    figure.chart svg { width: 100%; height: auto; display: block; }
+    .chart .bar { fill: var(--brand); }
+    .chart .bar.b1 { opacity: 0.45; }
+    .chart .bar.b2 { opacity: 0.72; }
+    .chart .bar.b3 { opacity: 1; }
+    .chart .axis { stroke: var(--border); stroke-width: 1; }
+    .chart .bar-val {
+      fill: var(--text);
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 17px;
+    }
+    .chart .bar-label {
+      fill: var(--muted);
+      font-family: var(--font-sans);
+      font-size: 13px;
+    }
+    figcaption { color: var(--muted); font-size: 0.85rem; margin-top: 0.75rem; }
+
+    .scenarios {
+      display: grid;
+      gap: 1.25rem;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
+    .scenario {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+    }
+    .scenario.expected { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand); }
+    .scenario .name {
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--brand);
+    }
+    .scenario .value {
+      display: block;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.9rem;
+      letter-spacing: -0.02em;
+      margin-top: 0.75rem;
+    }
+    .scenario .vlabel { color: var(--muted); font-size: 0.9rem; }
+    .scenario .secondary {
+      margin-top: 0.85rem;
+      padding-top: 0.85rem;
+      border-top: 1px solid var(--border);
+      font-weight: 600;
+    }
+    .footnote { color: var(--muted); font-size: 0.85rem; margin-top: 2rem; max-width: 70ch; }
+
+    /* CTA */
+    .cta { text-align: center; }
+    .cta .panel {
+      background: var(--brand);
+      color: var(--brand-fg);
+      border-radius: var(--radius);
+      padding: clamp(2.5rem, 2rem + 3vw, 4rem);
+    }
+    .cta h2 { color: var(--brand-fg); font-size: clamp(1.6rem, 1.3rem + 1.4vw, 2.2rem); }
+    .cta p { color: rgba(255, 255, 255, 0.85); max-width: 48ch; margin: 1rem auto 1.75rem; }
+    .cta .action {
+      display: inline-block;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.05rem;
+      padding: 0.85rem 1.6rem;
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      border-radius: 999px;
+    }
+
+    /* FOOTER */
+    footer[role="contentinfo"] {
+      padding-block: 2.5rem;
+      border-top: 1px solid var(--border);
+    }
+    footer p { color: var(--muted); font-size: 0.82rem; max-width: 80ch; }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .hero-panel { animation: none; }
+      * { transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <header role="banner" aria-labelledby="hero-title">
+    <div class="wrap">
+      <div class="hero-panel">
+        <p class="eyebrow">For Finn Mallery, Co-Founder and CEO, Origami</p>
+
+        <div class="mirror-lines">
+          <p class="lead-line">You proved the motion by hand, and now it lives in your hours.</p>
+          <p class="moment-line">You wrote 3,119 cold emails yourself, roughly 77 a day, one named founder at a time.</p>
+          <p class="seller-line">I run outbound the same way, so I built Mirenta.</p>
+        </div>
+
+        <div class="lockup">
+          <img src="https://origami.chat/Origamidark-3.svg" alt="Origami" />
+          <span class="divider" aria-hidden="true"></span>
+          <span class="seller-mark">Mirenta</span>
+        </div>
+
+        <h1 id="hero-title">Your hours are the bottleneck, not the motion.</h1>
+        <p class="hero-lede">The play works. The open question is how many first reference accounts you start while you also write code and recruit a team.</p>
+
+        <div class="quicklinks">
+          <a class="quicklink primary" href="#business-case">See what you get back <span class="arrow" aria-hidden="true">&rarr;</span></a>
+          <a class="quicklink ghost" href="#book">Book a working session</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="wrap"><div class="crease"></div></div>
+
+    <section id="priorities" aria-labelledby="priorities-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="section-index">01</span>
+          <h2 id="priorities-title">What you are working on now</h2>
+          <p>Two priorities sit on top of the company at 50,000 dollars in monthly recurring revenue and a fresh seed round.</p>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <span class="marker">Go to market</span>
+            <h3>Slow and specific, at founder quality</h3>
+            <p>You proved the motion by hand, because slow and specific beats spray and pray. The constraint now is not whether it works. The motion lives in your own hours, and your hours do not scale.</p>
+          </article>
+          <article class="card">
+            <span class="marker">Growth</span>
+            <h3>The accounts that compound</h3>
+            <p>Reference customers are the proof that compounds. CBRE, Clipboard Health, and Remote.com do more for the next deal than any feature line. The next leg runs on buyers you cannot reach through volume.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="challenges" class="challenges" aria-labelledby="challenges-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="section-index">02</span>
+          <h2 id="challenges-title">The pressure each one creates</h2>
+          <p>Each priority pulls on the same scarce resource: your calendar.</p>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <span class="marker">From go to market</span>
+            <h3>Every first touch costs an hour you owe elsewhere</h3>
+            <p>A founder-quality first touch costs an hour you also owe to code and to recruiting. The cap on first reference accounts is your own calendar, not the strength of the play.</p>
+          </article>
+          <article class="card">
+            <span class="marker">From growth</span>
+            <h3>The hardest buyers demand the hand made touch</h3>
+            <p>The accounts worth landing demand the hand-researched, founder-written touch you believe in. Those are exactly the touches your own time bottlenecks first.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="point-of-view" aria-labelledby="pov-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="section-index">03</span>
+          <h2 id="pov-title">Where Mirenta fits your goals</h2>
+        </div>
+        <p class="pov-intro">Mirenta turns your lead list into one hyper-personalized one-pager per prospect, so every outbound touch opens on research the prospect recognizes as their own priorities.</p>
+        <div class="pov-grid">
+          <div class="pov-item">
+            <span class="tag"><span>Go to market.</span> Hold the quality, take the hours back.</span>
+            <p>Mirenta researches each named founder and builds the page, so the specificity of your by-hand touch survives without the hour it used to cost you. You keep the standard, and you keep your time.</p>
+          </div>
+          <div class="pov-item">
+            <span class="tag"><span>Growth.</span> Open more of the accounts that resist volume.</span>
+            <p>Each page mirrors the buyer's own priority on the first read. The hand-researched touch you reserve for a handful of accounts now reaches the full list of buyers worth landing.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="business-case" class="case" aria-labelledby="case-title">
+      <div class="wrap">
+        <div class="section-head">
+          <span class="section-index">04</span>
+          <h2 id="case-title">What you get back</h2>
+        </div>
+        <p class="case-headline">Expected first-year return: <span class="figure"><span class="tile-value" data-count="7.8" data-decimals="1" data-suffix="x" style="font-size:inherit;display:inline">7.8x</span></span></p>
+
+        <div class="tiles">
+          <div class="tile">
+            <span class="tile-value" data-count="1.6" data-decimals="1" data-suffix=" mo">1.6 mo</span>
+            <span class="tile-label">Payback period</span>
+          </div>
+          <div class="tile">
+            <span class="tile-value" data-count="384" data-suffix=" hrs">384 hrs</span>
+            <span class="tile-label">Hours returned per year</span>
+          </div>
+          <div class="tile">
+            <span class="tile-value" data-count="8" data-prefix="$" data-suffix="K">$8K</span>
+            <span class="tile-label">First-year cost</span>
+          </div>
+        </div>
+
+        <figure class="chart">
+          <svg viewBox="0 0 640 320" role="img" aria-labelledby="chart-title chart-desc">
+            <title id="chart-title">Value created across three first-year scenarios</title>
+            <desc id="chart-desc">A bar chart comparing value created in the Conservative scenario at 45 thousand dollars, the Expected scenario at 62 thousand dollars, and the Aggressive scenario at 72 thousand dollars.</desc>
+            <line class="axis" x1="40" y1="260" x2="600" y2="260"></line>
+
+            <rect class="bar b1" x="95" y="122" width="90" height="138" rx="4"></rect>
+            <text class="bar-val" x="140" y="110" text-anchor="middle">$45K</text>
+            <text class="bar-label" x="140" y="284" text-anchor="middle">Conservative</text>
+
+            <rect class="bar b2" x="275" y="71" width="90" height="189" rx="4"></rect>
+            <text class="bar-val" x="320" y="59" text-anchor="middle">$62K</text>
+            <text class="bar-label" x="320" y="284" text-anchor="middle">Expected</text>
+
+            <rect class="bar b3" x="455" y="40" width="90" height="220" rx="4"></rect>
+            <text class="bar-val" x="500" y="28" text-anchor="middle">$72K</text>
+            <text class="bar-label" x="500" y="284" text-anchor="middle">Aggressive</text>
+          </svg>
+          <figcaption>Value created in the first year, by scenario.</figcaption>
+        </figure>
+
+        <div class="scenarios">
+          <div class="scenario">
+            <span class="name">Conservative</span>
+            <span class="value">$45K</span>
+            <span class="vlabel">Value created</span>
+            <div class="secondary">5.6x return</div>
+          </div>
+          <div class="scenario expected">
+            <span class="name">Expected</span>
+            <span class="value">$62K</span>
+            <span class="vlabel">Value created</span>
+            <div class="secondary">7.8x return</div>
+          </div>
+          <div class="scenario">
+            <span class="name">Aggressive</span>
+            <span class="value">$72K</span>
+            <span class="vlabel">Value created</span>
+            <div class="secondary">9.0x return</div>
+          </div>
+        </div>
+
+        <p class="footnote">These figures model early founder-led use and sharpen as you run real outreach. In the Expected case the $62K splits into $4K from deals won (the extra replies the page earns, carried through to closed deals) and $58K from the 384 founder hours it returns, valued at $150 per hour; the return multiple is value created over the first-year cost.</p>
+      </div>
+    </section>
+
+    <section id="book" class="cta" aria-labelledby="cta-title">
+      <div class="wrap">
+        <div class="panel">
+          <h2 id="cta-title">Book a working session</h2>
+          <p>Bring three named accounts you have wanted to open by hand. We build the pages live and you judge whether each one reads as your own research.</p>
+          <p class="action">Reply to the outreach email to claim a time.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer role="contentinfo">
+    <div class="wrap">
+      <p>Mirenta prepares this page for Origami. The value figures model industry benchmarks and serve as illustration pending discovery. Confirm them against your own operational data before external use.</p>
+    </div>
+  </footer>
+</body>
+</html>

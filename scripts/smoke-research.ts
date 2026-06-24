@@ -1,119 +1,59 @@
-// Smoke test for the research agent: run a real lead through the full loop
-// and verify the output shape. This makes real Anthropic API and Exa calls
-// (a few cents per run), so it is a live integration test, not a unit test.
+// Cost-free smoke for the Research Agent prompt. Spends no tokens: no Managed
+// Agents session, no Exa search. It assembles the EXACT prompt the research agent
+// runs for the customer-zero lead (Finn Mallery, Co-Founder and CEO at Origami)
+// and prints it to stdout, so `pnpm smoke:research | pbcopy` captures the prompt
+// ready to paste into a fresh Claude Code session. The lead and seller mirror
+// scripts/run-pipeline-mirenta.ts.
 //
-// Run: timeout 240 node scripts/smoke-research.ts
+// The live agent finishes by calling the forced emit_research tool, which pins the
+// output to RESEARCH_TOOL_SCHEMA. A pasted Claude Code session has no such tool, so
+// without the schema it invents field names (full_name instead of name) and the
+// builder smoke rejects the result. The prompt therefore appends the exact schema
+// and a write-to-file target, so smoke:builder can consume the output verbatim.
 
-import { runResearch } from "../src/agents/research.ts";
-import { employeeServiceVertical } from "../src/verticals/employee-service.ts";
+import { rmSync } from "node:fs";
+import { buildAgentSystemPrompt, buildKickoff } from "../src/agents/research.ts";
+import { RESEARCH_TOOL_SCHEMA } from "../src/domain/research.ts";
+import { founderLedSalesVertical } from "../src/verticals/founder-led-sales.ts";
 
-const vertical = employeeServiceVertical;
+const vertical = founderLedSalesVertical;
+const RESEARCH_JSON_PATH =
+  process.env.MIRENTA_RESEARCH_JSON ?? "/tmp/mirenta-research.json";
+
+// Delete any prior research file so a stale object from an earlier run cannot
+// silently feed smoke:builder. The pasted session writes a fresh one. Diagnostics
+// go to stderr so stdout stays a clean prompt for `| pbcopy`.
+rmSync(RESEARCH_JSON_PATH, { force: true });
+process.stderr.write(`[smoke:research] cleared ${RESEARCH_JSON_PATH}\n`);
 
 const lead = {
-  first_name: "Jordan",
-  last_name: "Avery",
-  role: "VP of IT",
-  company: "Plexus Corp",
-  website_url: "https://www.plexus.com",
+  first_name: "Finn",
+  last_name: "Mallery",
+  role: "Co-Founder and CEO",
+  company: "Origami",
+  website_url: "https://origami.chat/",
 };
 
 const profile = {
-  company_name: "Salesforce",
-  product_name: "Agentforce for IT Service and HR Service",
+  company_name: "Mirenta",
+  product_name: "Mirenta",
   value_prop:
-    "AI agents that deflect IT and HR support volume across the enterprise",
+    "Mirenta turns a lead list into one hyper-personalized one-pager website per prospect, so every outbound touch opens with research the prospect recognizes as their own priorities",
 };
 
-console.log(`Starting research for ${lead.company}...`);
-console.log();
+const systemPrompt = buildAgentSystemPrompt();
+const kickoff = buildKickoff({ lead, profile, vertical });
 
-try {
-  const { research: result, usage } = await runResearch({
-    lead,
-    profile,
-    vertical,
-    onStep: (s) => console.log(`  [${s.phase}] ${s.detail}`),
-  });
+// Replace the live emit_research tool call with a write to disk that smoke:builder
+// reads. The object MUST match RESEARCH_TOOL_SCHEMA verbatim, the same shape the
+// forced tool enforces in production.
+const outputContract = `# Output (replaces the emit_research tool)
 
-  console.log();
-  console.log("=== RESEARCH RESULT ===");
-  console.log();
-  console.log(`Vertical: ${result.vertical}`);
-  console.log(`Account summary: ${result.account.summary.slice(0, 100)}...`);
-  console.log(`Recent moves: ${result.account.recent_moves.length} items`);
-  console.log(
-    `Self-description: ${result.account.self_description_language.slice(0, 80)}...`,
-  );
-  console.log();
-  console.log(`Executives: ${result.executives.length}`);
-  for (const exec of result.executives) {
-    console.log(`  - ${exec.name}, ${exec.title}`);
-  }
-  console.log();
-  console.log(`Quotes: ${result.quotes.length}`);
-  for (const quote of result.quotes) {
-    console.log(
-      `  - "${quote.text.slice(0, 60)}..." (${quote.speaker}, verified: ${quote.verified})`,
-    );
-  }
-  console.log();
-  console.log(`Domains: ${result.extension.domains.join(", ")}`);
-  console.log(`Priorities: ${result.extension.priorities.length}`);
-  for (const pri of result.extension.priorities) {
-    console.log(`  - ${pri.domain}: ${pri.pov.slice(0, 60)}...`);
-  }
-  console.log();
-  console.log("Value inputs:");
-  for (const [key, val] of Object.entries(result.extension.value_inputs)) {
-    console.log(`  ${key}: ${val}`);
-  }
-  console.log(`  Estimated: ${result.extension.estimated}`);
-  console.log();
-  console.log(
-    `Token usage: ${usage.requests} requests, ${usage.input_tokens} in / ${usage.output_tokens} out, ` +
-      `cache ${usage.cache_creation_tokens} write / ${usage.cache_read_tokens} read`,
-  );
-  console.log();
+This session has no emit_research tool. When all five phases finish, write the
+complete research object as JSON to ${RESEARCH_JSON_PATH}. Write nothing else to
+that file. The object MUST match this exact JSON Schema (the live emit_research tool
+enforces it; mismatched field names are rejected downstream):
 
-  // Assertions
-  const checks = [
-    {
-      name: "has at least one executive",
-      pass: result.executives.length >= 1,
-    },
-    {
-      name: "total_employees > 0",
-      pass: (result.extension.value_inputs.total_employees ?? 0) > 0,
-    },
-    { name: "vertical matches the spec", pass: result.vertical === vertical.id },
-    {
-      name: "has account summary",
-      pass: result.account.summary.length > 0,
-    },
-  ];
+${JSON.stringify(RESEARCH_TOOL_SCHEMA, null, 2)}`;
 
-  console.log("=== CHECKS ===");
-  let allPass = true;
-  for (const check of checks) {
-    console.log(`  ${check.pass ? "✓" : "✗"} ${check.name}`);
-    if (!check.pass) allPass = false;
-  }
-  console.log();
-
-  if (allPass) {
-    console.log("SMOKE RESEARCH: PASS");
-  } else {
-    console.log("SMOKE RESEARCH: FAIL (assertion failed)");
-    process.exitCode = 1;
-  }
-} catch (e) {
-  console.error();
-  console.error("SMOKE RESEARCH: FAIL");
-  console.error(
-    `  ${(e as Error).constructor.name}: ${(e as Error).message}`,
-  );
-  if ((e as Error).stack) {
-    console.error((e as Error).stack);
-  }
-  process.exitCode = 1;
-}
+process.stdout.write(`${systemPrompt}\n\n${kickoff}\n\n${outputContract}\n`);
