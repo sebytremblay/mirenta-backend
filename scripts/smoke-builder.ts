@@ -1,8 +1,13 @@
-// Prints the builder prompts so a human can paste them into a Claude Code
-// session and generate the page by hand. This makes NO live API call. It reads
-// the research object the research smoke produced (/tmp/mirenta-research.json)
-// and falls back to a bundled founder sample when that file is absent, then
-// builds the exact system prompt and user prompt the builder would send.
+// Delivers the builder prompt so a human can paste it into a Claude Code session
+// and generate the page by hand. This makes NO live API call. It reads the
+// research object the research smoke produced (/tmp/mirenta-research.json) and
+// falls back to a bundled founder sample when that file is absent.
+//
+// stdout carries ONLY the prompt, so it pipes clean:
+//   npm run --silent smoke:builder | pbcopy
+// On macOS the prompt also copies to the clipboard automatically. Diagnostics
+// and wiring checks print to stderr, so they never pollute the copied text.
+import { spawnSync } from "node:child_process";
 import {
   DESIGN_BRIEF,
   buildUserPrompt,
@@ -127,17 +132,20 @@ function loadResearch(): { research: ResearchObject; source: string } {
   }
 }
 
-const rule = "=".repeat(72);
+function copyToClipboard(text: string): boolean {
+  try {
+    return spawnSync("pbcopy", { input: text }).status === 0;
+  } catch {
+    return false;
+  }
+}
+
+const log = (line = ""): void => {
+  process.stderr.write(`${line}\n`);
+};
 
 try {
   const { research, source } = loadResearch();
-  console.log(rule);
-  console.log(`SMOKE BUILDER (no API call) — vertical: ${vertical.id}`);
-  console.log(rule);
-  console.log(`Loaded research from: ${source}`);
-  console.log(`Prospect: ${research.account.summary.slice(0, 80)}...`);
-  console.log(`Voices: ${research.voices.length}; stage band: ${research.extension.context.stage_band ?? "n/a"}`);
-  console.log();
 
   // Compute the value model exactly as buildSite does, threading context.
   const valueModel = vertical.createValueModel(sampleProfile);
@@ -170,56 +178,59 @@ try {
     booking: null,
   });
 
-  console.log(rule);
-  console.log("BUILDER SYSTEM PROMPT (DESIGN BRIEF)");
-  console.log(rule);
-  console.log(DESIGN_BRIEF);
-  console.log();
-  console.log(rule);
-  console.log("USER PROMPT (seeded with the loaded research)");
-  console.log(rule);
-  console.log(userPrompt);
-  console.log();
+  // The full pasteable prompt: the design brief followed by the seeded task.
+  const prompt = `${DESIGN_BRIEF}\n\n${userPrompt}`;
+
+  const copied = copyToClipboard(prompt);
+
+  // stdout: the raw prompt only when piped, so `| pbcopy` carries exactly it.
+  if (!process.stdout.isTTY) {
+    process.stdout.write(prompt);
+  }
+
+  log(`smoke:builder — vertical ${vertical.id}`);
+  log(`Loaded research from ${source}.`);
+  log(`Voices ${research.voices.length}; stage band ${research.extension.context.stage_band ?? "n/a"}.`);
+  log(copied ? "Copied the builder prompt to the clipboard." : "pbcopy unavailable; pipe stdout instead.");
+  log("Paste it into a Claude Code session to generate the page.");
+  log();
 
   const checks = [
     {
       name: "value render carries the headline expression verbatim",
-      pass: userPrompt.includes(value.headline.value),
+      pass: prompt.includes(value.headline.value),
     },
     {
       name: "value render carries the mechanism sentence",
-      pass: userPrompt.includes(value.mechanism),
+      pass: prompt.includes(value.mechanism),
     },
     {
-      name: "user prompt names the prospect company",
-      pass: userPrompt.includes(sampleLead.company),
+      name: "prompt names the prospect company",
+      pass: prompt.includes(sampleLead.company),
     },
     {
-      name: "system prompt asks founder to founder, not for a demo booking",
+      name: "design brief asks founder to founder, not for a demo booking",
       pass: /founder-to-founder|founder to founder/i.test(DESIGN_BRIEF),
     },
     {
-      name: "system prompt forbids the old metric tiles, charts, and scenario cards",
+      name: "design brief forbids the old metric tiles, charts, and scenario cards",
       pass: /no metric tiles/i.test(DESIGN_BRIEF) && /no\b[^.]*scenario cards/i.test(DESIGN_BRIEF),
     },
     {
-      name: "system prompt renders the value expression and its mechanism",
+      name: "design brief renders the value expression and its mechanism",
       pass: /headline value expression/i.test(DESIGN_BRIEF) && /mechanism/i.test(DESIGN_BRIEF),
     },
   ];
 
-  console.log(rule);
-  console.log("CHECKS");
-  console.log(rule);
   let allPass = true;
   for (const check of checks) {
-    console.log(`  ${check.pass ? "PASS" : "FAIL"}  ${check.name}`);
+    log(`  ${check.pass ? "PASS" : "FAIL"}  ${check.name}`);
     if (!check.pass) allPass = false;
   }
-  console.log();
-  console.log(allPass ? "SMOKE BUILDER: PASS" : "SMOKE BUILDER: FAIL (a prompt check failed)");
+  log();
+  log(allPass ? "SMOKE BUILDER: PASS" : "SMOKE BUILDER: FAIL (a prompt check failed)");
   if (!allPass) process.exitCode = 1;
 } catch (e) {
-  console.error("SMOKE BUILDER: FAIL", (e as Error).constructor.name, (e as Error).message);
+  log(`SMOKE BUILDER: FAIL ${(e as Error).constructor.name}: ${(e as Error).message}`);
   process.exitCode = 1;
 }

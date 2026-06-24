@@ -1,7 +1,11 @@
-// Prints the research agent prompts so a human can paste them into a Claude Code
-// session and run the research by hand. This makes NO live API call: it builds
-// the exact system prompt and kickoff the worker would send, then tells you
-// where to save the emitted research object for the builder smoke to read.
+// Delivers the research agent prompt so a human can paste it into a Claude Code
+// session and run the research by hand. This makes NO live API call.
+//
+// stdout carries ONLY the prompt, so it pipes clean:
+//   npm run --silent smoke:research | pbcopy
+// On macOS the prompt also copies to the clipboard automatically. Diagnostics
+// and wiring checks print to stderr, so they never pollute the copied text.
+import { spawnSync } from "node:child_process";
 import { buildAgentSystemPrompt, buildKickoff } from "../src/agents/research.ts";
 import { salesMarketingVertical } from "../src/verticals/sales-marketing.ts";
 
@@ -28,61 +32,60 @@ const profile = {
 const systemPrompt = buildAgentSystemPrompt();
 const kickoff = buildKickoff({ lead, profile, vertical });
 
-const rule = "=".repeat(72);
+// The full pasteable prompt: the agent role followed by its first task.
+const prompt = `${systemPrompt}\n\n${kickoff}`;
 
-console.log(rule);
-console.log(`SMOKE RESEARCH (no API call) — vertical: ${vertical.id}`);
-console.log(rule);
-console.log();
-console.log("Paste the SYSTEM PROMPT and the KICKOFF into a Claude Code session");
-console.log("with the Exa web search tools attached. Let the agent run the five");
-console.log(`phases, then save the emitted research object to:\n  ${RESEARCH_OUT}`);
-console.log("The builder smoke reads that file.");
-console.log();
-console.log(rule);
-console.log("RESEARCH SYSTEM PROMPT");
-console.log(rule);
-console.log(systemPrompt);
-console.log();
-console.log(rule);
-console.log("KICKOFF (first user message)");
-console.log(rule);
-console.log(kickoff);
-console.log();
+// Copy to the macOS clipboard when pbcopy exists, so the prompt is paste-ready.
+function copyToClipboard(text: string): boolean {
+  try {
+    return spawnSync("pbcopy", { input: text }).status === 0;
+  } catch {
+    return false;
+  }
+}
 
-// Cheap structural checks on the prompts, so the smoke still catches a prompt
-// that drifts back to the enterprise framing.
+const copied = copyToClipboard(prompt);
+
+// stdout: the raw prompt only when piped, so `| pbcopy` carries exactly it.
+if (!process.stdout.isTTY) {
+  process.stdout.write(prompt);
+}
+
+// stderr: everything human-facing.
+const log = (line = ""): void => {
+  process.stderr.write(`${line}\n`);
+};
+
+log(`smoke:research — vertical ${vertical.id}`);
+log(copied ? "Copied the research prompt to the clipboard." : "pbcopy unavailable; pipe stdout instead.");
+log(`Paste it into a Claude Code session with the Exa search tools, run the five`);
+log(`phases, then save the emitted research object to ${RESEARCH_OUT}.`);
+log();
+
 const checks = [
   {
-    name: "system prompt hunts respected voices, not an executive roster",
-    pass: /respect|voice/i.test(systemPrompt) && !/\bexecutive roster\b/i.test(systemPrompt),
+    name: "prompt hunts respected voices, not an executive roster",
+    pass: /respect|voice/i.test(prompt) && !/\bexecutive roster\b/i.test(prompt),
   },
   {
-    name: "system prompt names the self/backer/tribe ladder",
-    pass: /self/.test(systemPrompt) && /backer/.test(systemPrompt) && /tribe/.test(systemPrompt),
+    name: "prompt names the self/backer/tribe ladder",
+    pass: /self/.test(prompt) && /backer/.test(prompt) && /tribe/.test(prompt),
   },
   {
-    name: "kickoff carries the vertical voice targeting",
-    pass: kickoff.includes(vertical.voiceTargeting.slice(0, 24)),
+    name: "prompt carries the vertical voice targeting",
+    pass: prompt.includes(vertical.voiceTargeting.slice(0, 24)),
   },
   {
-    name: "kickoff names the vertical id",
-    pass: kickoff.includes(vertical.id),
+    name: "prompt names the vertical id",
+    pass: prompt.includes(vertical.id),
   },
 ];
 
-console.log(rule);
-console.log("CHECKS");
-console.log(rule);
 let allPass = true;
 for (const check of checks) {
-  console.log(`  ${check.pass ? "PASS" : "FAIL"}  ${check.name}`);
+  log(`  ${check.pass ? "PASS" : "FAIL"}  ${check.name}`);
   if (!check.pass) allPass = false;
 }
-console.log();
-if (allPass) {
-  console.log("SMOKE RESEARCH: PASS");
-} else {
-  console.log("SMOKE RESEARCH: FAIL (a prompt check failed)");
-  process.exitCode = 1;
-}
+log();
+log(allPass ? "SMOKE RESEARCH: PASS" : "SMOKE RESEARCH: FAIL (a prompt check failed)");
+if (!allPass) process.exitCode = 1;
