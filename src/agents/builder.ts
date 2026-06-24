@@ -28,7 +28,9 @@ const REQUIRED_ANCHORS = ["#business-case", "#book"];
 
 const MAX_ATTEMPTS = 3;
 
-const PAGE_TOOL_SCHEMA = {
+export const EMIT_PAGE_TOOL = "emit_page";
+
+export const PAGE_TOOL_SCHEMA = {
   type: "object",
   properties: {
     html: {
@@ -111,7 +113,7 @@ export async function buildSite(input: BuildSiteInput): Promise<BuildSiteResult>
       system: DESIGN_BRIEF,
       prompt,
       tool: {
-        name: "emit_page",
+        name: EMIT_PAGE_TOOL,
         description: "Emit the complete self-contained HTML one-pager.",
         input_schema: PAGE_TOOL_SCHEMA,
       },

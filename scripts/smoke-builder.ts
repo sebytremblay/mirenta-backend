@@ -13,6 +13,7 @@ import {
   buildUserPrompt,
   type BuildSiteInput,
 } from "../src/agents/builder-prompt.ts";
+import { EMIT_PAGE_TOOL, PAGE_TOOL_SCHEMA } from "../src/agents/builder.ts";
 import {
   deriveTokens,
   renderTokenBlock,
@@ -196,8 +197,23 @@ try {
     booking: null,
   });
 
-  // The full pasteable prompt: the design brief followed by the seeded task.
-  const prompt = `${DESIGN_BRIEF}\n\n${userPrompt}`;
+  // In production the builder calls the emit_page tool, whose argument shape is
+  // PAGE_TOOL_SCHEMA. A pasted Claude Code session has no such tool, so spell the
+  // structured output out: return the page as JSON matching the exact schema the
+  // tool enforces. The schema is the one source of truth, printed verbatim, so
+  // the smoke never drifts from the builder.
+  const outputContract = `# Structured output
+
+This session has no ${EMIT_PAGE_TOOL} tool. Instead of calling it, produce its argument as JSON.
+
+Write a single JSON object that conforms EXACTLY to this JSON Schema (the same schema the ${EMIT_PAGE_TOOL} tool enforces in production). The "html" field holds the COMPLETE document, from <!DOCTYPE html> through </html>. Emit the JSON inside one \`\`\`json block and nothing else:
+
+\`\`\`json
+${JSON.stringify(PAGE_TOOL_SCHEMA, null, 2)}
+\`\`\``;
+
+  // The full pasteable prompt: the design brief, the seeded task, the output shape.
+  const prompt = `${DESIGN_BRIEF}\n\n${userPrompt}\n\n${outputContract}`;
 
   const copied = copyToClipboard(prompt);
 
@@ -237,6 +253,12 @@ try {
     {
       name: "design brief renders the value expression and its mechanism",
       pass: /headline value expression/i.test(DESIGN_BRIEF) && /mechanism/i.test(DESIGN_BRIEF),
+    },
+    {
+      name: "prompt carries the emit_page structured-output schema with every required key",
+      pass:
+        prompt.includes(EMIT_PAGE_TOOL) &&
+        PAGE_TOOL_SCHEMA.required.every((k) => prompt.includes(`"${k}"`)),
     },
   ];
 
