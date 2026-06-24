@@ -6,7 +6,8 @@
 // On macOS the prompt also copies to the clipboard automatically. Diagnostics
 // and wiring checks print to stderr, so they never pollute the copied text.
 import { spawnSync } from "node:child_process";
-import { buildAgentSystemPrompt, buildKickoff } from "../src/agents/research.ts";
+import { buildAgentSystemPrompt, buildKickoff, EMIT_RESEARCH_TOOL } from "../src/agents/research.ts";
+import { RESEARCH_TOOL_SCHEMA } from "../src/domain/research.ts";
 import { salesMarketingVertical } from "../src/verticals/sales-marketing.ts";
 
 // The research output path the builder smoke reads. Keep the two scripts in sync.
@@ -32,8 +33,25 @@ const profile = {
 const systemPrompt = buildAgentSystemPrompt();
 const kickoff = buildKickoff({ lead, profile, vertical });
 
-// The full pasteable prompt: the agent role followed by its first task.
-const prompt = `${systemPrompt}\n\n${kickoff}`;
+// In production the agent calls the emit_research tool, whose argument shape is
+// RESEARCH_TOOL_SCHEMA. A pasted Claude Code session has no such tool, so spell
+// the structured output out: emit JSON matching the exact schema validateResearch
+// enforces, and save it where the builder smoke reads it. The schema is the one
+// source of truth, printed verbatim, so the smoke never drifts from the worker.
+const outputContract = `# Structured output
+
+This session has no ${EMIT_RESEARCH_TOOL} tool. Instead of calling it, produce its argument as JSON.
+
+Write a single JSON object that conforms EXACTLY to this JSON Schema (the same schema the ${EMIT_RESEARCH_TOOL} tool enforces in production). Emit no prose, no markdown fences around the final answer beyond one \`\`\`json block, and no fields outside the schema:
+
+\`\`\`json
+${JSON.stringify(RESEARCH_TOOL_SCHEMA, null, 2)}
+\`\`\`
+
+Set "vertical" to "${vertical.id}". Save the JSON object to ${RESEARCH_OUT} so the builder step can read it.`;
+
+// The full pasteable prompt: the agent role, its first task, and the output shape.
+const prompt = `${systemPrompt}\n\n${kickoff}\n\n${outputContract}`;
 
 // Copy to the macOS clipboard when pbcopy exists, so the prompt is paste-ready.
 function copyToClipboard(text: string): boolean {
@@ -78,6 +96,10 @@ const checks = [
   {
     name: "prompt names the vertical id",
     pass: prompt.includes(vertical.id),
+  },
+  {
+    name: "prompt carries the structured-output schema with every required key",
+    pass: RESEARCH_TOOL_SCHEMA.required.every((k) => prompt.includes(`"${k}"`)),
   },
 ];
 
