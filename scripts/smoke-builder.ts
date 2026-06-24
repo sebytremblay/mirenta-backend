@@ -21,7 +21,8 @@ import {
   resolveGoogleFontHref,
 } from "../src/agents/brand-tokens.ts";
 import { validateResearch } from "../src/domain/research.ts";
-import { salesMarketingVertical } from "../src/verticals/sales-marketing.ts";
+import { getVertical } from "../src/verticals/index.ts";
+import type { VerticalSpec } from "../src/verticals/index.ts";
 import type { ResearchObject } from "../src/domain/research.ts";
 import type { ProductProfile } from "../src/domain/entities.ts";
 import { readFileSync } from "node:fs";
@@ -29,7 +30,8 @@ import { readFileSync } from "node:fs";
 // Keep in sync with smoke-research.ts.
 const RESEARCH_IN = "/tmp/mirenta-research.json";
 
-const vertical = salesMarketingVertical;
+// The vertical the bundled sample declares; the file path resolves its own.
+const defaultVertical = getVertical("sales_marketing");
 
 // A founder-model sample for sales_marketing: respected voices across the
 // ladder, a stage band in context, no numeric value_inputs. Used when the
@@ -120,16 +122,32 @@ const sampleLead = {
   website_url: "https://www.origami.com",
 };
 
-function loadResearch(): { research: ResearchObject; source: string } {
+// Read the research exactly as the worker's build stage does: resolve the
+// vertical from the payload's own `vertical` field through getVertical, then
+// validate through validateResearch. The fallback to the bundled sample fires
+// ONLY when the file is absent. A present-but-invalid file fails loud, the same
+// way a malformed research row fails the worker permanently, so the smoke never
+// papers over output that would not survive production.
+function loadResearch(): { research: ResearchObject; vertical: VerticalSpec; source: string } {
+  let text: string;
   try {
-    const raw = JSON.parse(readFileSync(RESEARCH_IN, "utf8")) as unknown;
-    // Validate through the same gate the worker uses, so the smoke fails loud
-    // when the saved object does not satisfy the founder schema.
-    const research = validateResearch(raw, vertical);
-    return { research, source: RESEARCH_IN };
+    text = readFileSync(RESEARCH_IN, "utf8");
   } catch {
-    return { research: sampleResearch, source: "bundled founder sample" };
+    return {
+      research: sampleResearch,
+      vertical: defaultVertical,
+      source: "bundled founder sample (no file at " + RESEARCH_IN + ")",
+    };
   }
+
+  const raw = JSON.parse(text) as unknown;
+  const verticalId =
+    typeof raw === "object" && raw !== null && typeof (raw as { vertical?: unknown }).vertical === "string"
+      ? (raw as { vertical: string }).vertical
+      : defaultVertical.id;
+  const vertical = getVertical(verticalId);
+  const research = validateResearch(raw, vertical);
+  return { research, vertical, source: RESEARCH_IN };
 }
 
 function copyToClipboard(text: string): boolean {
@@ -145,7 +163,7 @@ const log = (line = ""): void => {
 };
 
 try {
-  const { research, source } = loadResearch();
+  const { research, vertical, source } = loadResearch();
 
   // Compute the value model exactly as buildSite does, threading context.
   const valueModel = vertical.createValueModel(sampleProfile);
