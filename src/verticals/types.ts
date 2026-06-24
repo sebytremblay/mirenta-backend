@@ -3,53 +3,36 @@ export type { ProductProfile };
 
 export interface ValidatedInputs {
   values: Record<string, number>;
+  // Categorical signals the vertical narrowed from research.extension.context.
+  context: Record<string, string>;
   estimated: boolean;
 }
 
-export interface ValueScenario {
-  name: string;
-  primaryValue: string;
-  primaryLabel: string;
-  secondary?: string;
-}
-
-export interface ValueMetric {
-  label: string;
-  value: string;
-}
-
-// `value` carries the raw number so the builder can scale the chart geometry;
-// `display` carries the pre-formatted string so labels stay auditable.
-export interface ValueProjection {
-  label: string;
-  unit: string;
-  series: { period: string; value: number; display: string }[];
-}
-
+// The founder value render: one honest expression plus the one-sentence
+// mechanism that produces it, footnoted as estimated when inputs are inferred.
+// `headline.value` is a free string the vertical composes (a range, a rate, or
+// a qualitative claim); the engine renders it verbatim and never parses it.
 export interface ValueResult {
   sectionTitle: string;
   headline: { label: string; value: string };
-  scenarios: ValueScenario[];
-  footnote?: string;
-  metrics?: ValueMetric[];
-  projection?: ValueProjection;
+  mechanism: string; // the one-sentence "why", required
+  footnote?: string; // estimated disclosure
 }
 
 export interface ValueModel {
   inputGuidance: string;
-  validateInputs(raw: Record<string, number>, estimated: boolean): ValidatedInputs;
+  validateInputs(
+    raw: Record<string, number>,
+    estimated: boolean,
+    context?: Record<string, string>,
+  ): ValidatedInputs;
   compute(inputs: ValidatedInputs): ValueResult;
 }
 
-export interface VerticalEconomics {
-  annual_license: number;
-  implementation_fee: number;
-  scenarios: Array<{
-    name: string;
-    effectiveness: Record<string, number>;
-  }>;
-  adoption_curve?: number[];
-}
+// VerticalEconomics stays opaque to the engine. Each vertical owns its own
+// economics shape and its own validateEconomics; the shared contract enforces
+// only the no-fabrication invariants on the rendered result, never these fields.
+export type VerticalEconomics = Record<string, unknown>;
 
 export interface BoundValueModel extends ValueModel {
   economics: VerticalEconomics;
@@ -60,12 +43,15 @@ export interface VerticalSpec {
   label: string;
   domains: string[];
   domainGuidance: string;
-  executiveTargeting: string;
+  voiceTargeting: string;
   defaultAccentColor: string;
   inputGuidance: string;
-  validateInputs(raw: Record<string, number>, estimated: boolean): ValidatedInputs;
+  validateInputs(
+    raw: Record<string, number>,
+    estimated: boolean,
+    context?: Record<string, string>,
+  ): ValidatedInputs;
   createValueModel(profile: ProductProfile): BoundValueModel;
   defaultEconomics(): VerticalEconomics;
   validateEconomics(raw: unknown): VerticalEconomics;
 }
-

@@ -1,17 +1,17 @@
 import type { VerticalSpec } from "../verticals/index.ts";
 
-export interface Executive {
-  name: string;
-  title: string;
-  owns: string;
-  profile: string;
-}
+export type AuthorityTier = "self" | "backer" | "tribe";
 
-export interface Quote {
-  text: string;
-  speaker: string;
-  source_url: string;
-  verified: boolean;
+export const AUTHORITY_TIERS: readonly AuthorityTier[] = ["self", "backer", "tribe"];
+
+// A respected voice couples the person and their verified words because, for a
+// founder, the two are one artifact. `tier` is required and explicit so the
+// builder renders the tier it received and never papers over an empty result.
+export interface RespectedVoice {
+  name: string; // the person quoted
+  identity: string; // who they are relative to the founder: "Partner at First Round", "the founder", a domain figure
+  tier: AuthorityTier; // required and explicit
+  quote: { text: string; source_url: string; verified: boolean };
 }
 
 export interface DomainPriority {
@@ -23,7 +23,12 @@ export interface DomainPriority {
 export interface ResearchExtension {
   domains: string[];
   priorities: DomainPriority[];
+  // Numeric signals a vertical's compute reads. Narrowed per vertical.
   value_inputs: Record<string, number>;
+  // Open per-vertical categorical signals (a stage band for one vertical, a
+  // go-to-market motion for another). Each vertical's validateInputs narrows
+  // `context` to the keys it needs, exactly as it narrows value_inputs.
+  context: Record<string, string>;
   estimated: boolean;
 }
 
@@ -46,13 +51,10 @@ export interface ProspectBrand {
 export interface ResearchObject {
   vertical: string;
   account: ResearchAccount;
-  executives: Executive[];
-  quotes: Quote[];
+  voices: RespectedVoice[];
   extension: ResearchExtension;
   brand?: ProspectBrand;
 }
-
-export const EXECUTIVE_SLOTS = 6;
 
 export const RESEARCH_TOOL_SCHEMA = {
   type: "object",
@@ -67,30 +69,36 @@ export const RESEARCH_TOOL_SCHEMA = {
       },
       required: ["summary", "recent_moves", "self_description_language"],
     },
-    executives: {
+    voices: {
       type: "array",
+      description:
+        "The founder's respected voices across the self/backer/tribe ladder, each carrying its verified quote inline. Return only voices whose quote you re-fetched and confirmed. An empty array is valid when the founder leaves no public trail.",
       items: {
         type: "object",
         properties: {
-          name: { type: "string" },
-          title: { type: "string" },
-          owns: { type: "string" },
-          profile: { type: "string" },
+          name: { type: "string", description: "The person quoted" },
+          identity: {
+            type: "string",
+            description:
+              "Who they are relative to the founder: \"the founder\", \"Partner at First Round\", a domain figure",
+          },
+          tier: {
+            type: "string",
+            enum: ["self", "backer", "tribe"],
+            description:
+              "self (the founder's own words), backer (an investor or angel who funded them), or tribe (a widely revered voice of the founder's domain)",
+          },
+          quote: {
+            type: "object",
+            properties: {
+              text: { type: "string" },
+              source_url: { type: "string" },
+              verified: { type: "boolean" },
+            },
+            required: ["text", "source_url", "verified"],
+          },
         },
-        required: ["name", "title", "owns", "profile"],
-      },
-    },
-    quotes: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          text: { type: "string" },
-          speaker: { type: "string" },
-          source_url: { type: "string" },
-          verified: { type: "boolean" },
-        },
-        required: ["text", "speaker", "source_url", "verified"],
+        required: ["name", "identity", "tier", "quote"],
       },
     },
     extension: {
@@ -110,9 +118,15 @@ export const RESEARCH_TOOL_SCHEMA = {
           },
         },
         value_inputs: { type: "object", additionalProperties: { type: "number" } },
+        context: {
+          type: "object",
+          description:
+            "Vertical-named categorical signals (for example a stage band or a go-to-market motion). Fill the keys the vertical's guidance names. Leave empty when the vertical names none.",
+          additionalProperties: { type: "string" },
+        },
         estimated: { type: "boolean" },
       },
-      required: ["domains", "priorities", "value_inputs", "estimated"],
+      required: ["domains", "priorities", "value_inputs", "context", "estimated"],
     },
     brand: {
       type: "object",
@@ -129,7 +143,7 @@ export const RESEARCH_TOOL_SCHEMA = {
       },
     },
   },
-  required: ["vertical", "account", "executives", "quotes", "extension"],
+  required: ["vertical", "account", "voices", "extension"],
 } as const;
 
 export class ResearchSchemaError extends Error {
@@ -150,6 +164,19 @@ function toNumericMap(raw: unknown): Record<string, number> {
     if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
   }
   return out;
+}
+
+function toStringMap(raw: unknown): Record<string, string> {
+  if (typeof raw !== "object" || raw === null) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "string" && v.trim() !== "") out[k] = v;
+  }
+  return out;
+}
+
+function isAuthorityTier(value: unknown): value is AuthorityTier {
+  return value === "self" || value === "backer" || value === "tribe";
 }
 
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
@@ -210,35 +237,33 @@ function validateResearchInner(raw: unknown, vertical: VerticalSpec): ResearchOb
     throw new Error("research.account.self_description_language missing");
   }
 
-  if (!Array.isArray(r.executives)) throw new Error("research.executives must be an array");
-  const executives: Executive[] = r.executives.map((e, i) => {
-    const exec = e as Record<string, unknown>;
+  if (!Array.isArray(r.voices)) throw new Error("research.voices must be an array");
+  const voices: RespectedVoice[] = r.voices.map((v, i) => {
+    const voice = v as Record<string, unknown>;
     if (
-      typeof exec.name !== "string" ||
-      typeof exec.title !== "string" ||
-      typeof exec.owns !== "string" ||
-      typeof exec.profile !== "string"
+      typeof voice.name !== "string" ||
+      typeof voice.identity !== "string" ||
+      !isAuthorityTier(voice.tier)
     ) {
-      throw new Error(`research.executives[${i}] malformed`);
+      throw new Error(`research.voices[${i}] malformed`);
     }
-    return { name: exec.name, title: exec.title, owns: exec.owns, profile: exec.profile };
-  });
-
-  if (!Array.isArray(r.quotes)) throw new Error("research.quotes must be an array");
-  const quotes: Quote[] = r.quotes.map((q, i) => {
-    const quote = q as Record<string, unknown>;
+    const quote = voice.quote as Record<string, unknown> | undefined;
     if (
+      !quote ||
       typeof quote.text !== "string" ||
-      typeof quote.speaker !== "string" ||
       typeof quote.source_url !== "string"
     ) {
-      throw new Error(`research.quotes[${i}] malformed`);
+      throw new Error(`research.voices[${i}].quote malformed`);
     }
     return {
-      text: quote.text,
-      speaker: quote.speaker,
-      source_url: quote.source_url,
-      verified: quote.verified === true,
+      name: voice.name,
+      identity: voice.identity,
+      tier: voice.tier,
+      quote: {
+        text: quote.text,
+        source_url: quote.source_url,
+        verified: quote.verified === true,
+      },
     };
   });
 
@@ -261,8 +286,9 @@ function validateResearchInner(raw: unknown, vertical: VerticalSpec): ResearchOb
   });
 
   const value_inputs = toNumericMap(ext.value_inputs);
+  const context = toStringMap(ext.context);
   const estimated = ext.estimated === true;
-  vertical.validateInputs(value_inputs, estimated);
+  vertical.validateInputs(value_inputs, estimated, context);
 
   const brand = normalizeProspectBrand(r.brand);
 
@@ -273,9 +299,8 @@ function validateResearchInner(raw: unknown, vertical: VerticalSpec): ResearchOb
       recent_moves: account.recent_moves,
       self_description_language: account.self_description_language,
     },
-    executives,
-    quotes,
-    extension: { domains: ext.domains, priorities, value_inputs, estimated },
+    voices,
+    extension: { domains: ext.domains, priorities, value_inputs, context, estimated },
     ...(brand ? { brand } : {}),
   };
 }
