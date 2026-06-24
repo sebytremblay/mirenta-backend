@@ -56,7 +56,7 @@ const sampleResearch: ResearchObject = {
       tier: "self",
       quote: {
         text: "I write every outbound email myself, because no one else knows why this matters yet.",
-        source_url: "https://www.origami.com/blog/founder-selling",
+        source_url: "https://www.origami.chat/blog/founder-selling",
         verified: true,
       },
     },
@@ -93,8 +93,8 @@ const sampleResearch: ResearchObject = {
     primary_color: "#1f6feb",
     accent_color: "#8957e5",
     font_family: "Inter",
-    logo_url: "https://www.origami.com/logo.svg",
-    favicon_url: "https://www.origami.com/favicon.ico",
+    logo_url: "https://www.origami.chat/logo.svg",
+    favicon_url: "https://www.origami.chat/favicon.ico",
   },
 };
 
@@ -119,7 +119,7 @@ const sampleLead = {
   last_name: "Mallery",
   role: "Co-founder and CEO",
   company: "Origami",
-  website_url: "https://www.origami.com",
+  website_url: "https://www.origami.chat",
 };
 
 // Read the research exactly as the worker's build stage does: resolve the

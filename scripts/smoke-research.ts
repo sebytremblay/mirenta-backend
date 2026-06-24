@@ -20,7 +20,7 @@ const lead = {
   last_name: "Mallery",
   role: "Co-founder and CEO",
   company: "Origami",
-  website_url: "https://www.origami.com",
+  website_url: "https://www.origami.chat",
 };
 
 const profile = {
