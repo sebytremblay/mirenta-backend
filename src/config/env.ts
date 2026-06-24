@@ -1,50 +1,28 @@
-// Centralized configuration. Loads .env once, validates the required keys, and
-// exposes a typed, frozen config object. Every module reads config from here
-// rather than touching process.env directly, so a missing key fails loudly at
-// startup instead of deep inside a stage.
-
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const backendRoot = resolve(here, "..", "..");
 
-// Neutralize the dev shell's ambient Anthropic gateway credentials BEFORE loading
-// .env. The shell exports a Bedrock/gateway ANTHROPIC_API_KEY (plus
-// ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL) because Claude Code runs on
-// Bedrock. loadEnvFile (below) leaves keys already present in process.env
-// untouched, so those ambient values would shadow the real first-party key in
-// .env and 401 the Managed Agents calls. The project authenticates with the
-// first-party key via x-api-key and pins the host through
-// MIRENTA_ANTHROPIC_BASE_URL (D50), so the ambient auth token and base url are
-// pure leak vectors: the SDK would inherit them at construction even though the
-// clients pass apiKey + baseURL explicitly. Drop all three here.
-//
-// Deploy safety: keep the ambient ANTHROPIC_API_KEY as a fallback and restore it
-// after the load only if .env did not supply one, so a platform that sets the
-// key as an env var with no .env file (the normal deploy shape) still works.
-// The auth token and base url are never restored: nothing in the project reads
-// them. See [[mirenta-ambient-anthropic-key-leak]].
+// Drop the dev shell's ambient Anthropic credentials before loading .env.
+// loadEnvFile leaves already-present keys untouched, so an ambient
+// ANTHROPIC_API_KEY (plus ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL) would
+// shadow the real first-party key in .env and the SDK would inherit them at
+// construction even though the clients pass apiKey + baseURL explicitly.
 const ambientAnthropicKey = process.env.ANTHROPIC_API_KEY;
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.ANTHROPIC_AUTH_TOKEN;
 delete process.env.ANTHROPIC_BASE_URL;
 
-// Load .env through the Node built-in (the >=22.18 engines floor pins it well
-// past its 20.12 introduction). Node needs no separate dotenv dependency and
-// the project keeps deps lean. loadEnvFile leaves keys already present in
-// process.env untouched, so ambient values win and deploys override the file
-// (except the Anthropic credentials cleared above). A missing file is fine;
-// rethrow any other error so a permission or parse failure fails loud at startup
-// rather than starting with a half-loaded config.
+// A missing file is fine; rethrow any other error so a permission or parse
+// failure fails loud at startup rather than starting with a half-loaded config.
 try {
   process.loadEnvFile(resolve(backendRoot, ".env"));
 } catch (err) {
   if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
 }
 
-// Deploy fallback: .env wins, but when it carries no key, fall back to the
-// platform-set ambient key the load cleared above.
+// Deploy fallback: when .env carries no key, restore the ambient key cleared above.
 if (!process.env.ANTHROPIC_API_KEY && ambientAnthropicKey) {
   process.env.ANTHROPIC_API_KEY = ambientAnthropicKey;
 }
@@ -81,8 +59,6 @@ export interface Config {
     readonly apiMode: string;
   };
   readonly managedAgents: {
-    // Persistent Managed Agents resources, provisioned once by
-    // scripts/provision-managed-agents.ts and referenced by id at runtime (D50).
     readonly environmentId: string;
     readonly researchAgentId: string;
     readonly exaVaultId: string;
@@ -112,8 +88,6 @@ export interface Config {
   };
   readonly gateway: {
     readonly port: number;
-    // Fail-closed dev escape hatch: honor the x-mirenta-org header only when this
-    // flag is explicitly on AND the environment is non-production.
     readonly allowDevOrgHeader: boolean;
   };
 }
@@ -142,23 +116,14 @@ const s3Region = optional("AWS_REGION", optional("S3_REGION", "us-west-1"));
 export const config: Config = Object.freeze({
   anthropic: {
     apiKey: required("ANTHROPIC_API_KEY"),
-    // Pin to the first-party Anthropic API. The dev shell exports a Salesforce
-    // gateway URL in ANTHROPIC_BASE_URL (plus an ANTHROPIC_AUTH_TOKEN) that the
-    // SDK inherits from the ambient environment by default. That gateway is a
-    // browser-auth proxy that 401s the Managed Agents endpoints, which is what
-    // misled a prior session into declaring Managed Agents unreachable (D45).
-    // We deliberately do NOT read ANTHROPIC_BASE_URL: a backend-namespaced
-    // MIRENTA_ANTHROPIC_BASE_URL override exists for a real proxy, and the
-    // polluting shell does not set it. See D50 and [[mirenta-managed-agents-reachable]].
+    // Read the backend-namespaced override, never the ambient ANTHROPIC_BASE_URL:
+    // the dev shell points that at a browser-auth gateway that 401s the Managed
+    // Agents endpoints.
     baseUrl: optional("MIRENTA_ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
-    // Models pin to the dated Haiku id for the build (D47), set by the founder
-    // to avoid burning tokens before the system proves out end to end.
-    // researchModel bakes onto the PERSISTENT Managed Agents agent at
+    // researchModel bakes onto the persistent Managed Agents agent at
     // provisioning time, so changing it here requires re-running
-    // scripts/provision-managed-agents.ts to take effect; the live agent keeps
-    // its old model until then. builderModel reads at runtime, so it takes
-    // effect on the next build. Restoring the D35 tiers is config plus a
-    // re-provision for research, config alone for the builder.
+    // scripts/provision-managed-agents.ts; the live agent keeps its old model
+    // until then. builderModel reads at runtime, so it takes effect next build.
     researchModel: optional("ANTHROPIC_RESEARCH_MODEL", "claude-haiku-4-5-20251001"),
     builderModel: optional("ANTHROPIC_BUILDER_MODEL", "claude-haiku-4-5-20251001"),
     apiMode: optional("ANTHROPIC_API_MODE", "realtime"),
@@ -175,8 +140,6 @@ export const config: Config = Object.freeze({
   },
   supabase: {
     url: required("SUPABASE_URL"),
-    // Service-role key bypasses RLS for the worker; the publishable/anon key
-    // also works while RLS stays off (D30). Either satisfies SUPABASE_KEY.
     key: required("SUPABASE_KEY"),
   },
   s3: {
@@ -187,20 +150,14 @@ export const config: Config = Object.freeze({
   worker: {
     maxJobAttempts: intOptional("MAX_JOB_ATTEMPTS", 5),
     claimBatchSize: intOptional("WORKER_CLAIM_BATCH_SIZE", 10),
-    // The worker holds the research Managed Agents session open synchronously
-    // within a tick (D50), so the lease must exceed the worst-case research plus
-    // build runtime. Set it well above the research timeout
-    // (leaseSeconds-60 in research.ts) so a second tick never re-claims a job
-    // mid-run and starts a duplicate session.
+    // The worker holds the research session open synchronously within a tick, so
+    // the lease must exceed worst-case research plus build runtime, and stay well
+    // above the research timeout (leaseSeconds-60 in research.ts), or a second
+    // tick re-claims the job mid-run and starts a duplicate session.
     leaseSeconds: intOptional("WORKER_LEASE_SECONDS", 900),
     pollIntervalMs: intOptional("WORKER_POLL_INTERVAL_MS", 5000),
   },
   agents: {
-    // The builder now emits the entire self-contained HTML document, not just
-    // prose the assembler welds in (D9). The gold sample runs near 30KB, so the
-    // ceiling rises well past the old prose-only 8000. 16000 covers a succinct
-    // sample-grade page with headroom; raise it via the env var if pages truncate
-    // (the builder treats a max_tokens stop as a transient, lease-retried fault).
     builderMaxTokens: intOptional("BUILDER_MAX_TOKENS", 16000),
   },
   gateway: {

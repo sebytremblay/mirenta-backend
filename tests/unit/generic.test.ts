@@ -1,10 +1,3 @@
-// Unit tests for the generic (horizontal) fallback vertical. The generic spec is
-// the registry default, so an un-configured profile renders through it; these
-// tests pin its qualitative value model and confirm it carries no industry,
-// HR/ITSM, or fabricated-figure content. The model omits metrics and projection
-// on purpose, so the page validator and the builder must degrade cleanly when
-// those optional fields are absent.
-
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { genericVertical } from "../../src/verticals/generic.ts";
@@ -45,19 +38,17 @@ test("the scenario values name no dollar figure", () => {
   }
 });
 
-test("compute satisfies the D38/D49 disclosure contract (estimated=true)", () => {
+test("compute satisfies the disclosure contract (estimated=true)", () => {
   const result = valueModel.compute(valueModel.validateInputs({}, true));
   assertValueModelContract(result, true);
 });
 
-test("compute satisfies the D38/D49 disclosure contract (estimated=false)", () => {
+test("compute satisfies the disclosure contract (estimated=false)", () => {
   const result = valueModel.compute(valueModel.validateInputs({}, false));
   assertValueModelContract(result, false);
 });
 
 test("validateEconomics enforces the shared disclosure shape", () => {
-  // The generic model reads no effectiveness key, but the shared shape still
-  // requires exactly three correctly-named scenarios.
   assert.throws(
     () =>
       genericVertical.validateEconomics({

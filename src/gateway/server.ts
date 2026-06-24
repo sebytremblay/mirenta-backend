@@ -1,20 +1,3 @@
-// API Gateway. Verifies the caller, resolves the org_id server-side, and routes
-// to the services (mvp-pipeline-architecture Service Topology, Auth and Tenancy).
-// Built on Node's http module to keep the stack lean.
-//
-// Routes:
-//   POST /profile           save the product profile (onboarding)
-//   GET  /profile           read the product profile
-//   POST /leads             submit leads, or regenerate one (D44)
-//   GET  /jobs/{jobId}       poll one job's status
-//   GET  /healthz           liveness
-//
-// Auth is two-tier (D18). The human path verifies a Supabase session and resolves
-// the org from membership; the worker path holds an internal credential. The MVP
-// resolves the org server-side and never trusts a client-asserted tenant. Until
-// the frontend wires real Supabase sessions, the gateway accepts a verified
-// bearer token (Supabase JWT) and falls back to a dev org header in non-production.
-
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { config } from "../config/env.ts";
 import { resolveOrgIdForUser } from "../db/client.ts";
@@ -61,9 +44,7 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   }
 }
 
-// Resolve the caller's org_id server-side. Order: a verified Supabase session
-// (the human path), then, only outside production, a dev org header for local
-// testing. The client never asserts the tenant on the production path.
+// Resolve the caller's org_id server-side; the client never asserts the tenant.
 async function resolveContext(req: IncomingMessage): Promise<Ctx> {
   const auth = req.headers["authorization"];
   if (auth && auth.startsWith("Bearer ")) {
@@ -75,10 +56,6 @@ async function resolveContext(req: IncomingMessage): Promise<Ctx> {
     return { orgId };
   }
 
-  // Dev fallback: an explicit org header, fail-closed behind an opt-in flag that
-  // defaults off and never activates in production (config.gateway.allowDevOrgHeader).
-  // Lets the pipeline run end to end before the frontend wires Supabase Auth.
-  // The absence of a variable must never be what enables a tenant override.
   const devOrg = req.headers["x-mirenta-org"];
   if (config.gateway.allowDevOrgHeader && typeof devOrg === "string" && devOrg) {
     return { orgId: devOrg };
@@ -162,7 +139,6 @@ export const server = createServer((req, res) => {
     try {
       const ctx = route.auth ? await resolveContext(req) : { orgId: "" };
       const match = route.pattern.exec(path);
-      // Named param: the first capture group on /jobs/{jobId}.
       const params: Record<string, string> = {};
       if (match && match[1]) params.jobId = match[1];
       await route.handler(req, res, ctx, params);
@@ -173,7 +149,6 @@ export const server = createServer((req, res) => {
   })();
 });
 
-// Start only when run directly, not when imported by a test.
 if (import.meta.url === `file://${process.argv[1]}`) {
   server.listen(config.gateway.port, () => {
     console.log(`[gateway] listening on :${config.gateway.port}`);

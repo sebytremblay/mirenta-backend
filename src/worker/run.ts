@@ -1,8 +1,3 @@
-// Standalone worker process (D46). Runs the tick on a fixed interval until
-// signaled. The worker is a pure function over the jobs table behind this thin
-// scheduler, so a Supabase scheduled function or pg_cron host can replace this
-// loop later (D32 stays open) without touching the stage logic.
-
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { config } from "../config/env.ts";
@@ -33,7 +28,6 @@ async function loop(): Promise<void> {
         });
       }
     } catch (err) {
-      // A tick-level failure (e.g. the claim query) should not kill the loop.
       log("tick error", { error: (err as Error).message });
     }
     await sleep(config.worker.pollIntervalMs);

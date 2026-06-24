@@ -1,17 +1,3 @@
-// End-to-end pipeline runner for the Mirenta self-sell demo. Seeds an org whose
-// product profile IS Mirenta, submits one lead (a Salesforce account executive),
-// drives the worker tick loop until the job reaches done or failed, then fetches
-// the published S3 URL and confirms it renders. Exercises the real pipeline
-// against Claude Managed Agents (research), the Messages API (build), Exa,
-// Supabase, and S3. Run: node scripts/run-pipeline-mirenta.ts
-//
-// Customer (seller): the Mirenta team, selling Mirenta itself.
-// Lead: Masafumi Kawashima, Account Executive at Salesforce.
-// The profile declares the sales_marketing vertical: Mirenta sells outbound
-// personalization to revenue and demand-generation leaders, so the page
-// researches Salesforce through a Sales and Marketing lens and the value model
-// renders pipeline-uplift ROI, with no HR/ITSM framing.
-
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { createOrganization } from "../src/db/client.ts";
@@ -68,7 +54,7 @@ try {
 
   console.log("\n=== 3. Drive the worker until the job finishes ===");
   const startedAt = Date.now();
-  const maxMs = 30 * 60 * 1000; // generous ceiling for two live Sonnet agent stages with research uncapped
+  const maxMs = 30 * 60 * 1000;
   let status = "pending";
   let url: string | null = null;
   while (Date.now() - startedAt < maxMs) {

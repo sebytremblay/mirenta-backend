@@ -1,12 +1,5 @@
-// Read-only diagnostic for cost telemetry. Confirms the token_usage table is
-// reachable through the backend credential (RLS gap check), counts rows, and
-// prints a per-lead cost breakdown across the research and builder stages.
-// Runs no agents and spends nothing. Run: node scripts/inspect-token-usage.ts
 import { db } from "../src/db/client.ts";
 
-// 1. Can the backend credential read the table at all? An RLS-denied table
-// returns an empty/zero result with no error under the anon/publishable key,
-// or a permission error; either way this surfaces it.
 const probe = await db()
   .from("token_usage")
   .select("id", { count: "exact", head: true });
@@ -16,7 +9,6 @@ if (probe.error) {
 }
 console.log("token_usage reachable. total rows:", probe.count ?? 0);
 
-// 2. Pull every row and roll up per lead and per agent stage.
 const { data, error } = await db()
   .from("token_usage")
   .select("lead_id, job_id, agent, model, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, request_count, cost_usd, created_at")

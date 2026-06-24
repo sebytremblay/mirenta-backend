@@ -1,10 +1,3 @@
-// Shared ProductProfile fixture for unit tests. The full row carries several
-// nullable columns that exist only to satisfy the type; hand-writing the whole
-// literal in every test obscures the one or two fields a test actually varies
-// (usually vertical or economics) and forces a fan-out edit when the row grows a
-// required column. makeProfile collapses that to one source. Mirrors the local
-// profile() factories already in precondition.test.ts and brand-tokens.test.ts.
-
 import type { ProductProfile } from "../../src/domain/entities.ts";
 
 export function makeProfile(overrides: Partial<ProductProfile> = {}): ProductProfile {

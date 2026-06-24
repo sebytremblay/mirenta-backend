@@ -1,9 +1,4 @@
-// Smoke test for the research agent: run a real lead through the full loop
-// and verify the output shape. This makes real Anthropic API and Exa calls
-// (a few cents per run), so it is a live integration test, not a unit test.
-//
-// Run: timeout 240 node scripts/smoke-research.ts
-
+// Makes real Anthropic API and Exa calls (a few cents per run).
 import { runResearch } from "../src/agents/research.ts";
 import { employeeServiceVertical } from "../src/verticals/employee-service.ts";
 
@@ -75,7 +70,6 @@ try {
   );
   console.log();
 
-  // Assertions
   const checks = [
     {
       name: "has at least one executive",

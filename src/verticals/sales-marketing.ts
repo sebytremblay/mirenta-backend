@@ -1,16 +1,3 @@
-// The Sales and Marketing vertical: Mirenta's own go-to-market segment, the spec
-// the self-sell demo declares. It spans two domains (Sales and Marketing) the way
-// the employee-service vertical spans HR and ITSM, and it targets revenue and
-// demand-generation leaders rather than HR/IT.
-//
-// The value model is pipeline-uplift, not cost-deflection: Mirenta lifts the rate
-// at which outbound books qualified meetings, so the model turns a rep roster and
-// an average deal size into incremental booked meetings, incremental closed-won
-// deals, and the net new annual revenue that follows, across the three disclosure
-// scenarios. The model invents no numbers: every figure derives deterministically
-// from the research value inputs and the scenario uplift. The builder renders the
-// computed ValueResult; the worker never lets the model author a figure (D9, D54).
-
 import { formatDollars } from "../domain/format.ts";
 import type {
   BoundValueModel,
@@ -22,33 +9,15 @@ import type {
 import type { ProductProfile } from "../domain/entities.ts";
 import { validateEconomicsShape } from "./contract.ts";
 
-// Funnel assumption: the share of incremental booked meetings that become a
-// closed-won deal. A single blended rate keeps the model defensible and auditable;
-// a finer meeting -> opportunity -> won split is a fast-follow if the inputs warrant
-// it. Held at a conservative floor so the model does not overstate the win.
 const MEETING_TO_WON_RATE = 0.05;
 
-// Fallback annual booked meetings per quota-carrying rep when the research does not
-// surface the figure. The research agent estimates it from benchmarks and sets
-// estimated: true; this constant only guards a missing input so compute never reads
-// undefined and silently produces zero.
 const DEFAULT_MEETINGS_PER_REP_YEAR = 60;
 
-// Default 5-year adoption ramp. defaultEconomics populates it and createCompute
-// falls back to it when an economics object omits the curve. One source so a
-// deliberate change to the ramp edits one literal.
 const DEFAULT_ADOPTION_CURVE = [0.5, 0.8, 1.0, 1.0, 1.0];
 
-// The effectiveness key createCompute reads from each scenario: the fractional lift
-// in booked meetings Mirenta drives. validateEconomics requires every scenario to
-// carry it, so a typo'd or missing key fails at save rather than computing a silent
-// zero uplift. Keep in lockstep with the key createCompute reads below.
+// Keep in lockstep with the key createCompute reads.
 const REQUIRED_EFFECTIVENESS_KEYS = ["meeting_uplift"] as const;
 
-// Default economics for the sales-marketing vertical. Phase 1 always returns these;
-// a profile.economics override (migration 0007) replaces them when present and
-// validateEconomics passes. The license and implementation fee reflect a mid-market
-// outbound-tooling deal; the per-scenario meeting_uplift bounds the estimate.
 function defaultEconomics(): VerticalEconomics {
   return {
     annual_license: 150_000,
@@ -70,9 +39,6 @@ function validateEconomics(raw: unknown): VerticalEconomics {
   return validateEconomicsShape(raw, REQUIRED_EFFECTIVENESS_KEYS);
 }
 
-// Narrow the generic numeric map to the sales-marketing inputs. The rep roster and
-// the average deal size drive the model and are required; the baseline meetings per
-// rep falls back to a benchmark when the research does not surface it.
 function validateInputs(raw: Record<string, number>, estimated: boolean): ValidatedInputs {
   if (typeof raw.quota_carrying_reps !== "number") {
     throw new Error("research.extension.value_inputs.quota_carrying_reps missing");
@@ -93,8 +59,6 @@ function validateInputs(raw: Record<string, number>, estimated: boolean): Valida
   };
 }
 
-// Factory: create a compute function bound to the given economics. Pure
-// (inputs -> ValueResult); the economics flow through the closure.
 function createCompute(economics: VerticalEconomics) {
   return (inputs: ValidatedInputs): ValueResult => {
     const reps = Math.max(0, Math.floor(inputs.values.quota_carrying_reps ?? 0));
@@ -104,9 +68,6 @@ function createCompute(economics: VerticalEconomics) {
 
     const firstYearCost = economics.annual_license + economics.implementation_fee;
 
-    // Each scenario: the meeting uplift turns baseline meetings into incremental
-    // booked meetings, the funnel rate turns those into incremental closed-won
-    // deals, and the deal size turns those into net new annual revenue.
     const scenarios = economics.scenarios.map((s) => {
       const uplift = s.effectiveness.meeting_uplift ?? 0;
       const incrementalMeetings = baselineMeetings * uplift;
@@ -127,12 +88,9 @@ function createCompute(economics: VerticalEconomics) {
     const expectedGross = expectedIncrementalMeetings * MEETING_TO_WON_RATE * dealSize;
     const expectedNet = round(expectedGross - economics.annual_license);
 
-    // Payback: total first-year investment divided by monthly gross revenue.
-    // Guard against a zero funnel: expectedGross of 0 produces Infinity otherwise.
     const paybackValue =
       expectedGross > 0 ? `${(firstYearCost / (expectedGross / 12)).toFixed(1)} mo` : "n/a";
 
-    // Annual cash flows follow the adoption ramp; year 1 absorbs the implementation fee.
     const adoption = economics.adoption_curve ?? DEFAULT_ADOPTION_CURVE;
     const annualCashFlows = adoption.map((ramp, i) => {
       const yearNumber = i + 1;
@@ -205,9 +163,9 @@ export const salesMarketingVertical: VerticalSpec = {
 - Marketing leadership (CMO, VP of Marketing, VP of Demand Generation)
 - C-suite (CEO, President, COO)`,
   defaultAccentColor: "#2563eb",
-  inputGuidance, // exposed directly for the research agent kickoff
-  validateInputs, // exposed directly for the validateResearch early gate
+  inputGuidance,
+  validateInputs,
   createValueModel,
   defaultEconomics,
-  validateEconomics, // exposed for saveProfile's save-time gate
+  validateEconomics,
 };

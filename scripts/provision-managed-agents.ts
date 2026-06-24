@@ -1,38 +1,3 @@
-// One-time provisioning for the Research Agent on Claude Managed Agents (D50).
-//
-// Managed Agents resources are persistent and versioned: create them once, then
-// reference them by id at runtime. This script creates (or updates) three
-// resources and prints the ids to paste into .env:
-//
-//   ANTHROPIC_ENVIRONMENT_ID     — the cloud sandbox the session runs in
-//   ANTHROPIC_RESEARCH_AGENT_ID  — the persistent research agent definition
-//   ANTHROPIC_EXA_VAULT_ID       — the vault holding the Exa MCP credential
-//
-// Re-run this whenever the agent definition changes, including the research
-// model: ANTHROPIC_RESEARCH_MODEL bakes onto the persistent agent here, so a
-// change to that env var has no effect until this script re-provisions the
-// agent. The builder model (ANTHROPIC_BUILDER_MODEL) reads at runtime and needs
-// no re-provision.
-//
-// The agent serves every vertical (D53). The system prompt this script bakes on
-// is vertical-neutral: it holds the five-phase methodology and the house style,
-// not any HR/ITSM specifics. The per-lead kickoff carries the vertical brief
-// (domains, executive targets, value inputs), and the frozen emit_research schema
-// stays permissive (extension.value_inputs is an open numeric map), with
-// validateResearch enforcing the active vertical's contract in code. Re-run this
-// after a change to the generic prompt or the permissive schema so the live agent
-// picks it up.
-//
-// Idempotency: pass the existing ids back through .env to reuse and update them.
-// With ANTHROPIC_RESEARCH_AGENT_ID set, the agent updates in place (a new
-// version) rather than duplicating. With ANTHROPIC_ENVIRONMENT_ID and
-// ANTHROPIC_EXA_VAULT_ID set, those reuse rather than recreate. Running with any
-// id blank creates a fresh resource and orphans the prior one, so always paste
-// the printed ids into .env before re-running.
-//
-// Run: node scripts/provision-managed-agents.ts
-// Tear down a set of ids:  node scripts/provision-managed-agents.ts --teardown
-
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../src/config/env.ts";
 import { RESEARCH_TOOL_SCHEMA } from "../src/domain/research.ts";
@@ -46,10 +11,6 @@ const client = new Anthropic({
 
 const EXA_MCP_URL = config.managedAgents.exaMcpUrl;
 
-// Build the persistent agent's tool + MCP configuration. Exa loads as a hosted
-// MCP server the agent calls server-side (always_allow so it runs autonomously,
-// with no per-call confirmation round-trip). emit_research is a custom tool the
-// worker harvests for the structured result.
 type AgentBody = {
   name: string;
   model: string;
@@ -111,8 +72,6 @@ async function teardown() {
 }
 
 async function provision() {
-  // 1. Environment: a cloud sandbox with outbound networking so the agent's MCP
-  //    calls reach Exa. Reuse the configured id when present.
   let environmentId = config.managedAgents.environmentId;
   if (environmentId) {
     console.log("env (reused) ", environmentId);
@@ -125,9 +84,6 @@ async function provision() {
     console.log("env (created)", environmentId);
   }
 
-  // 2. Vault + Exa credential. Exa's hosted MCP accepts the API key as a bearer
-  //    token, so a static_bearer credential keyed to the MCP URL authenticates
-  //    the agent's searches. Reuse the configured vault when present.
   let exaVaultId = config.managedAgents.exaVaultId;
   if (exaVaultId) {
     console.log("vault (reused)", exaVaultId);
@@ -145,9 +101,6 @@ async function provision() {
     console.log("vault (created)", exaVaultId);
   }
 
-  // 3. Research agent. Update in place when an id is configured (new version),
-  //    else create. Updating keeps sessions on prior versions running and gives
-  //    a clean rollback target.
   const cfg = agentConfig();
   let researchAgentId = config.managedAgents.researchAgentId;
   if (researchAgentId) {

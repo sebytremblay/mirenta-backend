@@ -1,23 +1,11 @@
-// Unit tests for the employee-service vertical value model (D38, D49). These pin
-// the support-deflection formulas and the scenario ordering so a future change to
-// the constants is a deliberate, visible edit rather than a silent drift. The math
-// moved intact from the former domain/roi.ts into the vertical spec; these tests
-// move with it and assert against the vertical-neutral ValueResult.
-
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { employeeServiceVertical } from "../../src/verticals/employee-service.ts";
 import { assertValueModelContract } from "../../src/verticals/contract.ts";
 import { makeProfile } from "../fixtures/profile.ts";
 
-// A profile with no economics override exercises the Phase 1 default economics,
-// which these tests pin. The profile content does not otherwise affect the model.
 const valueModel = employeeServiceVertical.createValueModel(makeProfile());
 
-// 20000 employees: the reference Plexus account. Derived expectations:
-//   IT cost   = 20000 * 10 * 22 = 4,400,000
-//   HR cost   = 20000 *  8 * 18 = 2,880,000
-//   Expected  = 4.4M*0.55 + 2.88M*0.60 - 1.5M license = 2,648,000 net
 function plexusInputs(estimated = true) {
   return valueModel.validateInputs(
     { total_employees: 20000, it_staff: 150, hr_staff: 35 },
@@ -73,15 +61,6 @@ test("zero employees yields a defined result without throwing", () => {
   assert.equal(result.scenarios.length, 3);
 });
 
-// Metrics and projection: derived expectations for 20000 employees (plexusInputs).
-//   expectedGross = 4,400,000 * 0.55 + 2,880,000 * 0.60 = 4,148,000
-//   expectedNet   = 4,148,000 - 1,500,000 = 2,648,000
-//   firstYearCost = 1,500,000 + 200,000   = 1,700,000
-//   ROI           = round(2,648,000 / 1,700,000 * 100) = 156%
-//   Payback       = 1,700,000 / (4,148,000 / 12)      = 4.9 mo
-//   Cumulative cash flows: 374000, 2192400, 4840400, 7488400, 10136400
-//   NPV at 8%: ~7,754,682
-
 test("metrics pins Expected ROI for plexus inputs", () => {
   const result = valueModel.compute(plexusInputs());
   const roi = result.metrics?.find((m) => m.label === "Expected ROI");
@@ -128,18 +107,16 @@ test("zero employees does not throw and produces metrics and 5-point projection"
   const result = valueModel.compute(v);
   assert.ok(Array.isArray(result.metrics));
   assert.equal(result.projection?.series.length, 5);
-  // Payback must not produce Infinity or NaN.
   const payback = result.metrics?.find((m) => m.label === "Payback period");
   assert.ok(payback?.value !== "Infinity mo" && payback?.value !== "NaN mo");
 });
 
-// Contract enforcement: D38/D49 disclosure policy (Concern #2).
-test("compute satisfies D38/D49 disclosure contract (estimated=true)", () => {
+test("compute satisfies the disclosure contract (estimated=true)", () => {
   const result = valueModel.compute(plexusInputs(true));
   assertValueModelContract(result, true);
 });
 
-test("compute satisfies D38/D49 disclosure contract (estimated=false)", () => {
+test("compute satisfies the disclosure contract (estimated=false)", () => {
   const result = valueModel.compute(plexusInputs(false));
   assertValueModelContract(result, false);
 });

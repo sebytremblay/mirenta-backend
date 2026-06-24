@@ -1,11 +1,6 @@
-// Exa search and content fetch behind a thin abstraction (D6).
-//
-// Under D50 the Research Agent reaches Exa through its HOSTED MCP server
-// server-side, so nothing in the live path imports this module today. It stays
-// as the seam for the D37-strict fallback: if prompt-level quote verification
-// proves insufficient, the worker can register Exa as a custom client-side tool
-// and run these calls host-side, restoring the code-enforced VERIFICATION_FAILED
-// signal. Kept deliberately rather than deleted; see D50's notable rationale.
+// Nothing in the live path imports this module: the Research Agent reaches Exa
+// through its hosted MCP server. Kept deliberately as the fallback seam for
+// running quote verification host-side as a custom client-side tool.
 
 import { config } from "../config/env.ts";
 
@@ -55,8 +50,6 @@ function normalize(r: NonNullable<ExaSearchResponse["results"]>[number]): ExaRes
   };
 }
 
-// Search the web and return results with trimmed page text. maxCharacters bounds
-// token cost per page; numResults bounds how many pages enter context.
 export async function exaSearch(
   query: string,
   opts: { numResults?: number; maxCharacters?: number } = {},
@@ -69,8 +62,6 @@ export async function exaSearch(
   return (data.results ?? []).map(normalize);
 }
 
-// Fetch the content of specific URLs. The quote-verification pass (D37) re-fetches
-// each source to confirm wording, so this returns the full available text.
 export async function exaFetchContents(
   urls: string[],
   opts: { maxCharacters?: number } = {},

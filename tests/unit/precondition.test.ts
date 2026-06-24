@@ -1,7 +1,3 @@
-// Unit tests for the precondition gate (D14). The Lead Service rejects a
-// submission when any required profile field is null or blank; this pins which
-// fields gate and how blanks are treated.
-
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { missingRequiredFields } from "../../src/services/personalization.ts";

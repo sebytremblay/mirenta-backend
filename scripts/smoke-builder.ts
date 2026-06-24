@@ -1,13 +1,3 @@
-// Live smoke test for the Website Builder: builds a complete HTML page from a
-// hardcoded ResearchObject (including a prospect brand) and ProductProfile, writes
-// it to /tmp/mirenta-smoke.html, and runs the real page validator over the result.
-// Proves the model emits a sample-grade self-contained page that wears the prospect
-// brand and passes every load-bearing invariant. Run: node scripts/smoke-builder.ts
-//
-// Develop and test on Opus via config only: set ANTHROPIC_BUILDER_MODEL to an Opus
-// id in .env. The builder reads config.anthropic.builderModel; this script changes
-// no model.
-
 import { buildSite } from "../src/agents/builder.ts";
 import { resolveLogoUrl, resolveFaviconHref } from "../src/agents/brand-tokens.ts";
 import {
@@ -21,7 +11,6 @@ import { writeFileSync } from "node:fs";
 
 const vertical = employeeServiceVertical;
 
-// Construct a realistic sample ResearchObject (Plexus Corp).
 const sampleResearch: ResearchObject = {
   vertical: "salesforce_employee_service",
   account: {
@@ -95,9 +84,6 @@ const sampleResearch: ResearchObject = {
     },
     estimated: false,
   },
-  // Prospect brand read from the prospect site (D48). The builder resolves these
-  // into the per-lead :root token block, so the page wears Plexus colors and font,
-  // not the seller default.
   brand: {
     primary_color: "#005596",
     accent_color: "#00a3e0",
@@ -107,7 +93,6 @@ const sampleResearch: ResearchObject = {
   },
 };
 
-// Construct a sample ProductProfile (Salesforce Agentforce).
 const sampleProfile: ProductProfile = {
   org_id: "00000000-0000-0000-0000-000000000000",
   company_name: "Salesforce",
@@ -127,7 +112,6 @@ const sampleProfile: ProductProfile = {
   updated_at: new Date().toISOString(),
 };
 
-// Sample lead.
 const sampleLead = {
   first_name: "Angelo",
   last_name: "Ninivaggi",
@@ -136,11 +120,6 @@ const sampleLead = {
   website_url: "https://www.plexus.com",
 };
 
-// Run the builder, then re-run the real validator over the output and report each
-// check. The builder injects the count-up script and CSP meta after it validates,
-// so the published page carries the one approved <script>; re-validating the final
-// bytes confirms only the figures, anchors, brand assets, and quote rules, never
-// the absence of that injected script.
 try {
   console.log("Building site for Plexus Corp...");
 
@@ -152,8 +131,6 @@ try {
     onStep: (s) => console.log(`  [${s.phase}] ${s.detail}`),
   });
 
-  // Write to /tmp/mirenta-smoke.html for visual comparison against the gold sample
-  // (sample-sites/employee-service/tractor_supply.html).
   const outputPath = "/tmp/mirenta-smoke.html";
   writeFileSync(outputPath, html, "utf8");
   console.log(`\nOutput written to ${outputPath} (${html.length} bytes)`);
@@ -162,8 +139,6 @@ try {
       `cache ${usage.cache_creation_tokens} write / ${usage.cache_read_tokens} read`,
   );
 
-  // Recompute the value model and resolve the brand assets exactly as the builder
-  // does, so the validator inspects the published page against the same contract.
   const valueModel = vertical.createValueModel(sampleProfile);
   const validatedInputs = valueModel.validateInputs(
     sampleResearch.extension.value_inputs,
@@ -184,9 +159,6 @@ try {
     .map(hostOf)
     .filter((h): h is string => Boolean(h));
 
-  // Per-check report. Each named probe runs an independent slice of the validator
-  // by failing fast on the first violation; reading the messages shows which check
-  // tripped.
   const check = (name: string, fn: () => void): boolean => {
     try {
       fn();
@@ -210,7 +182,6 @@ try {
     }),
   );
 
-  // A few human-readable spot checks beyond the validator.
   const wearsBrand = html.includes("#005596") || html.includes("--brand");
   const containsCompany = html.includes("Plexus Corp");
   console.log(`  ${wearsBrand ? "PASS" : "FAIL"}  page references the prospect brand token`);

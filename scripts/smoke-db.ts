@@ -1,6 +1,3 @@
-// Live DB smoke test: round-trips the foundation against the real Supabase
-// project. Creates a throwaway org, profile, lead, and job; claims the job
-// through the RPC; then deletes everything. Run: node scripts/smoke-db.ts
 import { db, createOrganization, upsertProductProfile, createLeadBatch, insertLead, createJob, claimJobs, getJob } from "../src/db/client.ts";
 
 const tag = `smoke-${Date.now()}`;

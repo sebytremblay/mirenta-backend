@@ -1,11 +1,3 @@
-// Row types for the tables in supabase/migrations/0001_mvp_schema.sql. These
-// model the persisted shape; service inputs and API payloads live alongside.
-
-// VerticalEconomics is the per-customer pricing/effectiveness shape the value
-// model consumes. The type lives with the vertical seam; entities references it
-// only for the profile's economics column. The import is type-only, so it erases
-// at compile time and raises no runtime cycle with verticals (which reads
-// ProductProfile back the same way).
 import type { VerticalEconomics } from "../verticals/types.ts";
 
 export type JobStatus =
@@ -51,20 +43,12 @@ export interface ProductProfile {
   proof_points: ProofPoint[] | null;
   cta_text: string | null;
   brand: Brand | null;
-  // The customer's declared vertical: the VerticalSpec id the pipeline resolves
-  // at runtime to research and render this customer's pages (src/verticals).
-  // Defaults to the employee-service id at the column level (migration 0004).
   vertical: string;
-  // Per-customer value-model economics (migration 0007). Null falls back to the
-  // active vertical's defaultEconomics(), so existing rows keep Phase 1 behavior.
-  // The vertical's createValueModel validates the shape before compute reads it.
   economics: VerticalEconomics | null;
   created_at: string;
   updated_at: string;
 }
 
-// The columns the precondition gate checks for non-null (mvp-pipeline-architecture
-// Precondition Gate; mvp-data-model Product Profile).
 export const REQUIRED_PROFILE_FIELDS = [
   "company_name",
   "product_name",
@@ -99,10 +83,6 @@ export interface Job {
   batch_id: string | null;
   status: JobStatus;
   research_id: string | null;
-  // The retained Managed Agents research session id (D56, migration 0008). The
-  // handle to the agent's server-side reasoning transcript, fetched on demand
-  // for debugging. Null for jobs that ran before the column, or whose session
-  // was deleted on a failed run.
   research_session_id: string | null;
   html_s3_key: string | null;
   site_url: string | null;
@@ -121,13 +101,8 @@ export interface ResearchRow {
   created_at: string;
 }
 
-// Which agent stage spent the tokens recorded on a token_usage row.
 export type TokenUsageAgent = "research" | "builder";
 
-// One token-usage telemetry row (supabase/migrations/0005_token_usage.sql). The
-// worker writes one row per agent stage per job; the per-lead total sums a job's
-// rows and the research-vs-builder breakdown reads off `agent`. Raw counts keep
-// the granularity; `cost_usd` preserves the cost as it stood at write time.
 export interface TokenUsage {
   id: string;
   org_id: string;
@@ -144,7 +119,6 @@ export interface TokenUsage {
   created_at: string;
 }
 
-// API input shape for a single submitted lead (POST /leads).
 export interface LeadInput {
   first_name: string;
   last_name: string;

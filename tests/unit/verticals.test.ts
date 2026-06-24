@@ -1,8 +1,3 @@
-// Unit tests for the vertical registry. The generic pipeline resolves the active
-// VerticalSpec by id at runtime, so the lookup, the unknown-id rejection, and the
-// default id are load-bearing and pinned here. A second stub spec proves the seam
-// is real: the registry holds any spec, not just the employee-service one.
-
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -17,8 +12,6 @@ import { assertValueModelContract } from "../../src/verticals/contract.ts";
 import { makeProfile } from "../fixtures/profile.ts";
 
 test("the default id resolves to the neutral generic spec", () => {
-  // The fallback is the horizontal generic vertical, not HR/ITSM, so an
-  // un-configured profile never inherits another vertical's industry framing.
   assert.ok(isKnownVertical(DEFAULT_VERTICAL_ID));
   assert.equal(DEFAULT_VERTICAL_ID, "generic");
   assert.equal(getVertical(DEFAULT_VERTICAL_ID).id, DEFAULT_VERTICAL_ID);
@@ -53,10 +46,6 @@ test("every registered spec keys on its own id", () => {
   }
 });
 
-// Prove the seam: a minimal stub spec satisfies the VerticalSpec contract with no
-// HR/ITSM assumption. The type-check alone guards the structural contract; the
-// value model runs end to end on arbitrary numeric inputs. The stub satisfies the
-// D38/D49 contract (3 scenarios with correct names, footnote when estimated).
 test("an arbitrary stub spec computes through the value-model contract", () => {
   const stub: VerticalSpec = {
     id: "stub_demo",
@@ -79,7 +68,6 @@ test("an arbitrary stub spec computes through the value-model contract", () => {
       compute: (inputs) => ({
         sectionTitle: "Pipeline Impact",
         headline: { label: "Influenced pipeline", value: `$${inputs.values.pipeline_value}` },
-        // D38/D49 contract: exactly 3 scenarios with these names
         scenarios: [
           { name: "Conservative", primaryValue: "$100K", primaryLabel: "Uplift" },
           { name: "Expected", primaryValue: "$200K", primaryLabel: "Uplift" },
@@ -106,7 +94,6 @@ test("an arbitrary stub spec computes through the value-model contract", () => {
         { name: "Aggressive", effectiveness: { uplift: 0.15 } },
       ],
     }),
-    // The stub trusts its inputs; the seam only requires the method to exist.
     validateEconomics: (raw) => raw as VerticalEconomics,
   };
 
@@ -120,6 +107,5 @@ test("an arbitrary stub spec computes through the value-model contract", () => {
   assert.equal(result.scenarios.length, 3);
   assert.equal(result.scenarios[0]!.primaryLabel, "Uplift");
 
-  // Contract enforcement: verify stub satisfies D38/D49 policy
   assertValueModelContract(result, true);
 });

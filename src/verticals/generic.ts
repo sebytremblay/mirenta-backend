@@ -1,19 +1,3 @@
-// The generic, horizontal vertical: the registry's neutral fallback. A product
-// profile that declares no vertical resolves to this spec, so an un-configured
-// customer researches and renders through a vertical-neutral lens rather than
-// inheriting another vertical's industry assumptions (the HR/ITSM leak this
-// vertical closes). It carries NO industry, domain, or support-deflection
-// assumption: the research agent derives priorities from the seller's own value
-// proposition and the prospect's stated goals.
-//
-// The value model produces a qualitative business-value block. Mirenta does not
-// know a horizontal seller's economics, so the generic model invents no figures:
-// it omits the ROI metric tiles and the cumulative projection (both optional on
-// ValueResult) and renders the three disclosure scenarios with product-framed
-// qualitative value. The seam still requires exactly three scenarios named per the
-// D38/D49 disclosure policy, so the block stays structurally consistent with every
-// other vertical's.
-
 import type {
   BoundValueModel,
   ValidatedInputs,
@@ -24,15 +8,8 @@ import type {
 import type { ProductProfile } from "../domain/entities.ts";
 import { DISCLOSURE_SCENARIO_NAMES, validateEconomicsShape } from "./contract.ts";
 
-// The generic value model reads no economics effectiveness keys: it computes no
-// figures. defaultEconomics still supplies the disclosure-compliant scaffold so a
-// profile may carry an economics override without breaking the save-time gate, and
-// validateEconomics enforces the shared shape with no required effectiveness key.
 const REQUIRED_EFFECTIVENESS_KEYS: readonly string[] = [];
 
-// Qualitative scenario framing. Each scenario describes the strength of the case a
-// hyper-personalized one-pager makes, not a dollar figure, so the model invents no
-// numbers. The names match the D38/D49 disclosure policy in order.
 const SCENARIO_VALUES: Record<string, { primaryValue: string; primaryLabel: string }> = {
   Conservative: { primaryValue: "Qualified interest", primaryLabel: "Likely outcome" },
   Expected: { primaryValue: "An engaged conversation", primaryLabel: "Likely outcome" },
@@ -43,8 +20,6 @@ function defaultEconomics(): VerticalEconomics {
   return {
     annual_license: 0,
     implementation_fee: 0,
-    // Three disclosure-compliant scenarios with empty effectiveness maps: the
-    // generic model reads no effectiveness key, so none is required or consumed.
     scenarios: DISCLOSURE_SCENARIO_NAMES.map((name) => ({ name, effectiveness: {} })),
   };
 }
@@ -53,16 +28,10 @@ function validateEconomics(raw: unknown): VerticalEconomics {
   return validateEconomicsShape(raw, REQUIRED_EFFECTIVENESS_KEYS);
 }
 
-// The generic vertical consumes no numeric inputs. It accepts whatever the research
-// agent gathers and carries it through untouched, so a horizontal seller is never
-// forced to supply a figure the model does not use.
 function validateInputs(raw: Record<string, number>, estimated: boolean): ValidatedInputs {
   return { values: { ...raw }, estimated };
 }
 
-// A qualitative ValueResult: headline plus the three disclosure scenarios, with no
-// metric tiles and no projection chart. renderValueBlock and the page validator both
-// degrade cleanly when metrics and projection are absent.
 function compute(inputs: ValidatedInputs): ValueResult {
   return {
     sectionTitle: "Why this matters",
@@ -104,9 +73,9 @@ export const genericVertical: VerticalSpec = {
 - Relevant functional leaders the seller's value proposition names
 - C-suite (CEO, President, COO) when the priority is company-wide`,
   defaultAccentColor: "#3b5bdb",
-  inputGuidance, // exposed directly for the research agent kickoff
-  validateInputs, // exposed directly for the validateResearch early gate
+  inputGuidance,
+  validateInputs,
   createValueModel,
   defaultEconomics,
-  validateEconomics, // exposed for saveProfile's save-time gate
+  validateEconomics,
 };

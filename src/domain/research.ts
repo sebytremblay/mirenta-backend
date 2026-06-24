@@ -1,10 +1,3 @@
-// The research object: the contract the Research Agent produces and the Website
-// Builder consumes. The shape is a generic core plus a vertical extension
-// (mvp-data-model.md; D20). The core holds the fields every vertical needs; the
-// extension holds the vertical's domain set, priorities, and value inputs as
-// data. The active vertical comes from the product profile, not hardcoded here,
-// so the schema and this validator stay vertical-neutral.
-
 import type { VerticalSpec } from "../verticals/index.ts";
 
 export interface Executive {
@@ -27,20 +20,10 @@ export interface DomainPriority {
   why_now: string;
 }
 
-// The vertical extension. `domains` and `priorities` organize the page; the value
-// model reads `value_inputs` (an open numeric map whose keys the vertical defines)
-// and the `estimated` disclosure flag. No vertical-specific field lives here.
-//
-// DESIGN NOTE (D53): value_inputs is intentionally numeric-only. The research
-// agent's emit_research tool schema is frozen on the persistent Managed Agent
-// (cached by Anthropic) and cannot vary per vertical. Categorical data (region,
-// segment, industry tier) should be encoded as numeric codes (e.g., region: 1=NA,
-// 2=EU, 3=APAC) with legend in vertical inputGuidance, or handled through separate
-// extension fields added later (requires schema change and agent reprovision).
 export interface ResearchExtension {
   domains: string[];
   priorities: DomainPriority[];
-  value_inputs: Record<string, number>; // INTENTIONAL: numeric only (D53)
+  value_inputs: Record<string, number>;
   estimated: boolean;
 }
 
@@ -50,14 +33,6 @@ export interface ResearchAccount {
   self_description_language: string;
 }
 
-// The prospect's own visual identity, extracted by the Research Agent from the
-// prospect site so the Website Builder renders a page that genuinely wears the
-// prospect's brand (D48). Every field is optional: a thin or unreachable site
-// yields a partial object, and the builder falls back token by token to the
-// seller brand and then to house defaults. Colors are six-digit hex; logo and
-// favicon are absolute https URLs (https avoids mixed-content on the public
-// https page). The builder sanitizes font_family before it reaches the
-// stylesheet, since the prospect site is untrusted input.
 export interface ProspectBrand {
   primary_color?: string;
   accent_color?: string;
@@ -69,30 +44,16 @@ export interface ProspectBrand {
 }
 
 export interface ResearchObject {
-  vertical: string; // the VerticalSpec id this object targets
+  vertical: string;
   account: ResearchAccount;
   executives: Executive[];
   quotes: Quote[];
   extension: ResearchExtension;
-  brand?: ProspectBrand; // optional; absent when the site yields no usable brand
+  brand?: ProspectBrand;
 }
 
-// The one-pager template holds six executive slots. This is a template parameter,
-// not a schema limit; the agent leaves slots empty when a company has fewer
-// relevant leaders.
 export const EXECUTIVE_SLOTS = 6;
 
-// JSON Schema for the `emit_research` tool. The Research Agent finishes by
-// calling this tool under a forced tool_choice, so the model returns
-// schema-shaped JSON the Build stage consumes without parsing free text.
-//
-// This schema bakes onto the persistent Managed Agent at provisioning time and
-// cannot vary per vertical, so `extension.value_inputs` is a permissive numeric
-// map: the per-lead kickoff names the keys the active vertical needs, and
-// validateResearch enforces the vertical's contract in code (D50 sets the
-// precedent of code-level enforcement over a frozen artifact). Kept otherwise
-// permissive (no min/max the gateway may reject); validateResearch enforces
-// structure in code.
 export const RESEARCH_TOOL_SCHEMA = {
   type: "object",
   properties: {
@@ -171,9 +132,6 @@ export const RESEARCH_TOOL_SCHEMA = {
   required: ["vertical", "account", "executives", "quotes", "extension"],
 } as const;
 
-// Thrown when a research payload fails structural validation. The worker treats
-// this as a permanent failure (a retry repeats the same malformed output), so it
-// classifies on instanceof rather than matching error-message text.
 export class ResearchSchemaError extends Error {
   constructor(message: string) {
     super(message);
@@ -185,9 +143,6 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((v) => typeof v === "string");
 }
 
-// Keep only the finite-numeric entries of a raw object, dropping anything else.
-// The value model decides which keys are required; this just produces a clean
-// numeric map from the model's possibly-noisy output.
 function toNumericMap(raw: unknown): Record<string, number> {
   if (typeof raw !== "object" || raw === null) return {};
   const out: Record<string, number> = {};
@@ -199,12 +154,6 @@ function toNumericMap(raw: unknown): Record<string, number> {
 
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 
-// Normalize the optional prospect brand. This never throws: the brand is a
-// best-effort enrichment, so a malformed field drops to undefined and the
-// builder falls back rather than failing the whole research object (backlog #9
-// keeps no quality gate). Colors must be six-digit hex; asset URLs must be
-// https to avoid mixed-content on the public https page; font_family carries
-// through trimmed and length-capped, and the builder sanitizes it for CSS.
 function normalizeProspectBrand(raw: unknown): ProspectBrand | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
   const b = raw as Record<string, unknown>;
@@ -233,11 +182,6 @@ function normalizeProspectBrand(raw: unknown): ProspectBrand | undefined {
   return Object.keys(brand).length > 0 ? brand : undefined;
 }
 
-// Structural validation in code. The research stage rejects a malformed object
-// rather than persisting it (D36 keeps no quality bar, but a schema-valid object
-// is still required before Build). The generic core validates here; the active
-// vertical validates its own value inputs. Returns the normalized object or
-// throws a ResearchSchemaError, which the worker classifies as permanent.
 export function validateResearch(raw: unknown, vertical: VerticalSpec): ResearchObject {
   try {
     return validateResearchInner(raw, vertical);
@@ -316,11 +260,6 @@ function validateResearchInner(raw: unknown, vertical: VerticalSpec): ResearchOb
     return { domain: pri.domain, pov: pri.pov, why_now: pri.why_now };
   });
 
-  // Hand the value inputs to the active vertical, which enforces its required
-  // keys. The persisted object keeps the generic numeric map; the value model
-  // narrows it again at compute time. validateInputs is exposed directly on the
-  // spec (not on valueModel) so this early gate works without creating a bound
-  // value model or needing a product profile.
   const value_inputs = toNumericMap(ext.value_inputs);
   const estimated = ext.estimated === true;
   vertical.validateInputs(value_inputs, estimated);

@@ -1,17 +1,7 @@
-// Pure prompt construction for the Website Builder. This module holds the design
-// brief and the per-lead prompt assembly with no runtime config import, so it
-// stays unit-testable without loading the API client or env (the same split
-// brand-tokens.ts uses). builder.ts imports these and adds the API call, the
-// validator, and the retry loop.
-//
-// All copy follows the HOUSE WRITING STYLE: no contractions, active voice, present
-// tense, strong verbs, no weak openers, no em dashes, no AI filler words.
-
 import type { ResearchObject } from "../domain/research.ts";
 import type { ProductProfile } from "../domain/entities.ts";
 import type { ValueResult, VerticalSpec } from "../verticals/index.ts";
 
-// The input to buildSite matches the contract specified in the task.
 export interface BuildSiteInput {
   lead: {
     first_name: string;
@@ -22,14 +12,10 @@ export interface BuildSiteInput {
   };
   profile: ProductProfile;
   research: ResearchObject;
-  // The active vertical (resolved from profile.vertical). Supplies the value
-  // model the builder computes the business-value block from, and the accent
-  // color the page falls back to when no brand color resolves.
   vertical: VerticalSpec;
   onStep?: (s: { phase: string; detail: string }) => void;
 }
 
-// The resolved per-lead assets the prompt carries into the document.
 export interface PromptAssets {
   tokenBlock: string;
   logoUrl?: string;
@@ -38,9 +24,6 @@ export interface PromptAssets {
   booking: string | null;
 }
 
-// Escape dynamic text before it enters the prompt. Research text is untrusted
-// input; pre-escaping means it cannot introduce markup when the model copies it
-// into the page, and the HTML entities render correctly.
 export function escapeHtml(raw: string): string {
   return raw
     .replace(/&/g, "&amp;")
@@ -50,10 +33,6 @@ export function escapeHtml(raw: string): string {
     .replace(/'/g, "&#39;");
 }
 
-// The vertical-neutral design brief. Byte-stable so it forms a cache-stable
-// prefix; every per-lead value rides in the user prompt. The brief drives off the
-// data passed in (domains, priorities, value labels) and never hardcodes a
-// vertical, so a second vertical stays a data-only add.
 export const DESIGN_BRIEF = `You are the Mirenta Website Builder. You generate ONE self-contained, prospect-facing HTML one-pager that presents a personalized business case. The user message supplies structured research and a precomputed value model. You render the entire document and return it through the emit_page tool.
 
 OUTPUT CONTRACT
@@ -100,9 +79,6 @@ WRITING STYLE (enforce strictly)
 - No contractions. Active voice. Present tense. Strong verbs. No weak openers ("there is", "it is"). No em dashes. No AI filler words (delve, leverage, robust, seamless, unlock, transformative).
 - Ground every claim in the supplied research. Fabricate no facts, metrics, customers, or quotes. Use only the supplied verified quotes.`;
 
-// Serialize the computed ValueResult into exact display strings the model renders
-// verbatim and the validator confirms present. Numeric projection values ride
-// alongside their display strings so the model can scale the chart geometry.
 export function renderValueBlock(value: ValueResult): string {
   const lines: string[] = [];
   lines.push(`Section title: ${value.sectionTitle}`);
@@ -132,9 +108,6 @@ export function renderValueBlock(value: ValueResult): string {
   return lines.join("\n");
 }
 
-// Construct the per-lead user prompt: the resolved token block and assets, the
-// pre-escaped research text, and the fully formatted value block. The model
-// renders everything, so the prompt carries no "rendered separately" caveat.
 export function buildUserPrompt(
   input: BuildSiteInput,
   value: ValueResult,
@@ -157,8 +130,6 @@ export function buildUserPrompt(
     )
     .join("\n");
 
-  // Only verified quotes reach the model. The validator rejects any unverified
-  // quote text on the page as a backstop.
   const verifiedQuotes = research.quotes.filter((q) => q.verified);
   const quoteLines =
     verifiedQuotes.length > 0

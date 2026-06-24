@@ -1,9 +1,3 @@
-// Unit tests for the pure prompt builder (builder-prompt.ts). The module carries
-// no config import, so these tests run without the API client or env. They pin the
-// two contracts the validator depends on downstream: the prompt serializes ONLY
-// verified quotes, and it carries every precomputed value figure verbatim as the
-// exact display strings the validator later confirms on the page.
-
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildUserPrompt, type BuildSiteInput, type PromptAssets } from "../../src/agents/builder-prompt.ts";

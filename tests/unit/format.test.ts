@@ -1,7 +1,3 @@
-// Unit tests for the vertical-neutral currency formatter the value models share.
-// These pin the compact-figure rendering so every vertical's ValueResult reads
-// consistently on the page.
-
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { formatDollars } from "../../src/domain/format.ts";

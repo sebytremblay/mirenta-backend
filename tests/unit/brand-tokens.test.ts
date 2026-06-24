@@ -1,9 +1,3 @@
-// Unit tests for the prospect brand-token logic (D48). These pin the resolution
-// precedence (prospect brand > seller brand > house default), the readable-text
-// contrast pick, and the font sanitization that guards the stylesheet against
-// untrusted prospect input. The token helpers stay free of runtime config so
-// these tests import without loading the API client or env.
-
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -36,8 +30,6 @@ function profile(brand?: ProductProfile["brand"]): ProductProfile {
   };
 }
 
-// The vertical accent the builder passes as deriveTokens' fallbackColor. The
-// employee-service spec supplies Salesforce blue.
 const VERTICAL_ACCENT = "#0176d3";
 
 test("prospect brand color wins over seller and the vertical accent", () => {
@@ -61,23 +53,21 @@ test("a malformed seller color falls through to the vertical accent", () => {
 });
 
 test("a neutral house default backstops a missing vertical accent", () => {
-  // No fallbackColor passed: the helper uses its neutral house default rather
-  // than producing an empty or invalid brand color.
   const t = deriveTokens(profile(), undefined);
   assert.match(t.brand, /^#[0-9A-Fa-f]{6}$/);
 });
 
 test("tokens fall back independently on a partial prospect brand", () => {
   const t = deriveTokens(profile(), { background_color: "#101010" }, VERTICAL_ACCENT);
-  assert.equal(t.bg, "#101010"); // prospect-supplied
-  assert.equal(t.brand, VERTICAL_ACCENT); // fell back
-  assert.equal(t.accent, VERTICAL_ACCENT); // accent defaults to the primary
+  assert.equal(t.bg, "#101010");
+  assert.equal(t.brand, VERTICAL_ACCENT);
+  assert.equal(t.accent, VERTICAL_ACCENT);
 });
 
 test("readableOn returns dark text on a light brand and white on a dark brand", () => {
   assert.equal(readableOn("#ffffff"), "#111111");
-  assert.equal(readableOn("#fde047"), "#111111"); // light yellow
-  assert.equal(readableOn("#0b1f3a"), "#ffffff"); // navy
+  assert.equal(readableOn("#fde047"), "#111111");
+  assert.equal(readableOn("#0b1f3a"), "#ffffff");
   assert.equal(readableOn("#000000"), "#ffffff");
 });
 
@@ -97,7 +87,7 @@ test("sanitizeFontFamily strips a CSS injection and keeps a fallback", () => {
   assert.ok(!out.includes("}"));
   assert.ok(!out.includes(";"));
   assert.ok(!out.includes("@"));
-  assert.ok(/sans-serif/.test(out)); // generic fallback appended
+  assert.ok(/sans-serif/.test(out));
 });
 
 test("sanitizeFontFamily keeps a clean stack as-is", () => {
@@ -141,8 +131,6 @@ test("resolveFaviconHref prefers the captured favicon, then the site default", (
   assert.equal(resolveFaviconHref(null, undefined), undefined);
 });
 
-// Google Fonts allow-list resolver
-
 test("resolveGoogleFontHref returns a Google Fonts href for a known font", () => {
   const href = resolveGoogleFontHref("Oswald");
   assert.ok(typeof href === "string");
@@ -158,8 +146,6 @@ test("resolveGoogleFontHref is case- and quote-insensitive", () => {
 test("resolveGoogleFontHref returns undefined for an unrecognized font", () => {
   assert.equal(resolveGoogleFontHref("No Such Font 9000"), undefined);
 });
-
-// fontDisplay token
 
 test("renderTokenBlock emits a --font-display custom property", () => {
   const block = renderTokenBlock(deriveTokens(profile(), { primary_color: "#aa0000" }));

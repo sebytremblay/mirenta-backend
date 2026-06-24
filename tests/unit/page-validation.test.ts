@@ -1,9 +1,3 @@
-// Unit tests for the post-generation page validator (D9, D37). The builder now
-// emits the entire document, so this gate is the load-bearing trust boundary: it
-// accepts a sample-grade page and rejects every contract or safety violation. The
-// tests feed hand-built HTML strings (no live model) and assert the accept/reject
-// boundary and the transient/permanent classification the worker depends on.
-
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -61,8 +55,6 @@ const options: ValidatePageOptions = {
   stopReason: "end_turn",
 };
 
-// A compliant, sample-grade document: brand-themed, all figures present, required
-// anchors resolved, no unsafe construct, only allow-listed external assets.
 function goodHtml(): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -150,8 +142,6 @@ test("rejects an inline event handler", () => {
 
 test("rejects a javascript: URI", () => {
   const html = goodHtml().replace('href="#book"', 'href="javascript:void(0)"');
-  // Removing the #book quick-link also trips an anchor check, but the unsafe
-  // construct check runs first; either way it rejects.
   assert.throws(() => validatePage(html, options), PageValidationError);
 });
 
@@ -161,9 +151,8 @@ test("rejects a non-allow-listed external asset host", () => {
 });
 
 test("accepts inline SVG xmlns namespace declarations (not asset fetches)", () => {
-  // The vertical-agnostic restyle renders inline SVG, which carries the W3C
-  // namespace URIs. These are XML namespace identifiers, never fetched, so the
-  // asset-host scan must not reject www.w3.org. A real asset reference still must.
+  // W3C namespace URIs are XML identifiers, never fetched, so the asset-host scan
+  // must not reject www.w3.org.
   const html = goodHtml().replace(
     '<svg viewBox="0 0 760 380" role="img" aria-labelledby="chart-t">',
     '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 760 380" role="img" aria-labelledby="chart-t">',
@@ -172,8 +161,6 @@ test("accepts inline SVG xmlns namespace declarations (not asset fetches)", () =
 });
 
 test("still rejects a real w3.org asset reference despite the xmlns exemption", () => {
-  // Stripping xmlns must not blanket-allow www.w3.org: a genuine src/href to it
-  // is an un-allow-listed fetch and must reject.
   const html = goodHtml().replace(
     'src="https://cdn.example.com/logo.png"',
     'src="https://www.w3.org/Icons/logo.png"',
@@ -238,6 +225,5 @@ test("injectRuntimeAssets welds in the CSP meta and the count-up script", () => 
   assert.match(out, /Content-Security-Policy/);
   assert.match(out, /<script>/);
   assert.match(out, /requestAnimationFrame/);
-  // The injected script sits before the closing body tag.
   assert.ok(out.indexOf("<script>") < out.indexOf("</body>"));
 });

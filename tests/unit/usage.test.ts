@@ -1,9 +1,3 @@
-// Unit tests for token-usage accounting. The research path accumulates usage
-// across many Managed Agents model_request_end events and the builder across its
-// corrective retries, so the normalize-and-sum helpers are load-bearing and
-// pinned here. The live agent drives prove the wiring end to end; these cover the
-// pure math without burning tokens.
-
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { emptyUsage, usageFromRaw, addUsage } from "../../src/providers/usage.ts";
@@ -38,7 +32,6 @@ test("usageFromRaw maps the Anthropic field names and defaults to one request", 
 });
 
 test("usageFromRaw treats missing or malformed fields as zero", () => {
-  // A telemetry gap must never poison the totals with NaN or a negative count.
   assert.deepEqual(usageFromRaw(undefined), emptyUsage_withRequests(1));
   assert.deepEqual(usageFromRaw({}), emptyUsage_withRequests(1));
   assert.deepEqual(
@@ -48,14 +41,11 @@ test("usageFromRaw treats missing or malformed fields as zero", () => {
 });
 
 test("usageFromRaw records the request count it is told", () => {
-  // The outcome-evaluation case folds in usage that is not a primary model
-  // request; the caller controls the count.
   assert.equal(usageFromRaw({ input_tokens: 5 }, 0).requests, 0);
   assert.equal(usageFromRaw({ input_tokens: 5 }, 3).requests, 3);
 });
 
 test("addUsage sums totals across many records", () => {
-  // Simulate a research session accumulating three model_request_end events.
   const events = [
     { input_tokens: 1000, output_tokens: 200, cache_creation_input_tokens: 500, cache_read_input_tokens: 0 },
     { input_tokens: 50, output_tokens: 300, cache_creation_input_tokens: 0, cache_read_input_tokens: 1500 },
@@ -71,8 +61,6 @@ test("addUsage sums totals across many records", () => {
   });
 });
 
-// Helper: the empty totals with an explicit request count, since usageFromRaw
-// stamps requests even on an empty record.
 function emptyUsage_withRequests(requests: number) {
   return { ...emptyUsage(), requests };
 }

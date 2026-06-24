@@ -1,9 +1,3 @@
-// Unit tests for research-object validation. The worker treats a schema-invalid
-// result as a permanent failure, so the validator's accept/reject boundary is
-// load-bearing and pinned here. The validator now takes the active vertical and
-// delegates the value-input contract to its value model, so these tests pass the
-// employee-service spec and assert against the generic extension shape.
-
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { validateResearch } from "../../src/domain/research.ts";
@@ -92,9 +86,6 @@ test("rejects a non-object payload", () => {
   assert.throws(() => validateResearch("nope", vertical), /not an object/);
 });
 
-// Prospect brand tokens (D48). The brand is optional and never throws: a
-// malformed field drops so the builder falls back rather than failing the job.
-
 test("omits brand when absent", () => {
   const r = validateResearch(validPayload(), vertical);
   assert.equal(r.brand, undefined);
@@ -120,7 +111,7 @@ test("drops invalid hex colors but keeps valid ones", () => {
   (p as Record<string, unknown>).brand = {
     primary_color: "#123456",
     accent_color: "red", // not hex
-    background_color: "#fff", // three-digit, rejected
+    background_color: "#fff",
   };
   const r = validateResearch(p, vertical);
   assert.equal(r.brand?.primary_color, "#123456");
@@ -131,7 +122,7 @@ test("drops invalid hex colors but keeps valid ones", () => {
 test("drops non-https asset URLs", () => {
   const p = validPayload();
   (p as Record<string, unknown>).brand = {
-    logo_url: "http://acme.example/logo.png", // not https
+    logo_url: "http://acme.example/logo.png",
     favicon_url: "https://acme.example/favicon.ico",
   };
   const r = validateResearch(p, vertical);
@@ -151,13 +142,9 @@ test("a malformed brand does not fail the whole object", () => {
   (p as Record<string, unknown>).brand = "not an object";
   const r = validateResearch(p, vertical);
   assert.equal(r.brand, undefined);
-  assert.equal(r.executives.length, 1); // rest of the object still validates
+  assert.equal(r.executives.length, 1);
 });
 
-// Kickoff-brief framing (the HR/ITSM leak guard). The per-lead kickoff injects the
-// active vertical's domains, executive targets, and value-input guidance. A
-// horizontal or sales/marketing run must never carry HR/ITSM framing, since that
-// framing is the employee-service vertical's alone, not the generic core's.
 function leadInput(vertical: VerticalSpec) {
   return {
     lead: {
@@ -189,7 +176,5 @@ test("the sales-marketing kickoff carries no HR/ITSM framing", () => {
 });
 
 test("the employee-service kickoff still carries its own HR/ITSM framing", () => {
-  // The leak guard must not regress the legitimate vertical: employee-service
-  // still organizes its leads around HR and ITSM.
   assert.match(buildKickoff(leadInput(employeeServiceVertical)), /HR/);
 });

@@ -1,12 +1,3 @@
-// End-to-end pipeline runner: the goal proof. Seeds an org and product profile,
-// submits one lead through the Lead Service, drives the worker tick loop until
-// the job reaches done or failed, then fetches the published S3 URL and confirms
-// it renders. Exercises the real pipeline against Claude Managed Agents (research),
-// the Messages API (build), Exa, Supabase, and S3. Run: node scripts/run-pipeline.ts
-//
-// Target persona: a Salesforce account executive selling Agentforce for IT
-// Service and HR Service into Plexus Corp (the design's reference vertical).
-
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { db, createOrganization } from "../src/db/client.ts";
@@ -59,7 +50,7 @@ try {
 
   console.log("\n=== 3. Drive the worker until the job finishes ===");
   const startedAt = Date.now();
-  const maxMs = 8 * 60 * 1000; // generous ceiling for two live agent stages
+  const maxMs = 8 * 60 * 1000;
   let status = "pending";
   let url: string | null = null;
   while (Date.now() - startedAt < maxMs) {
@@ -72,8 +63,6 @@ try {
       console.error("  job failed:", view?.failureReason);
       break;
     }
-    // Wait out the rest of the lease window only if nothing advanced; otherwise
-    // tick again promptly to move to the next stage.
     await sleep(tick.advanced > 0 ? 500 : 3000);
   }
   console.log("  final status:", status);
@@ -110,8 +99,6 @@ try {
   console.error((e as Error).stack);
   process.exitCode = 1;
 } finally {
-  // Keep the org + S3 object so the URL stays viewable. Print the cleanup command
-  // rather than deleting, so the operator can inspect the result first.
   if (orgId) {
     console.log(`\n(To clean up later: delete org ${orgId} and its S3 prefix.)`);
   }

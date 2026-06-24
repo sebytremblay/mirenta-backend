@@ -1,10 +1,3 @@
-// Unit tests for the Personalization Service save-time gates. saveProfile
-// rejects a malformed profile before the DB call, so these run without a live
-// database: each case throws on a validation path that precedes the upsert.
-// The economics gate (Phase 2) is the focus: a bad economics object must fail at
-// save as a ProfileValidationError (mapped to HTTP 400) so the seller corrects it
-// before any lead runs, rather than failing permanently at the worker's build.
-
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { saveProfile, ProfileValidationError } from "../../src/services/personalization.ts";
@@ -16,11 +9,6 @@ const validRequired = {
   value_prop: "Deflect support volume",
 };
 
-// Economics validation is vertical-specific, so these cases declare the
-// employee-service vertical explicitly: its contract requires the itDeflection
-// and hrDeflection keys these objects carry. The default vertical is now the
-// neutral generic spec, which requires no effectiveness key, so an absent vertical
-// no longer exercises this contract (see the fallback test below).
 const employeeService = { vertical: "salesforce_employee_service" } as const;
 
 const goodEconomics: VerticalEconomics = {
@@ -90,12 +78,6 @@ test("saveProfile rejects economics with a typo'd effectiveness key", async () =
 });
 
 test("an absent vertical falls back to generic, which requires no effectiveness key", async () => {
-  // Economics valid under the generic contract (three correctly-named scenarios,
-  // empty effectiveness) but invalid under employee-service (missing itDeflection).
-  // Under the former employee-service default this rejected as a
-  // ProfileValidationError; under the generic default the economics gate passes
-  // and the call proceeds to the DB. The DB is not live here, so the call still
-  // throws, but NOT as a ProfileValidationError. That distinguishes the fallback.
   const genericEconomics: VerticalEconomics = {
     annual_license: 0,
     implementation_fee: 0,
@@ -112,8 +94,6 @@ test("an absent vertical falls back to generic, which requires no effectiveness 
 });
 
 test("saveProfile validates economics against the sales_marketing contract when declared", async () => {
-  // A typo'd uplift key fails the sales_marketing contract at save, proving the
-  // declared vertical resolves and gates before the DB call.
   await assert.rejects(
     () =>
       saveProfile("test-org", {
