@@ -6,30 +6,25 @@ import type {
   VerticalSpec,
 } from "./types.ts";
 import type { ProductProfile } from "../domain/entities.ts";
-import { DISCLOSURE_SCENARIO_NAMES, validateEconomicsShape } from "./contract.ts";
-
-const REQUIRED_EFFECTIVENESS_KEYS: readonly string[] = [];
-
-const SCENARIO_VALUES: Record<string, { primaryValue: string; primaryLabel: string }> = {
-  Conservative: { primaryValue: "Qualified interest", primaryLabel: "Likely outcome" },
-  Expected: { primaryValue: "An engaged conversation", primaryLabel: "Likely outcome" },
-  Aggressive: { primaryValue: "A booked working session", primaryLabel: "Likely outcome" },
-};
+import { ValueModelContractError } from "./contract.ts";
 
 function defaultEconomics(): VerticalEconomics {
-  return {
-    annual_license: 0,
-    implementation_fee: 0,
-    scenarios: DISCLOSURE_SCENARIO_NAMES.map((name) => ({ name, effectiveness: {} })),
-  };
+  return {};
 }
 
 function validateEconomics(raw: unknown): VerticalEconomics {
-  return validateEconomicsShape(raw, REQUIRED_EFFECTIVENESS_KEYS);
+  if (typeof raw !== "object" || raw === null) {
+    throw new ValueModelContractError("economics must be an object");
+  }
+  return raw as VerticalEconomics;
 }
 
-function validateInputs(raw: Record<string, number>, estimated: boolean): ValidatedInputs {
-  return { values: { ...raw }, estimated };
+function validateInputs(
+  raw: Record<string, number>,
+  estimated: boolean,
+  context: Record<string, string> = {},
+): ValidatedInputs {
+  return { values: { ...raw }, context: { ...context }, estimated };
 }
 
 function compute(inputs: ValidatedInputs): ValueResult {
@@ -37,20 +32,17 @@ function compute(inputs: ValidatedInputs): ValueResult {
     sectionTitle: "Why this matters",
     headline: {
       label: "The case this page makes",
-      value: "A research-led conversation in the prospect's own language",
+      value: "A research-led conversation in the founder's own language",
     },
-    scenarios: DISCLOSURE_SCENARIO_NAMES.map((name) => ({
-      name,
-      primaryValue: SCENARIO_VALUES[name]!.primaryValue,
-      primaryLabel: SCENARIO_VALUES[name]!.primaryLabel,
-    })),
+    mechanism:
+      "The page reads the founder's public trail, mirrors the priorities they already name, and meets them where they stand.",
     footnote: inputs.estimated
-      ? "This page frames a qualitative point of view, not a modeled financial projection."
+      ? "This page frames a point of view drawn from the founder's public signals, not a modeled projection."
       : undefined,
   };
 }
 
-const inputGuidance = `Gather no fixed numeric value_inputs for this horizontal vertical. The business-value block is qualitative. If the prospect publishes a headline figure that the seller's value proposition speaks to directly (for example total employees, annual revenue, or customer count), include it in value_inputs as a single numeric key and set estimated accordingly; otherwise leave value_inputs empty.`;
+const inputGuidance = `Gather no numeric value_inputs and no context keys for this default vertical. The value claim is qualitative: the page states a point of view in the founder's own language rather than a figure.`;
 
 function createValueModel(profile: ProductProfile): BoundValueModel {
   const economics = profile.economics ? validateEconomics(profile.economics) : defaultEconomics();
@@ -66,12 +58,11 @@ export const genericVertical: VerticalSpec = {
   id: "generic",
   label: "Generic (horizontal)",
   domains: ["Strategic priorities", "Operational priorities"],
-  domainGuidance: `Derive the prospect's top priorities from the seller's own value proposition and the prospect's stated goals, not from any fixed industry. Read what the company says about its mission, recent strategic moves, and public commitments, then surface the priorities the seller's product speaks to directly. Frame each as a point of view (POV): a stance the buyer recognizes as their own priority.`,
-  executiveTargeting: `Prioritize the leaders who own the problem the seller solves:
-- The economic buyer (the executive who controls the budget for this category)
-- The decision maker and likely champion (the leader whose team feels the problem)
-- Relevant functional leaders the seller's value proposition names
-- C-suite (CEO, President, COO) when the priority is company-wide`,
+  domainGuidance: `Read the founder's world, not a fixed industry. Surface the priorities the founder ships against right now: speed, traction, survival, the next milestone, and the problem they wake up solving. Draw each from what the founder says in public about their mission, their recent moves, and the bet they are making, then frame it as a point of view the founder recognizes as their own.`,
+  voiceTargeting: `Reach the founder through the voices they already respect across the self, backer, and tribe ladder:
+- Self: the founder's own words from talks, posts, and interviews
+- Backer: the investors and angels who funded the bet and speak to it in public
+- Tribe: the revered figures of the founder's domain whose canon the founder cites`,
   defaultAccentColor: "#3b5bdb",
   inputGuidance,
   validateInputs,

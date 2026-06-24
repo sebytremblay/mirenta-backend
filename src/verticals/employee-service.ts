@@ -1,4 +1,3 @@
-import { formatDollars } from "../domain/format.ts";
 import type {
   BoundValueModel,
   ValidatedInputs,
@@ -7,138 +6,70 @@ import type {
   VerticalSpec,
 } from "./types.ts";
 import type { ProductProfile } from "../domain/entities.ts";
-import { validateEconomicsShape } from "./contract.ts";
+import { ValueModelContractError } from "./contract.ts";
 
-const IT_TICKETS_PER_EMPLOYEE_YEAR = 10;
-const HR_INTERACTIONS_PER_EMPLOYEE_YEAR = 8;
+// This vertical owns its economics shape. An autonomous support layer returns a
+// share of annual operating spend, expressed as a single benchmarked rate in
+// basis points; compute reads that rate and renders one honest figure.
+interface EmployeeServiceEconomics {
+  savings_basis_points: number;
+}
 
-const IT_BLENDED_COST_PER_TICKET = 22;
-const HR_BLENDED_COST_PER_INTERACTION = 18;
-
-const DEFAULT_ADOPTION_CURVE = [0.5, 0.8, 1.0, 1.0, 1.0];
-
-// Keep in lockstep with the keys createCompute reads.
-const REQUIRED_EFFECTIVENESS_KEYS = ["itDeflection", "hrDeflection"] as const;
+function isEmployeeServiceEconomics(raw: unknown): raw is EmployeeServiceEconomics {
+  if (typeof raw !== "object" || raw === null) return false;
+  const bps = (raw as Record<string, unknown>).savings_basis_points;
+  return typeof bps === "number" && Number.isFinite(bps) && bps > 0;
+}
 
 function validateEconomics(raw: unknown): VerticalEconomics {
-  return validateEconomicsShape(raw, REQUIRED_EFFECTIVENESS_KEYS);
+  if (!isEmployeeServiceEconomics(raw)) {
+    throw new ValueModelContractError(
+      "employee service economics requires savings_basis_points as a positive finite number",
+    );
+  }
+  return raw as unknown as VerticalEconomics;
 }
 
 function defaultEconomics(): VerticalEconomics {
-  return {
-    annual_license: 1_500_000,
-    implementation_fee: 200_000,
-    scenarios: [
-      { name: "Conservative", effectiveness: { itDeflection: 0.4, hrDeflection: 0.45 } },
-      { name: "Expected", effectiveness: { itDeflection: 0.55, hrDeflection: 0.6 } },
-      { name: "Aggressive", effectiveness: { itDeflection: 0.7, hrDeflection: 0.72 } },
-    ],
-    adoption_curve: DEFAULT_ADOPTION_CURVE,
-  };
+  return { savings_basis_points: 35 };
 }
 
-function round(n: number): number {
-  return Math.round(n);
-}
-
-function validateInputs(raw: Record<string, number>, estimated: boolean): ValidatedInputs {
+function validateInputs(
+  raw: Record<string, number>,
+  estimated: boolean,
+  context: Record<string, string> = {},
+): ValidatedInputs {
   if (typeof raw.total_employees !== "number") {
     throw new Error("research.extension.value_inputs.total_employees missing");
   }
   return {
-    values: {
-      total_employees: raw.total_employees,
-      it_staff: typeof raw.it_staff === "number" ? raw.it_staff : 0,
-      hr_staff: typeof raw.hr_staff === "number" ? raw.hr_staff : 0,
-    },
+    values: { total_employees: raw.total_employees },
+    context: { ...context },
     estimated,
   };
 }
 
 function createCompute(economics: VerticalEconomics) {
   return (inputs: ValidatedInputs): ValueResult => {
+    const bps = economics.savings_basis_points as number;
     const employees = Math.max(0, Math.floor(inputs.values.total_employees ?? 0));
-    const annualItTickets = employees * IT_TICKETS_PER_EMPLOYEE_YEAR;
-    const annualHrInteractions = employees * HR_INTERACTIONS_PER_EMPLOYEE_YEAR;
-
-    const itAnnualCost = annualItTickets * IT_BLENDED_COST_PER_TICKET;
-    const hrAnnualCost = annualHrInteractions * HR_BLENDED_COST_PER_INTERACTION;
-
-    const firstYearCost = economics.annual_license + economics.implementation_fee;
-
-    const scenarios = economics.scenarios.map((s) => {
-      const itDeflection = s.effectiveness.itDeflection ?? 0;
-      const hrDeflection = s.effectiveness.hrDeflection ?? 0;
-      const gross = itAnnualCost * itDeflection + hrAnnualCost * hrDeflection;
-      const net = gross - economics.annual_license;
-      const roiPercent = firstYearCost > 0 ? (net / firstYearCost) * 100 : 0;
-      return {
-        name: s.name,
-        primaryValue: formatDollars(round(net)),
-        primaryLabel: "Net Annual Savings",
-        secondary: `${round(roiPercent)}% ROI`,
-      };
-    });
-
-    const expectedScenario = economics.scenarios[1]!;
-    const expectedGross =
-      itAnnualCost * (expectedScenario.effectiveness.itDeflection ?? 0) +
-      hrAnnualCost * (expectedScenario.effectiveness.hrDeflection ?? 0);
-    const expectedNet = round(expectedGross - economics.annual_license);
-
-    const paybackValue =
-      expectedGross > 0 ? `${(firstYearCost / (expectedGross / 12)).toFixed(1)} mo` : "n/a";
-
-    const adoption = economics.adoption_curve ?? DEFAULT_ADOPTION_CURVE;
-    const annualCashFlows = adoption.map((ramp, i) => {
-      const yearNumber = i + 1;
-      return (
-        ramp * expectedGross -
-        economics.annual_license -
-        (yearNumber === 1 ? economics.implementation_fee : 0)
-      );
-    });
-
-    let runningTotal = 0;
-    const series = annualCashFlows.map((flow, i) => {
-      runningTotal += flow;
-      const rounded = round(runningTotal);
-      return {
-        period: `Year ${i + 1}`,
-        value: rounded,
-        display: formatDollars(rounded),
-      };
-    });
-
-    const cumulative5 = runningTotal;
-
-    const npv = round(annualCashFlows.reduce((sum, flow, i) => sum + flow / 1.08 ** (i + 1), 0));
-
     return {
-      sectionTitle: "Business Value",
-      headline: { label: "Expected net annual savings", value: formatDollars(expectedNet) },
-      scenarios,
-      footnote: inputs.estimated ? "Staff counts estimated from industry benchmarks." : undefined,
-      metrics: [
-        { label: "Expected ROI", value: `${round((expectedNet / firstYearCost) * 100)}%` },
-        { label: "Payback period", value: paybackValue },
-        { label: "5-year net savings", value: formatDollars(round(cumulative5)) },
-        { label: "NPV at 8 percent", value: formatDollars(npv) },
-      ],
-      projection: {
-        label: "Cumulative net cash flow",
-        unit: "USD",
-        series,
+      sectionTitle: "What an autonomous support layer returns",
+      headline: {
+        label: "Annual operating spend returned",
+        value: `roughly ${bps} basis points of annual operating spend`,
       },
+      mechanism: `An autonomous support layer resolves HR and ITSM requests for your ${employees} people without a human in the loop, and the benchmarked rate of ${bps} basis points names the share of annual operating spend that work returns.`,
+      footnote: inputs.estimated
+        ? "We estimated your headcount from public signals, so treat this rate as a directional read, not a quote."
+        : undefined,
     };
   };
 }
 
-const inputGuidance = `Gather headcount as numeric value_inputs:
+const inputGuidance = `Gather one numeric value_input:
 - total_employees: total global headcount (required).
-- it_staff: IT Service Desk reps, help desk staff, or IT support managers. Usually not public; if unavailable, estimate at roughly 0.5% to 1% of total employees.
-- hr_staff: HR Service Desk reps or HR shared services staff. Usually not public; estimate at roughly 0.1% to 0.3% of total employees if needed.
-Use actual counts when you find them in job postings, org charts, or releases, and set estimated: false. Otherwise estimate and set estimated: true.`;
+Use the actual count when you find it in job postings, org charts, or releases, and set estimated: false. When you infer it from public signals, estimate the count and set estimated: true. Gather no context keys.`;
 
 function createValueModel(profile: ProductProfile): BoundValueModel {
   const economics = profile.economics ? validateEconomics(profile.economics) : defaultEconomics();
@@ -155,11 +86,11 @@ export const employeeServiceVertical: VerticalSpec = {
   id: "salesforce_employee_service",
   label: "Salesforce Employee Service (HR and ITSM)",
   domains: ["HR", "ITSM"],
-  domainGuidance: `Surface the top priorities in HR and ITSM through an executive lens: what matters to the VP of HR, CHRO, CIO, or VP of IT, and why now. Frame each domain priority as a point of view (POV): a stance on what the buyer recognizes as their own priorities.`,
-  executiveTargeting: `Prioritize:
-- HR leadership (CHRO, VP of HR)
-- ITSM leadership (CIO, VP of IT)
-- C-suite (CEO, President, COO)`,
+  domainGuidance: `Surface the HR and ITSM priorities a founder owns directly: the onboarding, access, and support work that lands on the founder until the company hires the role away. Frame each domain priority as a point of view (POV): a stance on what the founder recognizes as their own burden right now.`,
+  voiceTargeting: `Prioritize the founder's respected voices across the self, backer, and tribe ladder:
+- self: the founder's own words on building the early team and carrying its support load
+- backer: an investor or operator who funded or advised the founder
+- tribe: a widely revered founder or builder whose words the founder follows`,
   defaultAccentColor: "#0176d3",
   inputGuidance,
   validateInputs,

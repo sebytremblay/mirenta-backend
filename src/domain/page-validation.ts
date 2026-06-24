@@ -32,12 +32,6 @@ function collectRequiredFigures(value: ValueResult): string[] {
     if (typeof s === "string" && s.trim() !== "") figs.add(s);
   };
   add(value.headline.value);
-  for (const s of value.scenarios) {
-    add(s.primaryValue);
-    add(s.secondary);
-  }
-  for (const m of value.metrics ?? []) add(m.value);
-  for (const p of value.projection?.series ?? []) add(p.display);
   return [...figs];
 }
 
@@ -108,7 +102,8 @@ export function validatePage(html: string, opts: ValidatePageOptions): void {
   }
 
   // The length floor avoids a trivial-substring false positive on a short fragment.
-  for (const q of opts.research.quotes) {
+  for (const v of opts.research.voices) {
+    const q = v.quote;
     if (!q.verified && q.text && q.text.trim().length >= 12 && html.includes(q.text)) {
       throw new PageValidationError("unverified quote text appears on the page");
     }

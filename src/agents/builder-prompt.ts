@@ -56,18 +56,13 @@ REQUIRED SECTIONS, IN THIS ORDER, WITH THESE EXACT ids
 1. Hero: a header element with role="banner". Include the prospect and seller lockup, an eyebrow that names the lead by name and role, an <h1>, and a short lede. Include a quick-link group with TWO links: one with href="#business-case" and one with href="#book". Both targets must resolve in this document.
 2. Priorities: the researched domain priorities as scannable cards.
 3. Challenges: the pressure each priority creates, as cards.
-4. Point of view and goals: tie each priority to the seller solution. Place each VERIFIED quote INSIDE the section it supports, as a styled blockquote with attribution. Never render a standalone quote list.
-5. Business case: a section with id="business-case". Render the metric tiles, then an inline SVG chart of the cumulative projection, then the scenario cards.
-6. CTA: a section with id="book". Render the booking action from the provided booking URL when present; otherwise instruct the reader to reply to the outreach email. Use no form.
+4. Point of view and goals: tie each priority to the seller solution. Place each VERIFIED respected-voice quote INSIDE the section it supports, as a styled blockquote attributed to the voice and tagged by its tier. Never render a standalone quote list.
+5. Value render: a section with id="business-case". Render the value the model supplies, not a dashboard. Show the headline value expression verbatim and prominently in var(--font-display), with its label beside or beneath it. Render the one-sentence mechanism directly under the headline as plain prose. Render the footnote, when present, as small print below the mechanism. Render no metric tiles, no charts, and no scenario cards.
+6. CTA: a section with id="book". Make a founder-to-founder ask in the seller's own voice. Render the booking action from the provided booking URL when present; otherwise instruct the reader to reply to the outreach email. Use no form.
 7. Footer with role="contentinfo" carrying the supplied disclaimer text.
 
-BUSINESS CASE DETAIL
-- Metric tiles: one tile per supplied metric. Show the value prominently in var(--font-display) and the label beneath. For the count-up animation, add to each tile value element a data-count attribute (the numeric part of the figure) and optional data-prefix, data-suffix, and data-decimals attributes. ALWAYS also render the exact supplied display string as the element text content, so the figure stays correct without animation.
-- SVG chart: draw a bar chart of the cumulative projection series. Scale the geometry from the numeric value of each point. Label each bar with the point period and its exact display string. Add <title> and <desc> for accessibility. Theme the bars with var(--brand) and var(--accent).
-- Scenario cards: one card per scenario showing its name, primary value, primary label, and secondary metric when present, all verbatim.
-
 FIGURES
-- Every dollar figure, percent, payback, and projection value is PRECOMPUTED and supplied as an exact display string. Render each string verbatim. Never invent, recompute, or reformat a figure.
+- The value model supplies one value expression as an exact display string. Render that string verbatim. Never invent, recompute, or reformat the figure, and add no figure the model did not supply.
 
 READING TIME
 - Target roughly 600 to 750 words of body copy, a read under three minutes. Prefer scannable cards and tight sentences over long paragraphs.
@@ -83,27 +78,7 @@ export function renderValueBlock(value: ValueResult): string {
   const lines: string[] = [];
   lines.push(`Section title: ${value.sectionTitle}`);
   lines.push(`Headline: ${value.headline.label}: ${value.headline.value}`);
-
-  if (value.metrics && value.metrics.length > 0) {
-    lines.push("Metric tiles (render each value verbatim):");
-    for (const m of value.metrics) lines.push(`- ${m.label}: ${m.value}`);
-  }
-
-  if (value.projection && value.projection.series.length > 0) {
-    lines.push(
-      `Cumulative projection "${value.projection.label}" (${value.projection.unit}); draw an SVG bar chart from these points, scaling height by the numeric value and labeling each bar with its display string:`,
-    );
-    for (const p of value.projection.series) {
-      lines.push(`- ${p.period}: numeric ${p.value}, display "${p.display}"`);
-    }
-  }
-
-  lines.push("Scenario cards:");
-  for (const s of value.scenarios) {
-    const secondary = s.secondary ? `, ${s.secondary}` : "";
-    lines.push(`- ${s.name}: ${s.primaryValue} (${s.primaryLabel})${secondary}`);
-  }
-
+  lines.push(`Mechanism: ${value.mechanism}`);
   if (value.footnote) lines.push(`Footnote: ${value.footnote}`);
   return lines.join("\n");
 }
@@ -117,24 +92,20 @@ export function buildUserPrompt(
   const fullName = `${lead.first_name} ${lead.last_name}`;
   const role = lead.role ? escapeHtml(lead.role) : "";
 
-  const execLines = research.executives
-    .map(
-      (e) =>
-        `- ${escapeHtml(e.name)}, ${escapeHtml(e.title)} (owns: ${escapeHtml(e.owns)}): ${escapeHtml(e.profile)}`,
-    )
-    .join("\n");
-
   const priorityLines = research.extension.priorities
     .map(
       (p) => `- ${escapeHtml(p.domain)}: ${escapeHtml(p.pov)} Why now: ${escapeHtml(p.why_now)}`,
     )
     .join("\n");
 
-  const verifiedQuotes = research.quotes.filter((q) => q.verified);
-  const quoteLines =
-    verifiedQuotes.length > 0
-      ? verifiedQuotes
-          .map((q) => `- "${escapeHtml(q.text)}" — ${escapeHtml(q.speaker)}`)
+  const verifiedVoices = research.voices.filter((v) => v.quote.verified);
+  const voiceLines =
+    verifiedVoices.length > 0
+      ? verifiedVoices
+          .map(
+            (v) =>
+              `- ${escapeHtml(v.name)} (${escapeHtml(v.identity)}) [tier: ${escapeHtml(v.tier)}]: "${escapeHtml(v.quote.text)}"`,
+          )
           .join("\n")
       : "None available. Render no quotes.";
 
@@ -161,7 +132,7 @@ export function buildUserPrompt(
       : "Booking URL: none (render the CTA as an instruction to reply to the outreach email; add no external link).",
   );
 
-  const disclaimer = `Mirenta prepares this page for ${escapeHtml(lead.company)}. The value figures model industry benchmarks and serve as illustration pending discovery. Confirm them against your own operational data before external use.`;
+  const disclaimer = `Mirenta prepares this page for ${escapeHtml(lead.company)}. It offers one founder-to-founder point of view drawn from public research. Read it as a starting point and confirm it against your own situation.`;
 
   return `LEAD
 ${escapeHtml(fullName)}${role ? `, ${role}` : ""} at ${escapeHtml(lead.company)}.
@@ -170,7 +141,7 @@ SELLER
 ${escapeHtml(profile.company_name)} / ${escapeHtml(profile.product_name)}.
 Value proposition: ${escapeHtml(profile.value_prop)}
 ${profile.positioning ? `Positioning: ${escapeHtml(profile.positioning)}` : ""}
-CTA label: ${escapeHtml(profile.cta_text || "Book a 30-minute walkthrough")}
+CTA label: ${escapeHtml(profile.cta_text || "Trade notes founder to founder")}
 
 ACCOUNT
 Summary: ${escapeHtml(research.account.summary)}
@@ -178,16 +149,13 @@ How they describe themselves: ${escapeHtml(research.account.self_description_lan
 Recent moves:
 ${recentMoves}
 
-EXECUTIVES
-${execLines || "None available."}
-
 DOMAIN PRIORITIES (${research.extension.domains.map((d) => escapeHtml(d)).join(", ")})
 ${priorityLines || "None available."}
 
-VERIFIED QUOTES (place each inside the section it supports)
-${quoteLines}
+RESPECTED VOICES (place each inside the section it supports, attributed and tagged by tier)
+${voiceLines}
 
-BUSINESS CASE (render these exact strings verbatim; do not recompute or reformat)
+VALUE RENDER (render these exact strings verbatim; do not recompute or reformat)
 ${renderValueBlock(value)}
 
 BRAND TOKENS (paste verbatim at the top of your <style> block)

@@ -1,4 +1,3 @@
-import { formatDollars } from "../domain/format.ts";
 import type {
   BoundValueModel,
   ValidatedInputs,
@@ -7,141 +6,101 @@ import type {
   VerticalSpec,
 } from "./types.ts";
 import type { ProductProfile } from "../domain/entities.ts";
-import { validateEconomicsShape } from "./contract.ts";
+import { ValueModelContractError } from "./contract.ts";
 
-const MEETING_TO_WON_RATE = 0.05;
+// The stage bands this vertical recognizes. The value unit is a time range, and
+// the band picks the range. Each band names a public raise signal the agent can
+// source rather than a number the founder must disclose.
+const KNOWN_BANDS = ["pre_seed", "seed", "series_a"] as const;
+type StageBand = (typeof KNOWN_BANDS)[number];
 
-const DEFAULT_MEETINGS_PER_REP_YEAR = 60;
+function isStageBand(value: string): value is StageBand {
+  return (KNOWN_BANDS as readonly string[]).includes(value);
+}
 
-const DEFAULT_ADOPTION_CURVE = [0.5, 0.8, 1.0, 1.0, 1.0];
+function isHoursPair(value: unknown): value is [number, number] {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    typeof value[0] === "number" &&
+    Number.isFinite(value[0]) &&
+    typeof value[1] === "number" &&
+    Number.isFinite(value[1])
+  );
+}
 
-// Keep in lockstep with the key createCompute reads.
-const REQUIRED_EFFECTIVENESS_KEYS = ["meeting_uplift"] as const;
-
+// This vertical owns its economics shape. `band_hours` maps each stage band to
+// the [low, high] founder-hours the band reclaims each week; compute reads the
+// pair for the band research carried and renders it verbatim.
 function defaultEconomics(): VerticalEconomics {
   return {
-    annual_license: 150_000,
-    implementation_fee: 30_000,
-    scenarios: [
-      { name: "Conservative", effectiveness: { meeting_uplift: 0.1 } },
-      { name: "Expected", effectiveness: { meeting_uplift: 0.2 } },
-      { name: "Aggressive", effectiveness: { meeting_uplift: 0.35 } },
-    ],
-    adoption_curve: DEFAULT_ADOPTION_CURVE,
+    band_hours: {
+      pre_seed: [2, 4],
+      seed: [4, 6],
+      series_a: [6, 9],
+    },
   };
 }
 
-function round(n: number): number {
-  return Math.round(n);
-}
-
 function validateEconomics(raw: unknown): VerticalEconomics {
-  return validateEconomicsShape(raw, REQUIRED_EFFECTIVENESS_KEYS);
+  if (typeof raw !== "object" || raw === null) {
+    throw new ValueModelContractError("sales_marketing economics must be an object");
+  }
+  const bandHours = (raw as Record<string, unknown>).band_hours;
+  if (typeof bandHours !== "object" || bandHours === null) {
+    throw new ValueModelContractError("sales_marketing economics.band_hours must be an object");
+  }
+  const map = bandHours as Record<string, unknown>;
+  for (const band of KNOWN_BANDS) {
+    if (!isHoursPair(map[band])) {
+      throw new ValueModelContractError(
+        `sales_marketing economics.band_hours.${band} must be a [number, number] pair`,
+      );
+    }
+  }
+  return raw as VerticalEconomics;
 }
 
-function validateInputs(raw: Record<string, number>, estimated: boolean): ValidatedInputs {
-  if (typeof raw.quota_carrying_reps !== "number") {
-    throw new Error("research.extension.value_inputs.quota_carrying_reps missing");
-  }
-  if (typeof raw.avg_deal_size !== "number") {
-    throw new Error("research.extension.value_inputs.avg_deal_size missing");
+function validateInputs(
+  raw: Record<string, number>,
+  estimated: boolean,
+  context: Record<string, string> = {},
+): ValidatedInputs {
+  const band = context.stage_band;
+  if (typeof band !== "string" || !isStageBand(band)) {
+    throw new Error(
+      "research.extension.context.stage_band must be one of pre_seed, seed, series_a",
+    );
   }
   return {
-    values: {
-      quota_carrying_reps: raw.quota_carrying_reps,
-      avg_deal_size: raw.avg_deal_size,
-      baseline_meetings_per_rep_year:
-        typeof raw.baseline_meetings_per_rep_year === "number"
-          ? raw.baseline_meetings_per_rep_year
-          : DEFAULT_MEETINGS_PER_REP_YEAR,
-    },
+    values: { ...raw },
+    context: { stage_band: band },
     estimated,
   };
 }
 
 function createCompute(economics: VerticalEconomics) {
+  const bandHours = (economics as { band_hours: Record<string, [number, number]> }).band_hours;
   return (inputs: ValidatedInputs): ValueResult => {
-    const reps = Math.max(0, Math.floor(inputs.values.quota_carrying_reps ?? 0));
-    const dealSize = Math.max(0, inputs.values.avg_deal_size ?? 0);
-    const meetingsPerRep = Math.max(0, inputs.values.baseline_meetings_per_rep_year ?? 0);
-    const baselineMeetings = reps * meetingsPerRep;
-
-    const firstYearCost = economics.annual_license + economics.implementation_fee;
-
-    const scenarios = economics.scenarios.map((s) => {
-      const uplift = s.effectiveness.meeting_uplift ?? 0;
-      const incrementalMeetings = baselineMeetings * uplift;
-      const incrementalWonDeals = incrementalMeetings * MEETING_TO_WON_RATE;
-      const gross = incrementalWonDeals * dealSize;
-      const net = gross - economics.annual_license;
-      const roiPercent = firstYearCost > 0 ? (net / firstYearCost) * 100 : 0;
-      return {
-        name: s.name,
-        primaryValue: formatDollars(round(net)),
-        primaryLabel: "Net new annual revenue",
-        secondary: `${round(roiPercent)}% ROI`,
-      };
-    });
-
-    const expectedUplift = economics.scenarios[1]!.effectiveness.meeting_uplift ?? 0;
-    const expectedIncrementalMeetings = baselineMeetings * expectedUplift;
-    const expectedGross = expectedIncrementalMeetings * MEETING_TO_WON_RATE * dealSize;
-    const expectedNet = round(expectedGross - economics.annual_license);
-
-    const paybackValue =
-      expectedGross > 0 ? `${(firstYearCost / (expectedGross / 12)).toFixed(1)} mo` : "n/a";
-
-    const adoption = economics.adoption_curve ?? DEFAULT_ADOPTION_CURVE;
-    const annualCashFlows = adoption.map((ramp, i) => {
-      const yearNumber = i + 1;
-      return (
-        ramp * expectedGross -
-        economics.annual_license -
-        (yearNumber === 1 ? economics.implementation_fee : 0)
-      );
-    });
-
-    let runningTotal = 0;
-    const series = annualCashFlows.map((flow, i) => {
-      runningTotal += flow;
-      const rounded = round(runningTotal);
-      return {
-        period: `Year ${i + 1}`,
-        value: rounded,
-        display: formatDollars(rounded),
-      };
-    });
-
-    const cumulative5 = runningTotal;
-    const npv = round(annualCashFlows.reduce((sum, flow, i) => sum + flow / 1.08 ** (i + 1), 0));
-
+    // validateInputs already narrowed stage_band to a known band, so the lookup
+    // resolves; fall back to the seed band defensively for the type checker.
+    const band = inputs.context.stage_band ?? "seed";
+    const [lo, hi] = bandHours[band] ?? bandHours.seed ?? [0, 0];
     return {
-      sectionTitle: "Business Value",
-      headline: { label: "Expected net new annual revenue", value: formatDollars(expectedNet) },
-      scenarios,
-      footnote: inputs.estimated
-        ? "Pipeline and revenue figures model industry benchmarks and serve as illustration pending discovery."
-        : undefined,
-      metrics: [
-        { label: "Expected ROI", value: `${round((expectedNet / firstYearCost) * 100)}%` },
-        { label: "Payback period", value: paybackValue },
-        { label: "5-year net new revenue", value: formatDollars(round(cumulative5)) },
-        { label: "NPV at 8 percent", value: formatDollars(npv) },
-      ],
-      projection: {
-        label: "Cumulative net new revenue",
-        unit: "USD",
-        series,
+      sectionTitle: "What this frees up",
+      headline: {
+        label: "Founder time reclaimed",
+        value: `~${lo} to ${hi} founder-hours reclaimed each week`,
       },
+      mechanism: `Founders at the ${band.replace(/_/g, " ")} stage run the go-to-market motion by hand, so the reclaimed-hours benchmark for that stage measures the weekly load this lifts off the founder.`,
+      footnote: inputs.estimated
+        ? "The reclaimed-hours figure draws on a stage-band benchmark, not the founder's own measured week, and serves as illustration pending a conversation."
+        : undefined,
     };
   };
 }
 
-const inputGuidance = `Gather the outbound funnel drivers as numeric value_inputs:
-- quota_carrying_reps: the number of quota-carrying sales reps running outbound (required). Source from job postings, the sales-team page, or LinkedIn headcount.
-- avg_deal_size: average annual contract or deal value in USD (required). Source from pricing pages, case studies, or filings; estimate from the segment when not public.
-- baseline_meetings_per_rep_year: booked qualified meetings per rep per year today. Usually not public; estimate from benchmarks when unavailable.
-Use actual figures when you find them and set estimated: false. Otherwise estimate and set estimated: true.`;
+const inputGuidance = `Gather no numeric value_inputs for this vertical. Set extension.context.stage_band to exactly one of pre_seed, seed, or series_a, sourced from public raise signals (funding announcements, the company's own posts, investor portfolio pages, or filings). Set estimated: true when you infer the band from indirect signals rather than a stated round, and estimated: false when a public source names the round outright.`;
 
 function createValueModel(profile: ProductProfile): BoundValueModel {
   const economics = profile.economics ? validateEconomics(profile.economics) : defaultEconomics();
@@ -157,11 +116,11 @@ export const salesMarketingVertical: VerticalSpec = {
   id: "sales_marketing",
   label: "Sales and Marketing",
   domains: ["Sales", "Marketing"],
-  domainGuidance: `Surface the top priorities in Sales and Marketing through an executive lens: pipeline generation, outbound efficiency and reply rates, win rates and sales productivity, demand generation, and campaign return. Frame each domain priority as a point of view (POV): a stance on what the revenue leader recognizes as their own priority, and why now.`,
-  executiveTargeting: `Prioritize:
-- Sales leadership (CRO, VP of Sales, Head of Sales Development)
-- Marketing leadership (CMO, VP of Marketing, VP of Demand Generation)
-- C-suite (CEO, President, COO)`,
+  domainGuidance: `Surface the go-to-market problem the founder ships against: finding the first repeatable channel, writing the messaging that earns a reply, booking the early pipeline by hand, and turning interest into committed customers. Frame each domain priority as a point of view (POV): a stance on what the founder recognizes as their own priority right now, and why now.`,
+  voiceTargeting: `Prioritize voices across the self, backer, and tribe ladder:
+- self: the founder's own posts, talks, and writing on sales and marketing
+- backer: the investors and angels who funded the founder and speak to their go-to-market thesis
+- tribe: the revered voices of the sales-and-marketing founder's domain whom the founder cites or follows`,
   defaultAccentColor: "#2563eb",
   inputGuidance,
   validateInputs,

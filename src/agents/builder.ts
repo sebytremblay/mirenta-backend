@@ -14,7 +14,7 @@ import {
   injectRuntimeAssets,
   PageValidationError,
 } from "../domain/page-validation.ts";
-import { validateDisclosurePolicy } from "../verticals/contract.ts";
+import { assertValueModelContract } from "../verticals/contract.ts";
 import type { ProductProfile } from "../domain/entities.ts";
 
 export type { BuildSiteInput } from "./builder-prompt.ts";
@@ -76,10 +76,11 @@ export async function buildSite(input: BuildSiteInput): Promise<BuildSiteResult>
   const validatedInputs = valueModel.validateInputs(
     research.extension.value_inputs,
     research.extension.estimated,
+    research.extension.context,
   );
   const value = valueModel.compute(validatedInputs);
 
-  validateDisclosurePolicy(value, research.extension.estimated);
+  assertValueModelContract(value, research.extension.estimated);
 
   onStep?.({ phase: "brand", detail: "resolving brand tokens" });
   const brand = research.brand;
