@@ -1,195 +1,224 @@
-import { buildSite } from "../src/agents/builder.ts";
-import { resolveLogoUrl, resolveFaviconHref } from "../src/agents/brand-tokens.ts";
+// Prints the builder prompts so a human can paste them into a Claude Code
+// session and generate the page by hand. This makes NO live API call. It reads
+// the research object the research smoke produced (/tmp/mirenta-research.json)
+// and falls back to a bundled founder sample when that file is absent, then
+// builds the exact system prompt and user prompt the builder would send.
 import {
-  validatePage,
-  PageValidationError,
-} from "../src/domain/page-validation.ts";
-import { employeeServiceVertical } from "../src/verticals/employee-service.ts";
+  DESIGN_BRIEF,
+  buildUserPrompt,
+  type BuildSiteInput,
+} from "../src/agents/builder-prompt.ts";
+import {
+  deriveTokens,
+  renderTokenBlock,
+  resolveLogoUrl,
+  resolveFaviconHref,
+  resolveGoogleFontHref,
+} from "../src/agents/brand-tokens.ts";
+import { validateResearch } from "../src/domain/research.ts";
+import { salesMarketingVertical } from "../src/verticals/sales-marketing.ts";
 import type { ResearchObject } from "../src/domain/research.ts";
 import type { ProductProfile } from "../src/domain/entities.ts";
-import { writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 
-const vertical = employeeServiceVertical;
+// Keep in sync with smoke-research.ts.
+const RESEARCH_IN = "/tmp/mirenta-research.json";
 
+const vertical = salesMarketingVertical;
+
+// A founder-model sample for sales_marketing: respected voices across the
+// ladder, a stage band in context, no numeric value_inputs. Used when the
+// research smoke output is not on disk.
 const sampleResearch: ResearchObject = {
-  vertical: "salesforce_employee_service",
+  vertical: "sales_marketing",
   account: {
     summary:
-      "Plexus Corp is a global electronics manufacturing services provider with operations across North America, Europe, and Asia. The company serves aerospace, defense, healthcare, and industrial sectors with advanced manufacturing and supply chain solutions. Recent initiatives focus on operational efficiency and digital transformation.",
+      "Cadence Labs builds a workflow engine for solo and small founding teams. The company shipped its first release this year and grows through founder word of mouth.",
     recent_moves: [
-      "Expanded automation capabilities in manufacturing facilities",
-      "Invested in supply chain visibility tools",
-      "Launched employee training programs for digital tools",
+      "Announced a seed round led by a founder-focused fund",
+      "Launched a self-serve onboarding flow",
+      "Published a public roadmap",
     ],
     self_description_language:
-      "Plexus describes itself as a customer-focused provider of innovative engineering solutions and manufacturing services.",
+      "Cadence Labs describes itself as the operating cadence for founders who ship before they hire.",
   },
-  executives: [
+  voices: [
     {
-      name: "Todd Kelsey",
-      title: "President and CEO",
-      owns: "Corporate strategy and operational excellence",
-      profile:
-        "Todd Kelsey drives strategic growth and operational improvements across Plexus. He has emphasized digital transformation and workforce enablement as key priorities.",
+      name: "Dana Okafor",
+      identity: "the founder",
+      tier: "self",
+      quote: {
+        text: "I write every outbound email myself, because no one else knows why this matters yet.",
+        source_url: "https://www.cadencelabs.dev/blog/founder-selling",
+        verified: true,
+      },
     },
     {
-      name: "Patrick Jermain",
-      title: "CFO and Chief Administrative Officer",
-      owns: "Financial operations and administrative functions",
-      profile:
-        "Patrick Jermain oversees finance and administrative processes. He focuses on cost efficiency and leveraging technology to streamline operations.",
-    },
-    {
-      name: "Angelo Ninivaggi",
-      title: "SVP and CIO",
-      owns: "IT infrastructure and enterprise systems",
-      profile:
-        "Angelo Ninivaggi leads IT strategy and infrastructure modernization. He prioritizes system reliability, security, and employee productivity tools.",
-    },
-  ],
-  quotes: [
-    {
-      text: "Our success depends on empowering our people with the right tools and information to serve our customers effectively.",
-      speaker: "Todd Kelsey",
-      source_url: "https://www.plexus.com/about-us/leadership",
-      verified: true,
-    },
-    {
-      text: "We are committed to operational excellence and continuous improvement across all functions.",
-      speaker: "Patrick Jermain",
-      source_url: "https://www.plexus.com/investor-relations",
-      verified: true,
+      name: "Mara Delgado",
+      identity: "Partner at Foundry Seed, who led the round",
+      tier: "backer",
+      quote: {
+        text: "The founders who win early sell the vision in their own voice before they hire a single rep.",
+        source_url: "https://foundryseed.com/notes/founder-led-sales",
+        verified: true,
+      },
     },
   ],
   extension: {
-    domains: ["HR", "ITSM"],
+    domains: ["Sales", "Marketing"],
     priorities: [
       {
-        domain: "HR",
-        pov: "Plexus needs to scale HR service delivery without proportional headcount growth. AI-powered self-service can deflect repetitive inquiries and improve onboarding efficiency.",
-        why_now:
-          "The company is expanding globally and onboarding new employees rapidly. HR teams face increasing volumes of routine requests.",
+        domain: "Sales",
+        pov: "Cadence Labs needs a repeatable outbound channel the founder runs without a hire.",
+        why_now: "Runway is finite and the seed round buys a fixed number of months to find product-market fit.",
       },
       {
-        domain: "ITSM",
-        pov: "Plexus requires faster IT support resolution to minimize downtime in manufacturing environments. Automating low-tier tickets frees skilled engineers for strategic projects.",
-        why_now:
-          "Operational uptime is critical. The IT service desk handles high ticket volumes, with many repetitive issues that can be automated.",
+        domain: "Marketing",
+        pov: "The founder writes the messaging that earns the first replies, so every hour spent there is an hour off the product.",
+        why_now: "Early traction depends on the founder's own voice, which does not scale by hiring.",
       },
     ],
-    value_inputs: {
-      total_employees: 20000,
-      it_staff: 80,
-      hr_staff: 25,
-    },
-    estimated: false,
+    value_inputs: {},
+    context: { stage_band: "seed" },
+    estimated: true,
   },
   brand: {
-    primary_color: "#005596",
-    accent_color: "#00a3e0",
-    font_family: "Montserrat",
-    logo_url: "https://www.plexus.com/assets/logo.svg",
-    favicon_url: "https://www.plexus.com/favicon.ico",
+    primary_color: "#1f6feb",
+    accent_color: "#8957e5",
+    font_family: "Inter",
+    logo_url: "https://www.cadencelabs.dev/logo.svg",
+    favicon_url: "https://www.cadencelabs.dev/favicon.ico",
   },
 };
 
 const sampleProfile: ProductProfile = {
   org_id: "00000000-0000-0000-0000-000000000000",
-  company_name: "Salesforce",
-  product_name: "Agentforce for IT Service and HR Service",
-  value_prop: "AI-powered employee support that deflects routine requests, accelerates resolution, and scales service delivery without adding headcount.",
-  positioning:
-    "Agentforce transforms employee service by combining AI agents with deep enterprise integrations, enabling self-service at scale.",
-  proof_points: [
-    { claim: "85% ticket deflection rate for low-priority IT issues", source: "customer case studies" },
-    { claim: "50% reduction in onboarding coordination time", source: "Salesforce research" },
-  ],
-  cta_text: "Schedule a personalized demo",
-  brand: { primary_color: "#0176d3" },
-  vertical: "salesforce_employee_service",
+  company_name: "Mirenta",
+  product_name: "Mirenta",
+  value_prop:
+    "Turns a lead list into one hyper-personalized one-pager per founder, in their own language.",
+  positioning: "Founder-to-founder outreach that reads the prospect's public trail and mirrors it back.",
+  proof_points: [],
+  cta_text: "Trade notes founder to founder",
+  brand: { primary_color: "#1f6feb" },
+  vertical: "sales_marketing",
   economics: null,
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
+  created_at: new Date(0).toISOString(),
+  updated_at: new Date(0).toISOString(),
 };
 
 const sampleLead = {
-  first_name: "Angelo",
-  last_name: "Ninivaggi",
-  role: "SVP and CIO",
-  company: "Plexus Corp",
-  website_url: "https://www.plexus.com",
+  first_name: "Dana",
+  last_name: "Okafor",
+  role: "Founder and CEO",
+  company: "Cadence Labs",
+  website_url: "https://www.cadencelabs.dev",
 };
 
+function loadResearch(): { research: ResearchObject; source: string } {
+  try {
+    const raw = JSON.parse(readFileSync(RESEARCH_IN, "utf8")) as unknown;
+    // Validate through the same gate the worker uses, so the smoke fails loud
+    // when the saved object does not satisfy the founder schema.
+    const research = validateResearch(raw, vertical);
+    return { research, source: RESEARCH_IN };
+  } catch {
+    return { research: sampleResearch, source: "bundled founder sample" };
+  }
+}
+
+const rule = "=".repeat(72);
+
 try {
-  console.log("Building site for Plexus Corp...");
+  const { research, source } = loadResearch();
+  console.log(rule);
+  console.log(`SMOKE BUILDER (no API call) — vertical: ${vertical.id}`);
+  console.log(rule);
+  console.log(`Loaded research from: ${source}`);
+  console.log(`Prospect: ${research.account.summary.slice(0, 80)}...`);
+  console.log(`Voices: ${research.voices.length}; stage band: ${research.extension.context.stage_band ?? "n/a"}`);
+  console.log();
 
-  const { html, usage } = await buildSite({
-    lead: sampleLead,
-    profile: sampleProfile,
-    research: sampleResearch,
-    vertical,
-    onStep: (s) => console.log(`  [${s.phase}] ${s.detail}`),
-  });
-
-  const outputPath = "/tmp/mirenta-smoke.html";
-  writeFileSync(outputPath, html, "utf8");
-  console.log(`\nOutput written to ${outputPath} (${html.length} bytes)`);
-  console.log(
-    `Token usage: ${usage.requests} requests, ${usage.input_tokens} in / ${usage.output_tokens} out, ` +
-      `cache ${usage.cache_creation_tokens} write / ${usage.cache_read_tokens} read`,
-  );
-
+  // Compute the value model exactly as buildSite does, threading context.
   const valueModel = vertical.createValueModel(sampleProfile);
   const validatedInputs = valueModel.validateInputs(
-    sampleResearch.extension.value_inputs,
-    sampleResearch.extension.estimated,
+    research.extension.value_inputs,
+    research.extension.estimated,
+    research.extension.context,
   );
   const value = valueModel.compute(validatedInputs);
-  const logoUrl = resolveLogoUrl(sampleProfile, sampleResearch.brand);
-  const faviconHref = resolveFaviconHref(sampleLead.website_url, sampleResearch.brand);
-  const hostOf = (u: string | undefined): string | undefined => {
-    if (!u || !/^https?:\/\//i.test(u)) return undefined;
-    try {
-      return new URL(u).host.toLowerCase();
-    } catch {
-      return undefined;
-    }
-  };
-  const assetHosts = [logoUrl, faviconHref, sampleLead.website_url]
-    .map(hostOf)
-    .filter((h): h is string => Boolean(h));
 
-  const check = (name: string, fn: () => void): boolean => {
-    try {
-      fn();
-      console.log(`  PASS  ${name}`);
-      return true;
-    } catch (e) {
-      const transient = e instanceof PageValidationError && e.transient ? " (transient)" : "";
-      console.log(`  FAIL  ${name}: ${(e as Error).message}${transient}`);
-      return false;
-    }
+  // Resolve assets the same way the builder does.
+  const tokens = deriveTokens(sampleProfile, research.brand, vertical.defaultAccentColor);
+  const tokenBlock = renderTokenBlock(tokens);
+  const logoUrl = resolveLogoUrl(sampleProfile, research.brand);
+  const faviconHref = resolveFaviconHref(sampleLead.website_url, research.brand);
+  const fontHref = resolveGoogleFontHref(research.brand?.font_family);
+
+  const input: BuildSiteInput = {
+    lead: sampleLead,
+    profile: sampleProfile,
+    research,
+    vertical,
   };
 
-  console.log("\nValidator report (final published bytes):");
-  const ok = check("page passes every load-bearing invariant", () =>
-    validatePage(html, {
-      value,
-      research: sampleResearch,
-      assetHosts,
-      requiredAnchors: ["#business-case", "#book"],
-      stopReason: "end_turn",
-    }),
-  );
+  const userPrompt = buildUserPrompt(input, value, {
+    tokenBlock,
+    logoUrl,
+    faviconHref,
+    fontHref,
+    booking: null,
+  });
 
-  const wearsBrand = html.includes("#005596") || html.includes("--brand");
-  const containsCompany = html.includes("Plexus Corp");
-  console.log(`  ${wearsBrand ? "PASS" : "FAIL"}  page references the prospect brand token`);
-  console.log(`  ${containsCompany ? "PASS" : "FAIL"}  page names the prospect company`);
+  console.log(rule);
+  console.log("BUILDER SYSTEM PROMPT (DESIGN BRIEF)");
+  console.log(rule);
+  console.log(DESIGN_BRIEF);
+  console.log();
+  console.log(rule);
+  console.log("USER PROMPT (seeded with the loaded research)");
+  console.log(rule);
+  console.log(userPrompt);
+  console.log();
 
-  const pass = ok && wearsBrand && containsCompany;
-  console.log(pass ? "\nSMOKE BUILDER: PASS" : "\nSMOKE BUILDER: FAIL");
-  if (!pass) process.exitCode = 1;
+  const checks = [
+    {
+      name: "value render carries the headline expression verbatim",
+      pass: userPrompt.includes(value.headline.value),
+    },
+    {
+      name: "value render carries the mechanism sentence",
+      pass: userPrompt.includes(value.mechanism),
+    },
+    {
+      name: "user prompt names the prospect company",
+      pass: userPrompt.includes(sampleLead.company),
+    },
+    {
+      name: "system prompt asks founder to founder, not for a demo booking",
+      pass: /founder-to-founder|founder to founder/i.test(DESIGN_BRIEF),
+    },
+    {
+      name: "system prompt forbids the old metric tiles, charts, and scenario cards",
+      pass: /no metric tiles/i.test(DESIGN_BRIEF) && /no\b[^.]*scenario cards/i.test(DESIGN_BRIEF),
+    },
+    {
+      name: "system prompt renders the value expression and its mechanism",
+      pass: /headline value expression/i.test(DESIGN_BRIEF) && /mechanism/i.test(DESIGN_BRIEF),
+    },
+  ];
+
+  console.log(rule);
+  console.log("CHECKS");
+  console.log(rule);
+  let allPass = true;
+  for (const check of checks) {
+    console.log(`  ${check.pass ? "PASS" : "FAIL"}  ${check.name}`);
+    if (!check.pass) allPass = false;
+  }
+  console.log();
+  console.log(allPass ? "SMOKE BUILDER: PASS" : "SMOKE BUILDER: FAIL (a prompt check failed)");
+  if (!allPass) process.exitCode = 1;
 } catch (e) {
   console.error("SMOKE BUILDER: FAIL", (e as Error).constructor.name, (e as Error).message);
   process.exitCode = 1;

@@ -6,18 +6,19 @@ import { makeProfile } from "../fixtures/profile.ts";
 
 const valueModel = genericVertical.createValueModel(makeProfile({ vertical: "generic" }));
 
-test("compute returns three scenarios in the disclosure order", () => {
+test("compute emits a qualitative claim with no dollar figure and no standalone digit", () => {
   const result = valueModel.compute(valueModel.validateInputs({}, true));
-  assert.deepEqual(
-    result.scenarios.map((s) => s.name),
-    ["Conservative", "Expected", "Aggressive"],
-  );
+  assert.doesNotMatch(result.headline.value, /\$|\d/);
+  assert.equal(typeof result.mechanism, "string");
+  assert.ok(result.mechanism.length > 0);
 });
 
-test("compute omits metrics and projection (qualitative model)", () => {
+test("the result carries no scenarios, metrics, or projection fields", () => {
   const result = valueModel.compute(valueModel.validateInputs({}, false));
-  assert.equal(result.metrics, undefined);
-  assert.equal(result.projection, undefined);
+  const bag = result as unknown as Record<string, unknown>;
+  assert.equal(bag.scenarios, undefined);
+  assert.equal(bag.metrics, undefined);
+  assert.equal(bag.projection, undefined);
 });
 
 test("the estimated flag drives the footnote", () => {
@@ -25,17 +26,11 @@ test("the estimated flag drives the footnote", () => {
   assert.equal(valueModel.compute(valueModel.validateInputs({}, false)).footnote, undefined);
 });
 
-test("validateInputs carries arbitrary numeric inputs through untouched", () => {
-  const v = valueModel.validateInputs({ total_employees: 5000 }, true);
+test("validateInputs carries arbitrary numeric values and context through untouched", () => {
+  const v = valueModel.validateInputs({ total_employees: 5000 }, true, { x: "y" });
   assert.equal(v.values.total_employees, 5000);
+  assert.equal(v.context.x, "y");
   assert.equal(v.estimated, true);
-});
-
-test("the scenario values name no dollar figure", () => {
-  const result = valueModel.compute(valueModel.validateInputs({}, true));
-  for (const s of result.scenarios) {
-    assert.doesNotMatch(s.primaryValue, /\$\d/);
-  }
 });
 
 test("compute satisfies the disclosure contract (estimated=true)", () => {
@@ -48,21 +43,15 @@ test("compute satisfies the disclosure contract (estimated=false)", () => {
   assertValueModelContract(result, false);
 });
 
-test("validateEconomics enforces the shared disclosure shape", () => {
-  assert.throws(
-    () =>
-      genericVertical.validateEconomics({
-        annual_license: 0,
-        implementation_fee: 0,
-        scenarios: [{ name: "Low", effectiveness: {} }],
-      }),
-    /exactly 3 scenarios/,
-  );
+test("validateEconomics rejects a non-object and accepts an object", () => {
+  assert.throws(() => genericVertical.validateEconomics(null), /economics must be an object/);
+  assert.throws(() => genericVertical.validateEconomics(42), /economics must be an object/);
+  assert.doesNotThrow(() => genericVertical.validateEconomics({}));
 });
 
-test("the spec carries no HR/ITSM framing", () => {
+test("the spec carries no HR or ITSM framing", () => {
   const haystack =
     `${genericVertical.domains.join(" ")} ${genericVertical.domainGuidance} ` +
-    `${genericVertical.executiveTargeting} ${genericVertical.inputGuidance}`;
+    `${genericVertical.voiceTargeting} ${genericVertical.inputGuidance}`;
   assert.doesNotMatch(haystack, /\b(HR|ITSM|CHRO|CIO|ticket|deflection)\b/i);
 });

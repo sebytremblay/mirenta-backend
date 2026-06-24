@@ -1,50 +1,44 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildUserPrompt, type BuildSiteInput, type PromptAssets } from "../../src/agents/builder-prompt.ts";
+import {
+  buildUserPrompt,
+  renderValueBlock,
+  type BuildSiteInput,
+  type PromptAssets,
+} from "../../src/agents/builder-prompt.ts";
 import type { ValueResult } from "../../src/verticals/index.ts";
 import type { ResearchObject } from "../../src/domain/research.ts";
 import type { ProductProfile } from "../../src/domain/entities.ts";
 
 const value: ValueResult = {
-  sectionTitle: "Business Value",
-  headline: { label: "Expected net annual savings", value: "$2.6M" },
-  scenarios: [
-    { name: "Conservative", primaryValue: "$1.6M", primaryLabel: "Net Annual Savings", secondary: "97% ROI" },
-    { name: "Expected", primaryValue: "$2.6M", primaryLabel: "Net Annual Savings", secondary: "156% ROI" },
-    { name: "Aggressive", primaryValue: "$3.7M", primaryLabel: "Net Annual Savings", secondary: "218% ROI" },
-  ],
-  metrics: [
-    { label: "Expected ROI", value: "156%" },
-    { label: "Payback period", value: "4.9 mo" },
-    { label: "5-year net savings", value: "$10.1M" },
-    { label: "NPV at 8 percent", value: "$7.8M" },
-  ],
-  projection: {
-    label: "Cumulative net cash flow",
-    unit: "USD",
-    series: [
-      { period: "Year 1", value: 374000, display: "$374K" },
-      { period: "Year 2", value: 2192400, display: "$2.2M" },
-      { period: "Year 3", value: 4840400, display: "$4.8M" },
-      { period: "Year 4", value: 7488400, display: "$7.5M" },
-      { period: "Year 5", value: 10136400, display: "$10.1M" },
-    ],
-  },
-  footnote: "Figures model industry benchmarks.",
+  sectionTitle: "What this frees up",
+  headline: { label: "Founder time reclaimed", value: "~4 to 6 founder-hours reclaimed each week" },
+  mechanism: "A seed-stage founder runs go-to-market by hand.",
+  footnote: "Drawn from a stage-band benchmark.",
 };
 
 const research: ResearchObject = {
-  vertical: "salesforce_employee_service",
-  account: { summary: "An electronics firm.", recent_moves: ["Expanded automation"], self_description_language: "We build." },
-  executives: [{ name: "Jordan Lee", title: "CIO", owns: "IT", profile: "Leads IT." }],
-  quotes: [
-    { text: "We invest in our people every single day without fail.", speaker: "CEO", source_url: "https://x.test/a", verified: true },
-    { text: "This unverified rumor must never reach the prompt at all.", speaker: "Rumor", source_url: "https://x.test/b", verified: false },
+  vertical: "sales_marketing",
+  account: { summary: "A seed-stage startup.", recent_moves: ["Closed a seed round"], self_description_language: "We build." },
+  voices: [
+    {
+      name: "Jordan Lee",
+      identity: "the founder",
+      tier: "self",
+      quote: { text: "We invest in our people every single day without fail.", source_url: "https://x.test/a", verified: true },
+    },
+    {
+      name: "Rumor Mill",
+      identity: "a blog",
+      tier: "tribe",
+      quote: { text: "This unverified rumor must never reach the prompt at all.", source_url: "https://x.test/b", verified: false },
+    },
   ],
   extension: {
-    domains: ["HR"],
-    priorities: [{ domain: "HR", pov: "Scale service.", why_now: "Growing fast." }],
-    value_inputs: { total_employees: 20000 },
+    domains: ["Sales", "Marketing"],
+    priorities: [{ domain: "Sales", pov: "Find the first repeatable channel.", why_now: "Runway is finite." }],
+    value_inputs: {},
+    context: { stage_band: "seed" },
     estimated: false,
   },
 };
@@ -56,16 +50,16 @@ const profile: ProductProfile = {
   value_prop: "AI employee support at scale.",
   positioning: "Self-service at scale.",
   proof_points: [],
-  cta_text: "Schedule a demo",
+  cta_text: "Trade notes founder to founder",
   brand: { primary_color: "#0176d3" },
-  vertical: "salesforce_employee_service",
+  vertical: "sales_marketing",
   economics: null,
   created_at: "2026-01-01T00:00:00.000Z",
   updated_at: "2026-01-01T00:00:00.000Z",
 };
 
 const input: BuildSiteInput = {
-  lead: { first_name: "Angelo", last_name: "Rossi", role: "CIO", company: "Plexus Corp", website_url: "https://plexus.test" },
+  lead: { first_name: "Angelo", last_name: "Rossi", role: "Founder", company: "Plexus Corp", website_url: "https://plexus.test" },
   profile,
   research,
   vertical: { defaultAccentColor: "#0176d3" } as BuildSiteInput["vertical"],
@@ -79,24 +73,23 @@ const assets: PromptAssets = {
   booking: "https://book.test/demo",
 };
 
-test("buildUserPrompt serializes only verified quotes", () => {
+test("buildUserPrompt serializes only verified voice quotes", () => {
   const prompt = buildUserPrompt(input, value, assets);
   assert.ok(prompt.includes("We invest in our people every single day without fail."));
   assert.ok(!prompt.includes("This unverified rumor must never reach the prompt at all."));
 });
 
-test("buildUserPrompt carries every value figure verbatim", () => {
+test("buildUserPrompt carries the headline value and mechanism verbatim", () => {
   const prompt = buildUserPrompt(input, value, assets);
-  const figures = [
-    "$2.6M",
-    "$1.6M", "97% ROI",
-    "156% ROI", "218% ROI",
-    "156%", "4.9 mo", "$10.1M", "$7.8M",
-    "$374K", "$2.2M", "$4.8M", "$7.5M",
-  ];
-  for (const fig of figures) {
-    assert.ok(prompt.includes(fig), `prompt should carry the figure ${fig}`);
-  }
+  assert.ok(prompt.includes("~4 to 6 founder-hours reclaimed each week"));
+  assert.ok(prompt.includes("A seed-stage founder runs go-to-market by hand."));
+});
+
+test("buildUserPrompt tags the voice by tier and identity", () => {
+  const prompt = buildUserPrompt(input, value, assets);
+  assert.ok(prompt.includes("Jordan Lee"));
+  assert.ok(prompt.includes("the founder"));
+  assert.ok(prompt.includes("self"));
 });
 
 test("buildUserPrompt carries the resolved assets and required anchors", () => {
@@ -114,4 +107,13 @@ test("buildUserPrompt falls back to a wordmark and reply-to-email when assets ar
   const prompt = buildUserPrompt(input, value, bare);
   assert.ok(/text wordmark/i.test(prompt));
   assert.ok(/reply to the outreach email/i.test(prompt));
+});
+
+test("renderValueBlock carries the mechanism and headline value without dashboard parts", () => {
+  const block = renderValueBlock(value);
+  assert.ok(block.includes("Mechanism:"));
+  assert.ok(block.includes("~4 to 6 founder-hours reclaimed each week"));
+  assert.ok(!block.includes("Scenario"));
+  assert.ok(!block.includes("Metric tiles"));
+  assert.ok(!block.includes("projection"));
 });

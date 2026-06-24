@@ -11,46 +11,32 @@ test("createValueModel returns a bound value model with economics", () => {
   const valueModel = employeeServiceVertical.createValueModel(baseProfile);
 
   assert.ok(valueModel.economics, "economics should be present");
-  assert.equal(typeof valueModel.economics.annual_license, "number");
-  assert.equal(typeof valueModel.economics.implementation_fee, "number");
-  assert.ok(Array.isArray(valueModel.economics.scenarios));
-  assert.equal(valueModel.economics.scenarios.length, 3);
+  assert.equal(typeof valueModel.economics.savings_basis_points, "number");
 });
 
 test("factory returns default economics when profile.economics is absent", () => {
   const defaultEcon = employeeServiceVertical.defaultEconomics();
   const valueModel = employeeServiceVertical.createValueModel(baseProfile);
 
-  assert.equal(valueModel.economics.annual_license, defaultEcon.annual_license);
-  assert.equal(valueModel.economics.implementation_fee, defaultEcon.implementation_fee);
-  assert.equal(valueModel.economics.scenarios.length, defaultEcon.scenarios.length);
+  assert.equal(valueModel.economics.savings_basis_points, defaultEcon.savings_basis_points);
+  assert.equal(valueModel.economics.savings_basis_points, 35);
 });
 
-test("compute uses economics from the factory closure", () => {
-  const valueModel = employeeServiceVertical.createValueModel(baseProfile);
+test("compute reads economics from the factory closure", () => {
+  const valueModel = employeeServiceVertical.createValueModel(
+    makeProfile({ economics: { savings_basis_points: 50 } }),
+  );
   const inputs = valueModel.validateInputs({ total_employees: 10000 }, false);
   const result = valueModel.compute(inputs);
 
-  // The default economics produce specific net savings figures. Verify compute
-  // used those economics (not some other hardcoded values).
-  assert.ok(result.scenarios.length === 3);
-  assert.equal(result.scenarios[0]!.name, "Conservative");
-  assert.equal(result.scenarios[1]!.name, "Expected");
-  assert.equal(result.scenarios[2]!.name, "Aggressive");
+  // Compute renders the basis-point rate from the closure, not a hardcoded value.
+  assert.ok(result.headline.value.includes("50 basis points"));
 
-  const expectedScenario = result.scenarios[1]!;
-  assert.ok(expectedScenario.secondary?.includes("ROI"));
-});
-
-test("defaultEconomics returns the hardcoded baseline", () => {
-  const econ = employeeServiceVertical.defaultEconomics();
-
-  assert.equal(econ.annual_license, 1_500_000);
-  assert.equal(econ.implementation_fee, 200_000);
-  assert.equal(econ.scenarios.length, 3);
-  assert.equal(econ.scenarios[0]!.name, "Conservative");
-  assert.equal(econ.scenarios[1]!.name, "Expected");
-  assert.equal(econ.scenarios[2]!.name, "Aggressive");
+  const defaultModel = employeeServiceVertical.createValueModel(baseProfile);
+  const defaultResult = defaultModel.compute(
+    defaultModel.validateInputs({ total_employees: 10000 }, false),
+  );
+  assert.notEqual(result.headline.value, defaultResult.headline.value);
 });
 
 test("validateInputs works independently of economics", () => {
@@ -78,22 +64,13 @@ test("bound model reuses the spec's validateInputs and inputGuidance (no drift)"
   );
 });
 
-const customEconomics: VerticalEconomics = {
-  annual_license: 2_000_000,
-  implementation_fee: 300_000,
-  scenarios: [
-    { name: "Conservative", effectiveness: { itDeflection: 0.45, hrDeflection: 0.5 } },
-    { name: "Expected", effectiveness: { itDeflection: 0.6, hrDeflection: 0.65 } },
-    { name: "Aggressive", effectiveness: { itDeflection: 0.75, hrDeflection: 0.8 } },
-  ],
-};
+const customEconomics: VerticalEconomics = { savings_basis_points: 50 };
 
 test("factory reads profile.economics when present", () => {
   const profile = makeProfile({ economics: customEconomics });
   const valueModel = employeeServiceVertical.createValueModel(profile);
 
-  assert.equal(valueModel.economics.annual_license, 2_000_000);
-  assert.equal(valueModel.economics.implementation_fee, 300_000);
+  assert.equal(valueModel.economics.savings_basis_points, 50);
 });
 
 test("compute uses custom economics, not the defaults", () => {
@@ -110,64 +87,32 @@ test("compute uses custom economics, not the defaults", () => {
 });
 
 test("factory rejects a malformed economics object", () => {
-  const profile = makeProfile({
-    economics: { ...customEconomics, scenarios: customEconomics.scenarios.slice(0, 2) },
-  });
+  const profile = makeProfile({ economics: {} });
 
   assert.throws(
     () => employeeServiceVertical.createValueModel(profile),
     (err: unknown) =>
-      err instanceof ValueModelContractError && /exactly 3 scenarios/.test(err.message),
-  );
-});
-
-test("Phase 2: factory rejects a negative license fee", () => {
-  const profile = makeProfile({ economics: { ...customEconomics, annual_license: -1 } });
-
-  assert.throws(
-    () => employeeServiceVertical.createValueModel(profile),
-    (err: unknown) =>
-      err instanceof ValueModelContractError && /annual_license/.test(err.message),
+      err instanceof ValueModelContractError && /savings_basis_points/.test(err.message),
   );
 });
 
 test("validateEconomics accepts a well-formed economics object", () => {
   const result = employeeServiceVertical.validateEconomics(customEconomics);
-  assert.equal(result.annual_license, 2_000_000);
+  assert.equal(result.savings_basis_points, 50);
 });
 
-test("validateEconomics rejects scenario names that break the disclosure policy", () => {
-  const wrongNames = {
-    ...customEconomics,
-    scenarios: [
-      { name: "Low", effectiveness: { itDeflection: 0.45, hrDeflection: 0.5 } },
-      { name: "Mid", effectiveness: { itDeflection: 0.6, hrDeflection: 0.65 } },
-      { name: "High", effectiveness: { itDeflection: 0.75, hrDeflection: 0.8 } },
-    ],
-  };
-
+test("validateEconomics rejects a missing savings_basis_points", () => {
   assert.throws(
-    () => employeeServiceVertical.validateEconomics(wrongNames),
+    () => employeeServiceVertical.validateEconomics({}),
     (err: unknown) =>
-      err instanceof ValueModelContractError &&
-      /must be "Conservative"/.test(err.message) &&
-      /disclosure policy/.test(err.message),
+      err instanceof ValueModelContractError && /savings_basis_points/.test(err.message),
   );
 });
 
-test("validateEconomics rejects a missing effectiveness key compute reads", () => {
-  const typoKey = {
-    ...customEconomics,
-    scenarios: [
-      { name: "Conservative", effectiveness: { itDelfection: 0.45, hrDeflection: 0.5 } },
-      { name: "Expected", effectiveness: { itDeflection: 0.6, hrDeflection: 0.65 } },
-      { name: "Aggressive", effectiveness: { itDeflection: 0.75, hrDeflection: 0.8 } },
-    ],
-  };
-
+test("validateEconomics rejects a non-positive savings_basis_points", () => {
   assert.throws(
-    () => employeeServiceVertical.validateEconomics(typoKey),
+    () => employeeServiceVertical.validateEconomics({ savings_basis_points: 0 }),
     (err: unknown) =>
-      err instanceof ValueModelContractError && /effectiveness\.itDeflection/.test(err.message),
+      err instanceof ValueModelContractError && /savings_basis_points/.test(err.message),
   );
 });

@@ -17,18 +17,25 @@ function validPayload() {
       recent_moves: ["Acquired a software firm."],
       self_description_language: "We help create the products that build a better world.",
     },
-    executives: [
-      { name: "Jordan Avery", title: "VP of IT", owns: "IT operations", profile: "Drives IT modernization." },
-    ],
-    quotes: [
-      { text: "We invest in our people.", speaker: "CEO", source_url: "https://example.com/a", verified: true },
+    voices: [
+      {
+        name: "Jordan Avery",
+        identity: "the founder",
+        tier: "self",
+        quote: {
+          text: "We carry the support load until we can hire it away.",
+          source_url: "https://example.com/a",
+          verified: true,
+        },
+      },
     ],
     extension: {
       domains: [...vertical.domains],
       priorities: [
         { domain: "HR", pov: "Employee experience matters.", why_now: "Talent competition is rising." },
       ],
-      value_inputs: { total_employees: 20000, it_staff: 150, hr_staff: 35 },
+      value_inputs: { total_employees: 20000 },
+      context: {},
       estimated: true,
     },
   };
@@ -37,16 +44,17 @@ function validPayload() {
 test("accepts a well-formed payload", () => {
   const r = validateResearch(validPayload(), vertical);
   assert.equal(r.vertical, vertical.id);
-  assert.equal(r.executives.length, 1);
+  assert.equal(r.voices.length, 1);
+  assert.equal(r.voices[0]!.tier, "self");
   assert.equal(r.extension.value_inputs.total_employees, 20000);
-  assert.equal(r.extension.estimated, true);
+  assert.deepEqual(r.extension.context, {});
 });
 
 test("coerces a non-boolean verified flag to false", () => {
   const p = validPayload();
-  (p.quotes[0] as Record<string, unknown>).verified = "yes";
+  (p.voices[0]!.quote as Record<string, unknown>).verified = "yes";
   const r = validateResearch(p, vertical);
-  assert.equal(r.quotes[0]!.verified, false);
+  assert.equal(r.voices[0]!.quote.verified, false);
 });
 
 test("drops non-numeric value inputs", () => {
@@ -55,6 +63,14 @@ test("drops non-numeric value inputs", () => {
   const r = validateResearch(p, vertical);
   assert.equal(r.extension.value_inputs.it_staff, undefined);
   assert.equal(r.extension.value_inputs.total_employees, 20000);
+});
+
+test("an open context map keeps string keys and drops non-string values", () => {
+  const p = validPayload();
+  (p.extension as Record<string, unknown>).context = { stage_band: "seed", junk: 5 };
+  const r = validateResearch(p, vertical);
+  assert.equal(r.extension.context.stage_band, "seed");
+  assert.equal(r.extension.context.junk, undefined);
 });
 
 test("rejects a missing vertical", () => {
@@ -69,16 +85,23 @@ test("rejects a missing account summary", () => {
   assert.throws(() => validateResearch(p, vertical), /account\.summary/);
 });
 
-test("rejects a malformed executive", () => {
+test("rejects a malformed voice", () => {
   const p = validPayload();
-  (p.executives[0] as Record<string, unknown>).title = 42;
-  assert.throws(() => validateResearch(p, vertical), /executives\[0\]/);
+  (p.voices[0] as Record<string, unknown>).tier = 42;
+  assert.throws(() => validateResearch(p, vertical), /voices\[0\]/);
 });
 
 test("rejects value inputs the vertical requires but the payload omits", () => {
   const p = validPayload();
   delete (p.extension.value_inputs as Record<string, unknown>).total_employees;
   assert.throws(() => validateResearch(p, vertical), /total_employees/);
+});
+
+test("an empty voices array passes", () => {
+  const p = validPayload();
+  p.voices = [];
+  const r = validateResearch(p, vertical);
+  assert.equal(r.voices.length, 0);
 });
 
 test("rejects a non-object payload", () => {
@@ -142,7 +165,7 @@ test("a malformed brand does not fail the whole object", () => {
   (p as Record<string, unknown>).brand = "not an object";
   const r = validateResearch(p, vertical);
   assert.equal(r.brand, undefined);
-  assert.equal(r.executives.length, 1);
+  assert.equal(r.voices.length, 1);
 });
 
 function leadInput(vertical: VerticalSpec) {

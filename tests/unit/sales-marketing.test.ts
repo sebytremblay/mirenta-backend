@@ -1,140 +1,85 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { salesMarketingVertical } from "../../src/verticals/sales-marketing.ts";
-import { assertValueModelContract } from "../../src/verticals/contract.ts";
+import { assertValueModelContract, ValueModelContractError } from "../../src/verticals/contract.ts";
 import { makeProfile } from "../fixtures/profile.ts";
 
 const valueModel = salesMarketingVertical.createValueModel(makeProfile({ vertical: "sales_marketing" }));
 
-function worked(estimated = false) {
-  return valueModel.validateInputs(
-    { quota_carrying_reps: 100, avg_deal_size: 50000, baseline_meetings_per_rep_year: 60 },
-    estimated,
-  );
+function computed(stageBand: string, estimated = false) {
+  return valueModel.compute(valueModel.validateInputs({}, estimated, { stage_band: stageBand }));
 }
 
-test("validateInputs requires quota_carrying_reps", () => {
-  assert.throws(() => valueModel.validateInputs({ avg_deal_size: 50000 }, false), /quota_carrying_reps/);
-});
-
-test("validateInputs requires avg_deal_size", () => {
+test("validateInputs throws when stage_band is missing", () => {
   assert.throws(
-    () => valueModel.validateInputs({ quota_carrying_reps: 100 }, false),
-    /avg_deal_size/,
+    () => valueModel.validateInputs({}, false, {}),
+    /stage_band must be one of pre_seed, seed, series_a/,
   );
 });
 
-test("validateInputs defaults baseline meetings per rep when absent", () => {
-  const v = valueModel.validateInputs({ quota_carrying_reps: 100, avg_deal_size: 50000 }, false);
-  assert.equal(v.values.baseline_meetings_per_rep_year, 60);
-});
-
-test("compute returns three scenarios in fixed order", () => {
-  const result = valueModel.compute(worked());
-  assert.deepEqual(
-    result.scenarios.map((s) => s.name),
-    ["Conservative", "Expected", "Aggressive"],
+test("validateInputs throws when stage_band is unknown", () => {
+  assert.throws(
+    () => valueModel.validateInputs({}, false, { stage_band: "growth" }),
+    /stage_band must be one of pre_seed, seed, series_a/,
   );
 });
 
-test("compute pins the scenario net-revenue figures", () => {
-  const result = valueModel.compute(worked());
-  assert.deepEqual(
-    result.scenarios.map((s) => s.primaryValue),
-    ["$1.4M", "$2.9M", "$5.1M"],
-  );
-  for (const s of result.scenarios) {
-    assert.equal(s.primaryLabel, "Net new annual revenue");
-    assert.match(s.secondary ?? "", /% ROI$/);
-  }
+test("validateInputs carries the stage band into context", () => {
+  const v = valueModel.validateInputs({}, false, { stage_band: "seed" });
+  assert.equal(v.context.stage_band, "seed");
+  assert.equal(v.estimated, false);
 });
 
-test("headline reports the expected scenario net new revenue", () => {
-  const result = valueModel.compute(worked());
-  assert.equal(result.headline.label, "Expected net new annual revenue");
-  assert.equal(result.headline.value, "$2.9M");
-  assert.equal(result.sectionTitle, "Business Value");
+test("compute renders the seed stage time range", () => {
+  const result = computed("seed");
+  assert.equal(result.headline.value, "~4 to 6 founder-hours reclaimed each week");
+});
+
+test("compute renders the series_a stage time range", () => {
+  const result = computed("series_a");
+  assert.equal(result.headline.value, "~6 to 9 founder-hours reclaimed each week");
+});
+
+test("compute fixes the headline label and section title", () => {
+  const result = computed("seed");
+  assert.equal(result.headline.label, "Founder time reclaimed");
+  assert.equal(result.sectionTitle, "What this frees up");
+  assert.notEqual(result.mechanism.trim(), "");
 });
 
 test("the estimated flag drives the footnote", () => {
-  assert.match(valueModel.compute(worked(true)).footnote ?? "", /benchmark/);
-  assert.equal(valueModel.compute(worked(false)).footnote, undefined);
-});
-
-test("metrics pins Expected ROI", () => {
-  const roi = valueModel.compute(worked()).metrics?.find((m) => m.label === "Expected ROI");
-  assert.equal(roi?.value, "1583%");
-});
-
-test("metrics pins Payback period", () => {
-  const payback = valueModel.compute(worked()).metrics?.find((m) => m.label === "Payback period");
-  assert.equal(payback?.value, "0.7 mo");
-});
-
-test("metrics pins 5-year net new revenue", () => {
-  const m = valueModel.compute(worked()).metrics?.find((x) => x.label === "5-year net new revenue");
-  assert.equal(m?.value, "$12.1M");
-});
-
-test("projection series has 5 cumulative points", () => {
-  const result = valueModel.compute(worked());
-  assert.deepEqual(
-    result.projection?.series.map((p) => p.display),
-    ["$1.3M", "$3.6M", "$6.4M", "$9.3M", "$12.1M"],
-  );
-});
-
-test("zero reps does not throw and produces a defined result without Infinity payback", () => {
-  const v = valueModel.validateInputs({ quota_carrying_reps: 0, avg_deal_size: 50000 }, false);
-  const result = valueModel.compute(v);
-  assert.equal(result.scenarios.length, 3);
-  const payback = result.metrics?.find((m) => m.label === "Payback period");
-  assert.equal(payback?.value, "n/a");
-});
-
-test("validateEconomics rejects a missing meeting_uplift effectiveness key", () => {
-  assert.throws(
-    () =>
-      salesMarketingVertical.validateEconomics({
-        annual_license: 150_000,
-        implementation_fee: 30_000,
-        scenarios: [
-          { name: "Conservative", effectiveness: {} },
-          { name: "Expected", effectiveness: { meeting_uplift: 0.2 } },
-          { name: "Aggressive", effectiveness: { meeting_uplift: 0.35 } },
-        ],
-      }),
-    /meeting_uplift/,
-  );
-});
-
-test("validateEconomics rejects a wrong scenario name", () => {
-  assert.throws(
-    () =>
-      salesMarketingVertical.validateEconomics({
-        annual_license: 150_000,
-        implementation_fee: 30_000,
-        scenarios: [
-          { name: "Low", effectiveness: { meeting_uplift: 0.1 } },
-          { name: "Expected", effectiveness: { meeting_uplift: 0.2 } },
-          { name: "Aggressive", effectiveness: { meeting_uplift: 0.35 } },
-        ],
-      }),
-    /Conservative/,
-  );
+  assert.match(computed("seed", true).footnote ?? "", /benchmark/);
+  assert.equal(computed("seed", false).footnote, undefined);
 });
 
 test("compute satisfies the disclosure contract (estimated=true)", () => {
-  assertValueModelContract(valueModel.compute(worked(true)), true);
+  assertValueModelContract(computed("seed", true), true);
 });
 
 test("compute satisfies the disclosure contract (estimated=false)", () => {
-  assertValueModelContract(valueModel.compute(worked(false)), false);
+  assertValueModelContract(computed("seed", false), false);
 });
 
-test("the spec carries no HR/ITSM framing", () => {
+test("validateEconomics rejects a missing band_hours shape", () => {
+  assert.throws(() => salesMarketingVertical.validateEconomics({}), ValueModelContractError);
+});
+
+test("validateEconomics rejects a malformed band_hours pair", () => {
+  assert.throws(
+    () => salesMarketingVertical.validateEconomics({ band_hours: { seed: [1] } }),
+    ValueModelContractError,
+  );
+});
+
+test("validateEconomics accepts the default-shaped object", () => {
+  assert.doesNotThrow(() =>
+    salesMarketingVertical.validateEconomics(salesMarketingVertical.defaultEconomics()),
+  );
+});
+
+test("the spec carries no HR/ITSM/CRO/CMO framing", () => {
   const haystack =
     `${salesMarketingVertical.domains.join(" ")} ${salesMarketingVertical.domainGuidance} ` +
-    `${salesMarketingVertical.executiveTargeting} ${salesMarketingVertical.inputGuidance}`;
-  assert.doesNotMatch(haystack, /\b(HR|ITSM|CHRO|CIO|ticket|deflection)\b/i);
+    `${salesMarketingVertical.voiceTargeting} ${salesMarketingVertical.inputGuidance}`;
+  assert.doesNotMatch(haystack, /\b(HR|ITSM|CHRO|CIO|CRO|CMO|ticket|deflection)\b/i);
 });

@@ -52,48 +52,30 @@ test("an arbitrary stub spec computes through the value-model contract", () => {
     label: "Stub Demo",
     domains: ["Demand"],
     domainGuidance: "Surface demand-side priorities.",
-    executiveTargeting: "Prioritize the VP of Demand.",
+    voiceTargeting: "Prioritize the VP of Demand.",
     defaultAccentColor: "#123456",
     inputGuidance: "Gather pipeline_value.",
-    validateInputs: (raw, estimated) => ({
+    validateInputs: (raw, estimated, context = {}) => ({
       values: { pipeline_value: raw.pipeline_value ?? 0 },
+      context: { ...context },
       estimated,
     }),
     createValueModel: () => ({
       inputGuidance: "Gather pipeline_value.",
-      validateInputs: (raw, estimated) => ({
+      validateInputs: (raw, estimated, context = {}) => ({
         values: { pipeline_value: raw.pipeline_value ?? 0 },
+        context: { ...context },
         estimated,
       }),
       compute: (inputs) => ({
         sectionTitle: "Pipeline Impact",
         headline: { label: "Influenced pipeline", value: `$${inputs.values.pipeline_value}` },
-        scenarios: [
-          { name: "Conservative", primaryValue: "$100K", primaryLabel: "Uplift" },
-          { name: "Expected", primaryValue: "$200K", primaryLabel: "Uplift" },
-          { name: "Aggressive", primaryValue: "$300K", primaryLabel: "Uplift" },
-        ],
+        mechanism: "The model maps influenced pipeline to the seller's motion.",
         footnote: inputs.estimated ? "Estimated from benchmarks." : undefined,
       }),
-      economics: {
-        annual_license: 500_000,
-        implementation_fee: 50_000,
-        scenarios: [
-          { name: "Conservative", effectiveness: { uplift: 0.05 } },
-          { name: "Expected", effectiveness: { uplift: 0.1 } },
-          { name: "Aggressive", effectiveness: { uplift: 0.15 } },
-        ],
-      },
+      economics: {},
     }),
-    defaultEconomics: () => ({
-      annual_license: 500_000,
-      implementation_fee: 50_000,
-      scenarios: [
-        { name: "Conservative", effectiveness: { uplift: 0.05 } },
-        { name: "Expected", effectiveness: { uplift: 0.1 } },
-        { name: "Aggressive", effectiveness: { uplift: 0.15 } },
-      ],
-    }),
+    defaultEconomics: () => ({}),
     validateEconomics: (raw) => raw as VerticalEconomics,
   };
 
@@ -104,8 +86,7 @@ test("an arbitrary stub spec computes through the value-model contract", () => {
   const result = valueModel.compute(validated);
 
   assert.equal(result.headline.value, "$500");
-  assert.equal(result.scenarios.length, 3);
-  assert.equal(result.scenarios[0]!.primaryLabel, "Uplift");
+  assert.ok(result.mechanism.length > 0);
 
   assertValueModelContract(result, true);
 });

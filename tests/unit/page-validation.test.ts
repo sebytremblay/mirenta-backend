@@ -10,41 +10,30 @@ import type { ValueResult } from "../../src/verticals/index.ts";
 import type { ResearchObject } from "../../src/domain/research.ts";
 
 const value: ValueResult = {
-  sectionTitle: "Business Value",
-  headline: { label: "Expected net annual savings", value: "$2.6M" },
-  scenarios: [
-    { name: "Conservative", primaryValue: "$1.6M", primaryLabel: "Net Annual Savings", secondary: "97% ROI" },
-    { name: "Expected", primaryValue: "$2.6M", primaryLabel: "Net Annual Savings", secondary: "156% ROI" },
-    { name: "Aggressive", primaryValue: "$3.7M", primaryLabel: "Net Annual Savings", secondary: "218% ROI" },
-  ],
-  metrics: [
-    { label: "Expected ROI", value: "156%" },
-    { label: "Payback period", value: "4.9 mo" },
-    { label: "5-year net savings", value: "$10.1M" },
-    { label: "NPV at 8 percent", value: "$7.8M" },
-  ],
-  projection: {
-    label: "Cumulative net cash flow",
-    unit: "USD",
-    series: [
-      { period: "Year 1", value: 374000, display: "$374K" },
-      { period: "Year 2", value: 2192400, display: "$2.2M" },
-      { period: "Year 3", value: 4840400, display: "$4.8M" },
-      { period: "Year 4", value: 7488400, display: "$7.5M" },
-      { period: "Year 5", value: 10136400, display: "$10.1M" },
-    ],
-  },
+  sectionTitle: "What this frees up",
+  headline: { label: "Founder time reclaimed", value: "~4 to 6 founder-hours reclaimed each week" },
+  mechanism: "A seed-stage founder runs go-to-market by hand.",
+  footnote: "Drawn from a stage-band benchmark.",
 };
 
 const research: ResearchObject = {
-  vertical: "salesforce_employee_service",
-  account: { summary: "An electronics firm.", recent_moves: [], self_description_language: "We build." },
-  executives: [],
-  quotes: [
-    { text: "We invest in our people every day.", speaker: "CEO", source_url: "https://x.test/a", verified: true },
-    { text: "This unverified claim must never reach the page.", speaker: "Rumor", source_url: "https://x.test/b", verified: false },
+  vertical: "sales_marketing",
+  account: { summary: "An early-stage startup.", recent_moves: [], self_description_language: "We build." },
+  voices: [
+    {
+      name: "CEO",
+      identity: "the founder",
+      tier: "self",
+      quote: { text: "We invest in our people every day.", source_url: "https://x.test/a", verified: true },
+    },
+    {
+      name: "Rumor",
+      identity: "a blog",
+      tier: "tribe",
+      quote: { text: "This unverified claim must never reach the page.", source_url: "https://x.test/b", verified: false },
+    },
   ],
-  extension: { domains: ["HR"], priorities: [], value_inputs: { total_employees: 20000 }, estimated: false },
+  extension: { domains: ["Sales"], priorities: [], value_inputs: {}, context: { stage_band: "seed" }, estimated: false },
 };
 
 const options: ValidatePageOptions = {
@@ -75,23 +64,8 @@ function goodHtml(): string {
 <section id="business-case" aria-labelledby="case-h">
   <h2 id="case-h">${value.sectionTitle}</h2>
   <p>${value.headline.label}: ${value.headline.value}</p>
-  <div class="tiles">
-    <div class="tile"><span data-count="156" data-suffix="%">156%</span><span>Expected ROI</span></div>
-    <div class="tile"><span data-count="4.9" data-suffix=" mo" data-decimals="1">4.9 mo</span><span>Payback period</span></div>
-    <div class="tile"><span>$10.1M</span><span>5-year net savings</span></div>
-    <div class="tile"><span>$7.8M</span><span>NPV at 8 percent</span></div>
-  </div>
-  <svg viewBox="0 0 760 380" role="img" aria-labelledby="chart-t">
-    <title id="chart-t">Cumulative net cash flow</title>
-    <desc>Year 1 $374K, Year 2 $2.2M, Year 3 $4.8M, Year 4 $7.5M, Year 5 $10.1M.</desc>
-    <text>Year 1 $374K</text><text>Year 2 $2.2M</text><text>Year 3 $4.8M</text>
-    <text>Year 4 $7.5M</text><text>Year 5 $10.1M</text>
-  </svg>
-  <div class="scenarios">
-    <article>Conservative $1.6M Net Annual Savings 97% ROI</article>
-    <article>Expected $2.6M Net Annual Savings 156% ROI</article>
-    <article>Aggressive $3.7M Net Annual Savings 218% ROI</article>
-  </div>
+  <p>${value.mechanism}</p>
+  <p class="footnote">${value.footnote}</p>
 </section>
 <section id="book" aria-labelledby="book-h">
   <h2 id="book-h">Thirty minutes, your numbers</h2>
@@ -108,7 +82,7 @@ test("accepts a compliant sample-grade page", () => {
 });
 
 test("rejects a missing value figure as permanent", () => {
-  const html = goodHtml().replace("$7.8M", "$9.9M");
+  const html = goodHtml().replace(value.headline.value, "~9 to 12 founder-hours reclaimed each week");
   assert.throws(
     () => validatePage(html, options),
     (e: unknown) => e instanceof PageValidationError && !e.transient && /value figure missing/.test((e as Error).message),
@@ -154,8 +128,8 @@ test("accepts inline SVG xmlns namespace declarations (not asset fetches)", () =
   // W3C namespace URIs are XML identifiers, never fetched, so the asset-host scan
   // must not reject www.w3.org.
   const html = goodHtml().replace(
-    '<svg viewBox="0 0 760 380" role="img" aria-labelledby="chart-t">',
-    '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 760 380" role="img" aria-labelledby="chart-t">',
+    '<footer role="contentinfo">',
+    '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 16 16" role="img"><title>mark</title><rect width="16" height="16" /></svg>\n<footer role="contentinfo">',
   );
   assert.doesNotThrow(() => validatePage(html, options));
 });

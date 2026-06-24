@@ -1,113 +1,88 @@
-// Makes real Anthropic API and Exa calls (a few cents per run).
-import { runResearch } from "../src/agents/research.ts";
-import { employeeServiceVertical } from "../src/verticals/employee-service.ts";
+// Prints the research agent prompts so a human can paste them into a Claude Code
+// session and run the research by hand. This makes NO live API call: it builds
+// the exact system prompt and kickoff the worker would send, then tells you
+// where to save the emitted research object for the builder smoke to read.
+import { buildAgentSystemPrompt, buildKickoff } from "../src/agents/research.ts";
+import { salesMarketingVertical } from "../src/verticals/sales-marketing.ts";
 
-const vertical = employeeServiceVertical;
+// The research output path the builder smoke reads. Keep the two scripts in sync.
+const RESEARCH_OUT = "/tmp/mirenta-research.json";
+
+const vertical = salesMarketingVertical;
 
 const lead = {
-  first_name: "Jordan",
-  last_name: "Avery",
-  role: "VP of IT",
-  company: "Plexus Corp",
-  website_url: "https://www.plexus.com",
+  first_name: "Dana",
+  last_name: "Okafor",
+  role: "Founder and CEO",
+  company: "Cadence Labs",
+  website_url: "https://www.cadencelabs.dev",
 };
 
 const profile = {
-  company_name: "Salesforce",
-  product_name: "Agentforce for IT Service and HR Service",
+  company_name: "Mirenta",
+  product_name: "Mirenta",
   value_prop:
-    "AI agents that deflect IT and HR support volume across the enterprise",
+    "Turns a lead list into one hyper-personalized one-pager per founder, in their own language",
 };
 
-console.log(`Starting research for ${lead.company}...`);
+const systemPrompt = buildAgentSystemPrompt();
+const kickoff = buildKickoff({ lead, profile, vertical });
+
+const rule = "=".repeat(72);
+
+console.log(rule);
+console.log(`SMOKE RESEARCH (no API call) — vertical: ${vertical.id}`);
+console.log(rule);
+console.log();
+console.log("Paste the SYSTEM PROMPT and the KICKOFF into a Claude Code session");
+console.log("with the Exa web search tools attached. Let the agent run the five");
+console.log(`phases, then save the emitted research object to:\n  ${RESEARCH_OUT}`);
+console.log("The builder smoke reads that file.");
+console.log();
+console.log(rule);
+console.log("RESEARCH SYSTEM PROMPT");
+console.log(rule);
+console.log(systemPrompt);
+console.log();
+console.log(rule);
+console.log("KICKOFF (first user message)");
+console.log(rule);
+console.log(kickoff);
 console.log();
 
-try {
-  const { research: result, usage } = await runResearch({
-    lead,
-    profile,
-    vertical,
-    onStep: (s) => console.log(`  [${s.phase}] ${s.detail}`),
-  });
+// Cheap structural checks on the prompts, so the smoke still catches a prompt
+// that drifts back to the enterprise framing.
+const checks = [
+  {
+    name: "system prompt hunts respected voices, not an executive roster",
+    pass: /respect|voice/i.test(systemPrompt) && !/\bexecutive roster\b/i.test(systemPrompt),
+  },
+  {
+    name: "system prompt names the self/backer/tribe ladder",
+    pass: /self/.test(systemPrompt) && /backer/.test(systemPrompt) && /tribe/.test(systemPrompt),
+  },
+  {
+    name: "kickoff carries the vertical voice targeting",
+    pass: kickoff.includes(vertical.voiceTargeting.slice(0, 24)),
+  },
+  {
+    name: "kickoff names the vertical id",
+    pass: kickoff.includes(vertical.id),
+  },
+];
 
-  console.log();
-  console.log("=== RESEARCH RESULT ===");
-  console.log();
-  console.log(`Vertical: ${result.vertical}`);
-  console.log(`Account summary: ${result.account.summary.slice(0, 100)}...`);
-  console.log(`Recent moves: ${result.account.recent_moves.length} items`);
-  console.log(
-    `Self-description: ${result.account.self_description_language.slice(0, 80)}...`,
-  );
-  console.log();
-  console.log(`Executives: ${result.executives.length}`);
-  for (const exec of result.executives) {
-    console.log(`  - ${exec.name}, ${exec.title}`);
-  }
-  console.log();
-  console.log(`Quotes: ${result.quotes.length}`);
-  for (const quote of result.quotes) {
-    console.log(
-      `  - "${quote.text.slice(0, 60)}..." (${quote.speaker}, verified: ${quote.verified})`,
-    );
-  }
-  console.log();
-  console.log(`Domains: ${result.extension.domains.join(", ")}`);
-  console.log(`Priorities: ${result.extension.priorities.length}`);
-  for (const pri of result.extension.priorities) {
-    console.log(`  - ${pri.domain}: ${pri.pov.slice(0, 60)}...`);
-  }
-  console.log();
-  console.log("Value inputs:");
-  for (const [key, val] of Object.entries(result.extension.value_inputs)) {
-    console.log(`  ${key}: ${val}`);
-  }
-  console.log(`  Estimated: ${result.extension.estimated}`);
-  console.log();
-  console.log(
-    `Token usage: ${usage.requests} requests, ${usage.input_tokens} in / ${usage.output_tokens} out, ` +
-      `cache ${usage.cache_creation_tokens} write / ${usage.cache_read_tokens} read`,
-  );
-  console.log();
-
-  const checks = [
-    {
-      name: "has at least one executive",
-      pass: result.executives.length >= 1,
-    },
-    {
-      name: "total_employees > 0",
-      pass: (result.extension.value_inputs.total_employees ?? 0) > 0,
-    },
-    { name: "vertical matches the spec", pass: result.vertical === vertical.id },
-    {
-      name: "has account summary",
-      pass: result.account.summary.length > 0,
-    },
-  ];
-
-  console.log("=== CHECKS ===");
-  let allPass = true;
-  for (const check of checks) {
-    console.log(`  ${check.pass ? "✓" : "✗"} ${check.name}`);
-    if (!check.pass) allPass = false;
-  }
-  console.log();
-
-  if (allPass) {
-    console.log("SMOKE RESEARCH: PASS");
-  } else {
-    console.log("SMOKE RESEARCH: FAIL (assertion failed)");
-    process.exitCode = 1;
-  }
-} catch (e) {
-  console.error();
-  console.error("SMOKE RESEARCH: FAIL");
-  console.error(
-    `  ${(e as Error).constructor.name}: ${(e as Error).message}`,
-  );
-  if ((e as Error).stack) {
-    console.error((e as Error).stack);
-  }
+console.log(rule);
+console.log("CHECKS");
+console.log(rule);
+let allPass = true;
+for (const check of checks) {
+  console.log(`  ${check.pass ? "PASS" : "FAIL"}  ${check.name}`);
+  if (!check.pass) allPass = false;
+}
+console.log();
+if (allPass) {
+  console.log("SMOKE RESEARCH: PASS");
+} else {
+  console.log("SMOKE RESEARCH: FAIL (a prompt check failed)");
   process.exitCode = 1;
 }
