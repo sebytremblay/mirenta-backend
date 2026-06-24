@@ -15,11 +15,11 @@ const RESEARCH_OUT = "/tmp/mirenta-research.json";
 const vertical = salesMarketingVertical;
 
 const lead = {
-  first_name: "Dana",
-  last_name: "Okafor",
-  role: "Founder and CEO",
-  company: "Cadence Labs",
-  website_url: "https://www.cadencelabs.dev",
+  first_name: "Finn",
+  last_name: "Mallery",
+  role: "Co-founder and CEO",
+  company: "Origami",
+  website_url: "https://www.origami.com",
 };
 
 const profile = {

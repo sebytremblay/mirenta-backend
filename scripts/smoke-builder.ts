@@ -38,23 +38,23 @@ const sampleResearch: ResearchObject = {
   vertical: "sales_marketing",
   account: {
     summary:
-      "Cadence Labs builds a workflow engine for solo and small founding teams. The company shipped its first release this year and grows through founder word of mouth.",
+      "Origami builds a workflow engine for solo and small founding teams. The company shipped its first release this year and grows through founder word of mouth.",
     recent_moves: [
       "Announced a seed round led by a founder-focused fund",
       "Launched a self-serve onboarding flow",
       "Published a public roadmap",
     ],
     self_description_language:
-      "Cadence Labs describes itself as the operating cadence for founders who ship before they hire.",
+      "Origami describes itself as the operating cadence for founders who ship before they hire.",
   },
   voices: [
     {
-      name: "Dana Okafor",
-      identity: "the founder",
+      name: "Finn Mallery",
+      identity: "the co-founder and CEO",
       tier: "self",
       quote: {
         text: "I write every outbound email myself, because no one else knows why this matters yet.",
-        source_url: "https://www.cadencelabs.dev/blog/founder-selling",
+        source_url: "https://www.origami.com/blog/founder-selling",
         verified: true,
       },
     },
@@ -74,7 +74,7 @@ const sampleResearch: ResearchObject = {
     priorities: [
       {
         domain: "Sales",
-        pov: "Cadence Labs needs a repeatable outbound channel the founder runs without a hire.",
+        pov: "Origami needs a repeatable outbound channel the founder runs without a hire.",
         why_now: "Runway is finite and the seed round buys a fixed number of months to find product-market fit.",
       },
       {
@@ -91,8 +91,8 @@ const sampleResearch: ResearchObject = {
     primary_color: "#1f6feb",
     accent_color: "#8957e5",
     font_family: "Inter",
-    logo_url: "https://www.cadencelabs.dev/logo.svg",
-    favicon_url: "https://www.cadencelabs.dev/favicon.ico",
+    logo_url: "https://www.origami.com/logo.svg",
+    favicon_url: "https://www.origami.com/favicon.ico",
   },
 };
 
@@ -113,11 +113,11 @@ const sampleProfile: ProductProfile = {
 };
 
 const sampleLead = {
-  first_name: "Dana",
-  last_name: "Okafor",
-  role: "Founder and CEO",
-  company: "Cadence Labs",
-  website_url: "https://www.cadencelabs.dev",
+  first_name: "Finn",
+  last_name: "Mallery",
+  role: "Co-founder and CEO",
+  company: "Origami",
+  website_url: "https://www.origami.com",
 };
 
 function loadResearch(): { research: ResearchObject; source: string } {
