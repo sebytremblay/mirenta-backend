@@ -38,14 +38,14 @@ const sampleResearch: ResearchObject = {
   vertical: "sales_marketing",
   account: {
     summary:
-      "Origami builds a workflow engine for solo and small founding teams. The company shipped its first release this year and grows through founder word of mouth.",
+      "Origami builds a go-to-market tool that founders use to run outbound before they hire a sales team. The company shipped its first release this year and grows through founder word of mouth.",
     recent_moves: [
       "Announced a seed round led by a founder-focused fund",
-      "Launched a self-serve onboarding flow",
+      "Launched a self-serve onboarding flow for founder-led outbound",
       "Published a public roadmap",
     ],
     self_description_language:
-      "Origami describes itself as the operating cadence for founders who ship before they hire.",
+      "Origami describes itself as the outbound engine for founders who sell before they hire.",
   },
   voices: [
     {
