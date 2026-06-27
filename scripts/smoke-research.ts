@@ -8,27 +8,19 @@
 import { spawnSync } from "node:child_process";
 import { buildAgentSystemPrompt, buildKickoff, EMIT_RESEARCH_TOOL } from "../src/agents/research.ts";
 import { RESEARCH_TOOL_SCHEMA } from "../src/domain/research.ts";
-import { salesMarketingVertical } from "../src/verticals/sales-marketing.ts";
+import { getVertical } from "../src/verticals/index.ts";
+import { smokeLead, smokeProfile } from "./smoke-fixtures.ts";
 
 // The research output path the builder smoke reads. Keep the two scripts in sync.
 const RESEARCH_OUT = "/tmp/mirenta-research.json";
 
-const vertical = salesMarketingVertical;
+// Resolve the vertical from the profile, exactly as the worker's build stage
+// does, so both phases run against the same vertical the seed declares.
+const vertical = getVertical(smokeProfile.vertical);
 
-const lead = {
-  first_name: "Finn",
-  last_name: "Mallery",
-  role: "Co-founder and CEO",
-  company: "Origami",
-  website_url: "https://www.origami.chat",
-};
-
-const profile = {
-  company_name: "Mirenta",
-  product_name: "Mirenta",
-  value_prop:
-    "Turns a lead list into one hyper-personalized one-pager per founder, in their own language",
-};
+// Both phases target the same prospect; the seed lives in smoke-fixtures.ts.
+const lead = smokeLead;
+const profile = smokeProfile;
 
 const systemPrompt = buildAgentSystemPrompt();
 const kickoff = buildKickoff({ lead, profile, vertical });

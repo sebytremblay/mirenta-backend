@@ -1,7 +1,13 @@
 // Delivers the builder prompt so a human can paste it into a Claude Code session
-// and generate the page by hand. This makes NO live API call. It reads the
-// research object the research smoke produced (/tmp/mirenta-research.json) and
-// falls back to a bundled founder sample when that file is absent.
+// and generate the page by hand. This makes NO live API call. It is phase two of
+// the two-phase smoke chain: it reads the research object phase one (smoke:research)
+// produced at /tmp/mirenta-research.json and renders the page for that SAME
+// prospect. The two phases share their seed through smoke-fixtures.ts, so they
+// never describe different prospects.
+//
+// Phase two REQUIRES phase one's output. When the file is absent it fails loud
+// with the command to run first, rather than substituting baked-in data — a
+// silent fallback would let phase two pass without phase one ever running.
 //
 // stdout carries ONLY the prompt, so it pipes clean:
 //   npm run --silent smoke:builder | pbcopy
@@ -25,128 +31,37 @@ import { validateResearch } from "../src/domain/research.ts";
 import { getVertical } from "../src/verticals/index.ts";
 import type { VerticalSpec } from "../src/verticals/index.ts";
 import type { ResearchObject } from "../src/domain/research.ts";
-import type { ProductProfile } from "../src/domain/entities.ts";
+import { smokeLead, smokeProfile } from "./smoke-fixtures.ts";
 import { readFileSync } from "node:fs";
 
-// Keep in sync with smoke-research.ts.
+// Phase one (smoke:research) writes here; phase two reads it. The path lives in
+// both scripts; smoke-fixtures.ts holds the shared seed they run against.
 const RESEARCH_IN = "/tmp/mirenta-research.json";
 
-// The vertical the bundled sample declares; the file path resolves its own.
-const defaultVertical = getVertical("sales_marketing");
-
-// A founder-model sample for sales_marketing: respected voices across the
-// ladder, a stage band in context, no numeric value_inputs. Used when the
-// research smoke output is not on disk.
-const sampleResearch: ResearchObject = {
-  vertical: "sales_marketing",
-  account: {
-    summary:
-      "Origami builds a go-to-market tool that founders use to run outbound before they hire a sales team. The company shipped its first release this year and grows through founder word of mouth.",
-    recent_moves: [
-      "Announced a seed round led by a founder-focused fund",
-      "Launched a self-serve onboarding flow for founder-led outbound",
-      "Published a public roadmap",
-    ],
-    self_description_language:
-      "Origami describes itself as the outbound engine for founders who sell before they hire.",
-  },
-  voices: [
-    {
-      name: "Finn Mallery",
-      identity: "the co-founder and CEO",
-      tier: "self",
-      quote: {
-        text: "I write every outbound email myself, because no one else knows why this matters yet.",
-        source_url: "https://www.origami.chat/blog/founder-selling",
-        verified: true,
-      },
-    },
-    {
-      name: "Mara Delgado",
-      identity: "Partner at Foundry Seed, who led the round",
-      tier: "backer",
-      quote: {
-        text: "The founders who win early sell the vision in their own voice before they hire a single rep.",
-        source_url: "https://foundryseed.com/notes/founder-led-sales",
-        verified: true,
-      },
-    },
-  ],
-  extension: {
-    domains: ["Sales", "Marketing"],
-    priorities: [
-      {
-        domain: "Sales",
-        pov: "Origami needs a repeatable outbound channel the founder runs without a hire.",
-        why_now: "Runway is finite and the seed round buys a fixed number of months to find product-market fit.",
-      },
-      {
-        domain: "Marketing",
-        pov: "The founder writes the messaging that earns the first replies, so every hour spent there is an hour off the product.",
-        why_now: "Early traction depends on the founder's own voice, which does not scale by hiring.",
-      },
-    ],
-    value_inputs: {},
-    context: { stage_band: "seed" },
-    estimated: true,
-  },
-  brand: {
-    primary_color: "#1f6feb",
-    accent_color: "#8957e5",
-    font_family: "Inter",
-    logo_url: "https://www.origami.chat/logo.svg",
-    favicon_url: "https://www.origami.chat/favicon.ico",
-  },
-};
-
-const sampleProfile: ProductProfile = {
-  org_id: "00000000-0000-0000-0000-000000000000",
-  company_name: "Mirenta",
-  product_name: "Mirenta",
-  value_prop:
-    "Turns a lead list into one hyper-personalized one-pager per founder, in their own language.",
-  positioning: "Founder-to-founder outreach that reads the prospect's public trail and mirrors it back.",
-  proof_points: [],
-  cta_text: "Trade notes founder to founder",
-  brand: { primary_color: "#1f6feb" },
-  vertical: "sales_marketing",
-  economics: null,
-  created_at: new Date(0).toISOString(),
-  updated_at: new Date(0).toISOString(),
-};
-
-const sampleLead = {
-  first_name: "Finn",
-  last_name: "Mallery",
-  role: "Co-founder and CEO",
-  company: "Origami",
-  website_url: "https://www.origami.chat",
-};
+// Both phases target the same prospect and customer profile.
+const sampleLead = smokeLead;
+const sampleProfile = smokeProfile;
 
 // Read the research exactly as the worker's build stage does: resolve the
-// vertical from the payload's own `vertical` field through getVertical, then
-// validate through validateResearch. The fallback to the bundled sample fires
-// ONLY when the file is absent. A present-but-invalid file fails loud, the same
-// way a malformed research row fails the worker permanently, so the smoke never
-// papers over output that would not survive production.
+// vertical from the profile through getVertical (tick.ts), then validate the
+// payload through validateResearch. Phase one's file is REQUIRED — its absence
+// throws so the smoke fails loud rather than rendering baked-in data, and a
+// present-but-invalid file fails the same way a malformed research row fails the
+// worker permanently. The smoke never papers over output production would reject.
 function loadResearch(): { research: ResearchObject; vertical: VerticalSpec; source: string } {
   let text: string;
   try {
     text = readFileSync(RESEARCH_IN, "utf8");
   } catch {
-    return {
-      research: sampleResearch,
-      vertical: defaultVertical,
-      source: "bundled founder sample (no file at " + RESEARCH_IN + ")",
-    };
+    throw new Error(
+      `no research at ${RESEARCH_IN}. Run phase one first: ` +
+        `npm run --silent smoke:research, paste the prompt into a Claude Code ` +
+        `session, and save the emitted research object to ${RESEARCH_IN}.`,
+    );
   }
 
   const raw = JSON.parse(text) as unknown;
-  const verticalId =
-    typeof raw === "object" && raw !== null && typeof (raw as { vertical?: unknown }).vertical === "string"
-      ? (raw as { vertical: string }).vertical
-      : defaultVertical.id;
-  const vertical = getVertical(verticalId);
+  const vertical = getVertical(sampleProfile.vertical);
   const research = validateResearch(raw, vertical);
   return { research, vertical, source: RESEARCH_IN };
 }
