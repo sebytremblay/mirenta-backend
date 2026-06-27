@@ -194,6 +194,22 @@ test("rejects runaway body copy over the reading-time budget", () => {
   assert.throws(() => validatePage(html, options), /runs long/);
 });
 
+test("accepts a richly styled page: heavy CSS, inline SVG, and a dark panel", () => {
+  // A widened design leans on a large <style> block and inline SVG for decoration.
+  // Both are stripped before the word count, so visual richness must not trip the
+  // body-word ceiling or the asset-host scan.
+  const heavyStyle = `<style>:root{--brand:#c8102e;--surface-dark:#101018;}
+  ${".rule{height:1px;background:var(--border);} ".repeat(400)}
+  .panel{background:var(--surface-dark);color:var(--surface-dark-fg);box-shadow:var(--shadow-lg);}
+  @media (prefers-reduced-motion: reduce){*{transition:none;}}</style>`;
+  const decoration = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img"><title>mark</title><path d="M2 2h20v20H2z" /></svg>`;
+  const darkBand = `<section class="panel"><h2>Point of view</h2>${decoration}<blockquote>We invest in our people every day.</blockquote></section>`;
+  const html = goodHtml()
+    .replace(/<style>[\s\S]*?<\/style>/, heavyStyle)
+    .replace("</main>", `${darkBand}</main>`);
+  assert.doesNotThrow(() => validatePage(html, options));
+});
+
 test("injectRuntimeAssets welds in the CSP meta and the count-up script", () => {
   const out = injectRuntimeAssets(goodHtml());
   assert.match(out, /Content-Security-Policy/);

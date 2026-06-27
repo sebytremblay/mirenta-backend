@@ -5,12 +5,14 @@
 // selectScenario, so they never describe different prospects and never drift.
 //
 // The customer is ALWAYS Mirenta: every scenario markets Mirenta, our real
-// product, to a real lead. A scenario swaps only the lead, never the customer,
-// because the smoke exists to exercise Mirenta's own outreach. Each lead is a
-// real founder from a recent Y Combinator batch (Fall 2025 or Winter 2026),
-// verified against the YC company directory. Swap leads with a flag:
-//   npm run --silent smoke:research -- --profile=menza | pbcopy
-//   SMOKE_PROFILE=menza npm run --silent smoke:builder | pbcopy
+// product, to a lead. A scenario swaps only the lead, never the customer,
+// because the smoke exists to exercise Mirenta's own outreach. Most leads are
+// real founders from a recent Y Combinator batch (Fall 2025 or Winter 2026),
+// verified against the YC company directory; "origami" keeps the original
+// illustrative prospect the chain shipped against first. Swap leads with a flag
+// (each script copies its prompt to the clipboard on its own, so no pbcopy pipe):
+//   npm run --silent smoke:research -- --profile=menza
+//   SMOKE_PROFILE=menza npm run --silent smoke:builder
 // Pass the SAME key to both phases so the two phases describe the same prospect.
 import type { Lead, ProductProfile } from "../src/domain/entities.ts";
 
@@ -40,7 +42,7 @@ export const smokeProfile: ProductProfile = {
   positioning:
     "Founder-to-founder outreach that reads the prospect's public trail and mirrors it back.",
   proof_points: [],
-  cta_text: "Trade notes founder to founder",
+  cta_text: "Book a demo",
   brand: { primary_color: "#1f6feb" },
   vertical: "sales_marketing",
   economics: null,
@@ -52,6 +54,20 @@ export const smokeProfile: ProductProfile = {
 // founder, verified against ycombinator.com. The first key is the default when
 // no flag is set.
 export const SMOKE_SCENARIOS: Record<string, SmokeScenario> = {
+  // The original smoke seed, kept as an option. Finn Mallery at Origami
+  // (origami.chat) is the prospect the chain shipped against first.
+  origami: {
+    key: "origami",
+    label: "Mirenta -> Finn Mallery, Origami",
+    lead: {
+      first_name: "Finn",
+      last_name: "Mallery",
+      role: "Co-founder and CEO",
+      company: "Origami",
+      website_url: "https://www.origami.chat",
+    },
+  },
+
   // Parametric (YC Fall 2025): "Physical businesses that run themselves."
   parametric: {
     key: "parametric",
@@ -92,8 +108,8 @@ export const SMOKE_SCENARIOS: Record<string, SmokeScenario> = {
   },
 };
 
-// The default scenario when no flag is passed.
-export const DEFAULT_SCENARIO_KEY = "parametric";
+// The default scenario when no flag is passed. Keeps the original prospect.
+export const DEFAULT_SCENARIO_KEY = "origami";
 
 // Parse the scenario key from `--profile=<key>`, `--profile <key>`, `-p <key>`,
 // or the SMOKE_PROFILE env var, in that order of precedence. argv wins over env

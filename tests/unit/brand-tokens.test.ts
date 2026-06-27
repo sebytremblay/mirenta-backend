@@ -4,11 +4,16 @@ import {
   deriveTokens,
   readableOn,
   tint,
+  lighten,
+  darken,
+  mix,
   sanitizeFontFamily,
   renderTokenBlock,
   resolveLogoUrl,
   resolveFaviconHref,
   resolveGoogleFontHref,
+  resolvePairing,
+  resolveFontPlan,
 } from "../../src/agents/brand-tokens.ts";
 import type { ProductProfile } from "../../src/domain/entities.ts";
 import type { ProspectBrand } from "../../src/domain/research.ts";
@@ -160,4 +165,81 @@ test("deriveTokens sets fontDisplay to a quoted proper-name stack for an allow-l
 test("deriveTokens sets fontDisplay to the body font stack for an unknown font", () => {
   const t = deriveTokens(profile(), { font_family: "No Such Font 9000" });
   assert.equal(t.fontDisplay, t.font);
+});
+
+test("lighten, darken, and mix are deterministic and total on malformed input", () => {
+  assert.equal(lighten("#000000", 0.5), "#808080");
+  assert.equal(darken("#ffffff", 0.5), "#808080");
+  assert.equal(mix("#000000", "#ffffff", 0.5), "#808080");
+  assert.equal(lighten("not-a-color", 0.5), "not-a-color");
+  assert.equal(mix("#000000", "bad", 0.5), "#000000");
+});
+
+test("renderTokenBlock emits the widened expressive tokens", () => {
+  const block = renderTokenBlock(deriveTokens(profile(), { primary_color: "#aa0000" }));
+  for (const name of [
+    "--brand-strong",
+    "--brand-soft",
+    "--surface-elevated",
+    "--surface-dark",
+    "--surface-dark-fg",
+    "--brand-tint-strong",
+    "--shadow",
+    "--shadow-lg",
+    "--ring",
+  ]) {
+    assert.ok(block.includes(`${name}:`), `missing ${name}`);
+  }
+});
+
+test("the dark-panel foreground stays readable on the derived dark surface", () => {
+  const t = deriveTokens(profile(), { primary_color: "#aa0000" });
+  assert.equal(t.surfaceDarkForeground, readableOn(t.surfaceDark));
+  assert.equal(t.surfaceDarkForeground, "#ffffff");
+});
+
+test("a prospect primary without an accent derives a distinct second color", () => {
+  const t = deriveTokens(profile(), { primary_color: "#aa0000" });
+  assert.notEqual(t.accent, t.brand);
+  assert.match(t.accent, /^#[0-9a-f]{6}$/i);
+});
+
+test("a fallback color keeps accent equal to brand (no fabricated second color)", () => {
+  // Resolution-order behavior the existing tests pin: when only a background is
+  // set, brand and accent both come from the vertical accent.
+  const t = deriveTokens(profile(), { background_color: "#101010" }, VERTICAL_ACCENT);
+  assert.equal(t.accent, VERTICAL_ACCENT);
+  assert.equal(t.brand, VERTICAL_ACCENT);
+});
+
+test("resolvePairing is deterministic for the same seed", () => {
+  assert.deepEqual(resolvePairing("Replit"), resolvePairing("Replit"));
+});
+
+test("resolveFontPlan keeps an allow-listed prospect font driving the page", () => {
+  const plan = resolveFontPlan({ font_family: "Oswald" }, "Replit");
+  assert.ok(plan.href!.includes("fonts.googleapis.com/css2?family=Oswald"));
+  assert.ok(plan.fontDisplay.startsWith('"Oswald"'));
+});
+
+test("resolveFontPlan falls back to a curated pairing href on an unknown font", () => {
+  const plan = resolveFontPlan({ font_family: "No Such Font 9000" }, "Replit");
+  assert.ok(typeof plan.href === "string");
+  assert.ok(plan.href!.startsWith("https://fonts.googleapis.com/css2?family="));
+  // A pairing carries two families in one css2 href.
+  assert.equal((plan.href!.match(/family=/g) ?? []).length, 2);
+  assert.ok(plan.fontDisplay.includes('"'));
+  assert.ok(plan.fontSans.includes('"'));
+});
+
+test("deriveTokens with a seed routes fonts through the pairing fallback", () => {
+  const t = deriveTokens(profile(), { font_family: "No Such Font 9000" }, VERTICAL_ACCENT, "Replit");
+  // The seeded path never collapses to a bare system stack: the display face is
+  // a quoted proper name from the pairing.
+  assert.ok(t.fontDisplay.includes('"'));
+});
+
+test("a widened font key resolves to a Google Fonts href", () => {
+  const href = resolveGoogleFontHref("Space Grotesk");
+  assert.ok(href!.includes("fonts.googleapis.com/css2?family=Space+Grotesk"));
 });

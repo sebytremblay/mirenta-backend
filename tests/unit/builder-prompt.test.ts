@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildUserPrompt,
   renderValueBlock,
+  DESIGN_BRIEF,
   type BuildSiteInput,
   type PromptAssets,
 } from "../../src/agents/builder-prompt.ts";
@@ -107,6 +108,21 @@ test("buildUserPrompt falls back to a wordmark and reply-to-email when assets ar
   const prompt = buildUserPrompt(input, value, bare);
   assert.ok(/text wordmark/i.test(prompt));
   assert.ok(/reply to the outreach email/i.test(prompt));
+});
+
+test("DESIGN_BRIEF offers an art-direction menu and the anti-AI-copy rules", () => {
+  assert.ok(/art direction/i.test(DESIGN_BRIEF));
+  assert.ok(/commit to/i.test(DESIGN_BRIEF) && /exactly one/i.test(DESIGN_BRIEF));
+  const directions = ["editorial", "brutalist", "warm-minimal", "technical-mono", "modern-refined"];
+  const present = directions.filter((d) => new RegExp(d, "i").test(DESIGN_BRIEF));
+  assert.ok(present.length >= 3, `expected >=3 named directions, found ${present.length}`);
+  assert.ok(/tricolon/i.test(DESIGN_BRIEF));
+  assert.ok(/vary sentence length/i.test(DESIGN_BRIEF));
+});
+
+test("DESIGN_BRIEF advertises the widened token variables", () => {
+  assert.ok(DESIGN_BRIEF.includes("--surface-elevated"));
+  assert.ok(DESIGN_BRIEF.includes("--shadow"));
 });
 
 test("renderValueBlock carries the mechanism and headline value without dashboard parts", () => {

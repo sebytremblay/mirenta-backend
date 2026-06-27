@@ -6,7 +6,7 @@ import {
   renderTokenBlock,
   resolveLogoUrl,
   resolveFaviconHref,
-  resolveGoogleFontHref,
+  resolveFontPlan,
 } from "./brand-tokens.ts";
 import { DESIGN_BRIEF, buildUserPrompt, type BuildSiteInput } from "./builder-prompt.ts";
 import {
@@ -24,7 +24,7 @@ export interface BuildSiteResult {
   usage: TokenUsageTotals;
 }
 
-const REQUIRED_ANCHORS = ["#business-case", "#book"];
+export const REQUIRED_ANCHORS = ["#business-case", "#book"];
 
 const MAX_ATTEMPTS = 3;
 
@@ -56,7 +56,7 @@ function hostOf(url: string | null | undefined): string | undefined {
   }
 }
 
-function collectAssetHosts(
+export function collectAssetHosts(
   logoUrl: string | undefined,
   faviconHref: string | undefined,
   websiteUrl: string | null | undefined,
@@ -86,11 +86,14 @@ export async function buildSite(input: BuildSiteInput): Promise<BuildSiteResult>
 
   onStep?.({ phase: "brand", detail: "resolving brand tokens" });
   const brand = research.brand;
-  const tokens = deriveTokens(profile, brand, vertical.defaultAccentColor);
+  // The lead company seeds the deterministic font pairing, so the same prospect
+  // always renders the same faces and the smoke chain reproduces production.
+  const fontSeed = lead.company;
+  const tokens = deriveTokens(profile, brand, vertical.defaultAccentColor, fontSeed);
   const tokenBlock = renderTokenBlock(tokens);
   const logoUrl = resolveLogoUrl(profile, brand);
   const faviconHref = resolveFaviconHref(lead.website_url, brand);
-  const fontHref = resolveGoogleFontHref(brand?.font_family);
+  const fontHref = resolveFontPlan(brand, fontSeed).href;
   const booking = bookingUrl(profile);
   const assetHosts = collectAssetHosts(logoUrl, faviconHref, lead.website_url, booking);
 

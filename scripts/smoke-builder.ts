@@ -25,7 +25,7 @@ import {
   renderTokenBlock,
   resolveLogoUrl,
   resolveFaviconHref,
-  resolveGoogleFontHref,
+  resolveFontPlan,
 } from "../src/agents/brand-tokens.ts";
 import { validateResearch } from "../src/domain/research.ts";
 import { getVertical } from "../src/verticals/index.ts";
@@ -93,12 +93,14 @@ try {
   );
   const value = valueModel.compute(validatedInputs);
 
-  // Resolve assets the same way the builder does.
-  const tokens = deriveTokens(sampleProfile, research.brand, vertical.defaultAccentColor);
+  // Resolve assets the same way the builder does, seeding the deterministic font
+  // pairing on the lead company exactly as buildSite does.
+  const fontSeed = sampleLead.company;
+  const tokens = deriveTokens(sampleProfile, research.brand, vertical.defaultAccentColor, fontSeed);
   const tokenBlock = renderTokenBlock(tokens);
   const logoUrl = resolveLogoUrl(sampleProfile, research.brand);
   const faviconHref = resolveFaviconHref(sampleLead.website_url, research.brand);
-  const fontHref = resolveGoogleFontHref(research.brand?.font_family);
+  const fontHref = resolveFontPlan(research.brand, fontSeed).href;
 
   const input: BuildSiteInput = {
     lead: sampleLead,
@@ -178,6 +180,29 @@ ${JSON.stringify(PAGE_TOOL_SCHEMA, null, 2)}
       pass:
         prompt.includes(EMIT_PAGE_TOOL) &&
         PAGE_TOOL_SCHEMA.required.every((k) => prompt.includes(`"${k}"`)),
+    },
+    {
+      name: "design brief offers an art-direction menu of at least three named directions",
+      pass:
+        /art direction/i.test(DESIGN_BRIEF) &&
+        ["editorial", "brutalist", "warm-minimal", "technical-mono", "modern-refined"].filter(
+          (name) => new RegExp(name, "i").test(DESIGN_BRIEF),
+        ).length >= 3,
+    },
+    {
+      name: "design brief tells the model to commit to exactly one direction",
+      pass: /commit to/i.test(DESIGN_BRIEF) && /exactly one/i.test(DESIGN_BRIEF),
+    },
+    {
+      name: "design brief carries the anti-AI-copy rules",
+      pass:
+        /tricolon/i.test(DESIGN_BRIEF) &&
+        /superlative/i.test(DESIGN_BRIEF) &&
+        /vary sentence length/i.test(DESIGN_BRIEF),
+    },
+    {
+      name: "design brief advertises the new expressive tokens",
+      pass: /--surface-elevated/.test(DESIGN_BRIEF) && /--shadow/.test(DESIGN_BRIEF),
     },
   ];
 

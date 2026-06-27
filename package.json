@@ -15,6 +15,7 @@
     "smoke:db": "node scripts/smoke-db.ts",
     "smoke:research": "node scripts/smoke-research.ts",
     "smoke:builder": "node scripts/smoke-builder.ts",
+    "smoke:render": "node scripts/smoke-render.ts",
     "gateway": "node src/gateway/server.ts",
     "worker": "node src/worker/run.ts",
     "pipeline": "node scripts/run-pipeline.ts"

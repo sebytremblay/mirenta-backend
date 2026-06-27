@@ -43,14 +43,25 @@ OUTPUT CONTRACT
 - Reference external resources ONLY from the asset URLs provided in the user message (logo, favicon, font link, booking URL). Invent no other external URL or image.
 
 BRAND
-- The user message supplies a :root token block. Paste it verbatim at the top of your <style> block and theme EVERY component with these custom properties: var(--brand), var(--brand-fg), var(--accent), var(--bg), var(--surface), var(--surface-muted), var(--text), var(--muted), var(--border), var(--radius), var(--brand-tint), var(--font-sans), var(--font-display). Derive every shade from these variables (rgba layering over the brand color is fine). Hardcode no color outside the token block.
-- Use var(--font-display) for headings and var(--font-sans) for body. When a Google Fonts <link> is provided, include it and the two font preconnect links in the <head>.
+- The user message supplies a :root token block. Paste it verbatim at the top of your <style> block and theme EVERY component with these custom properties: var(--brand), var(--brand-fg), var(--brand-strong), var(--brand-soft), var(--accent), var(--bg), var(--surface), var(--surface-muted), var(--surface-elevated), var(--surface-dark), var(--surface-dark-fg), var(--text), var(--muted), var(--border), var(--radius), var(--brand-tint), var(--brand-tint-strong), var(--shadow), var(--shadow-lg), var(--ring), var(--font-sans), var(--font-display). Derive every shade from these variables (rgba layering over the brand color is fine). Hardcode no color outside the token block.
+- Use var(--font-display) for headings and var(--font-sans) for body. When a Google Fonts <link> is provided, include it and the two font preconnect links (https://fonts.googleapis.com and https://fonts.gstatic.com) in the <head>.
 - Render the lead company logo when a logo URL is provided; otherwise render a clean text wordmark of the company name. Pair it with the seller name as a partnership lockup in the hero.
+
+ART DIRECTION
+- Select EXACTLY ONE direction below. Commit to it for the whole page. Do not blend directions. Execute every move the direction names, so the page reads as one deliberate hand, not a template.
+- EDITORIAL: a serif var(--font-display) at a large display size, generous line-height, a hairline var(--border) rule under each section heading, an oversized drop-initial on the hero lede, an asymmetric two-column priorities layout with a wide left margin. Signature move: a numbered running index (01, 02, 03) set in var(--muted) beside each priority heading. Value render: the value expression set very large in var(--font-display) against open whitespace, the mechanism as a single justified line beneath.
+- BRUTALIST-STRUCTURED: a heavy condensed var(--font-display), tight letter-spacing, flat blocks of var(--brand) and var(--surface-dark) with squared corners (set border-radius: 0 on cards and buttons), thick 2px var(--border) lines. Signature move: a full-bleed var(--surface-dark) band (text in var(--surface-dark-fg)) for the point-of-view section, with each quote set large. Value render: the value expression in a bordered block, mono-feeling, the label in uppercase var(--muted).
+- WARM-MINIMAL: a humanist sans, airy whitespace, soft var(--radius) cards on var(--surface-muted), one var(--brand-tint) wash behind the hero. Signature move: pill-shaped eyebrow tags and a single var(--accent) underline that grows on hover (CSS only, gated by prefers-reduced-motion). Value render: the value expression centered on a var(--brand-tint-strong) panel with the mechanism as warm prose below.
+- TECHNICAL-MONO: a mono or grotesque var(--font-display), label-caps eyebrows (uppercase, letter-spacing, small), visible 1px var(--border) grid dividers between cards, a left 3px solid var(--accent) rule on every card and blockquote. Signature move: monospace data-style labels (KEY / VALUE rows) framing the priorities. Value render: the value expression in var(--font-display) inside a thin var(--border) frame, the footnote as a code-comment-style small line.
+- MODERN-REFINED: a geometric sans var(--font-display), a restrained palette, elevated cards using var(--shadow) on var(--surface-elevated), a hero with a layered var(--brand-tint) to var(--brand-tint-strong) gradient. Signature move: the value headline sits on a contrasting var(--surface-dark) panel with var(--shadow-lg). Value render: the value expression on that elevated dark panel, prominent, the mechanism beneath in var(--text).
 
 LAYOUT AND STYLE
 - Center content in a container near 1120px max width. Hold prose to a 62 to 70 character measure.
 - Use fluid clamp() type scales for headings. Use mobile-first responsive grids that collapse one to two to three columns at 720px and 1000px.
-- Give cards subtle borders, soft shadows, rounded corners (var(--radius)), and a gentle hover lift transition. Fill some sections with var(--brand-tint) or a dark on-brand panel for rhythm. Vary the component styling section to section.
+- Write a large, expressive <style> block. CSS does not count toward the word budget, so invest in type scale, spacing rhythm, and the chosen direction's details.
+- Use inline SVG for decorative marks, dividers, and the wordmark. Inline SVG does not count toward the word budget. Give inline SVG no external href or src and no script.
+- Build depth with CSS only: gradients from the brand tokens, var(--shadow) and var(--shadow-lg), var(--surface-elevated), and layered var(--brand-tint). Use no external image except the provided logo and favicon. Use no @import and no background-image URL.
+- Apply hover and focus transitions through CSS, and honor prefers-reduced-motion. The signature move is decoration only: it must not add, rename, or remove any section, id, link, role, or figure.
 
 REQUIRED SECTIONS, IN THIS ORDER, WITH THESE EXACT ids
 1. Hero: a header element with role="banner". Include the prospect and seller lockup, an eyebrow that names the lead by name and role, an <h1>, and a short lede. Include a quick-link group with TWO links: one with href="#business-case" and one with href="#book". Both targets must resolve in this document.
@@ -72,7 +83,17 @@ ACCESSIBILITY
 
 WRITING STYLE (enforce strictly)
 - No contractions. Active voice. Present tense. Strong verbs. No weak openers ("there is", "it is"). No em dashes. No AI filler words (delve, leverage, robust, seamless, unlock, transformative).
-- Ground every claim in the supplied research. Fabricate no facts, metrics, customers, or quotes. Use only the supplied verified quotes.`;
+- Ground every claim in the supplied research. Fabricate no facts, metrics, customers, or quotes. Use only the supplied verified quotes.
+
+COPY THAT READS HUMAN, NOT MACHINE-GENERATED
+- Write no symmetrical tricolons ("faster, smarter, better"). Break the rhythm instead.
+- Open no sentence with "In a world where", "Imagine a", "It is no secret that", or "In today's fast-paced".
+- Use no hollow superlatives: cutting-edge, world-class, best-in-class, game-changing, revolutionary, next-generation.
+- Write no empty connective scaffolding: "That is why", "This is where X comes in", "The result?".
+- Vary sentence length deliberately. Set a short, punchy sentence next to a longer one. Never run three same-length sentences in a row.
+- Use no rhetorical question as a heading.
+- Name the specific researched fact rather than abstracting it. Mirror the prospect's own self-description language where it fits.
+- Write headings concrete to this prospect, not generic ("Where Replit loses founder-hours", not "The Challenge").`;
 
 export function renderValueBlock(value: ValueResult): string {
   const lines: string[] = [];
