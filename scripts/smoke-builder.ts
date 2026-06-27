@@ -31,15 +31,18 @@ import { validateResearch } from "../src/domain/research.ts";
 import { getVertical } from "../src/verticals/index.ts";
 import type { VerticalSpec } from "../src/verticals/index.ts";
 import type { ResearchObject } from "../src/domain/research.ts";
-import { smokeLead, smokeProfile } from "./smoke-fixtures.ts";
+import { selectScenario, smokeProfile } from "./smoke-fixtures.ts";
 import { readFileSync } from "node:fs";
 
 // Phase one (smoke:research) writes here; phase two reads it. The path lives in
-// both scripts; smoke-fixtures.ts holds the shared seed they run against.
+// both scripts; smoke-fixtures.ts holds the shared seeds they run against.
 const RESEARCH_IN = "/tmp/mirenta-research.json";
 
-// Both phases target the same prospect and customer profile.
-const sampleLead = smokeLead;
+// The customer is always Mirenta; only the lead swaps. Resolve the lead from the
+// --profile flag (or SMOKE_PROFILE env); pass the SAME flag phase one received
+// so both phases describe the same prospect.
+const scenario = selectScenario();
+const sampleLead = scenario.lead;
 const sampleProfile = smokeProfile;
 
 // Read the research exactly as the worker's build stage does: resolve the
@@ -137,7 +140,8 @@ ${JSON.stringify(PAGE_TOOL_SCHEMA, null, 2)}
     process.stdout.write(prompt);
   }
 
-  log(`smoke:builder — vertical ${vertical.id}`);
+  log(`smoke:builder — profile ${scenario.key} (${scenario.label})`);
+  log(`Lead ${sampleLead.first_name} ${sampleLead.last_name} at ${sampleLead.company}; vertical ${vertical.id}.`);
   log(`Loaded research from ${source}.`);
   log(`Voices ${research.voices.length}; stage band ${research.extension.context.stage_band ?? "n/a"}.`);
   log(copied ? "Copied the builder prompt to the clipboard." : "pbcopy unavailable; pipe stdout instead.");

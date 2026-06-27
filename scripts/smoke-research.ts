@@ -9,18 +9,21 @@ import { spawnSync } from "node:child_process";
 import { buildAgentSystemPrompt, buildKickoff, EMIT_RESEARCH_TOOL } from "../src/agents/research.ts";
 import { RESEARCH_TOOL_SCHEMA } from "../src/domain/research.ts";
 import { getVertical } from "../src/verticals/index.ts";
-import { smokeLead, smokeProfile } from "./smoke-fixtures.ts";
+import { selectScenario, smokeProfile } from "./smoke-fixtures.ts";
 
 // The research output path the builder smoke reads. Keep the two scripts in sync.
 const RESEARCH_OUT = "/tmp/mirenta-research.json";
 
+// The customer is always Mirenta; only the lead swaps. Resolve the lead from the
+// --profile flag (or SMOKE_PROFILE env); phase two must receive the same flag so
+// both phases describe the same prospect. The seeds live in smoke-fixtures.ts.
+const scenario = selectScenario();
+const lead = scenario.lead;
+const profile = smokeProfile;
+
 // Resolve the vertical from the profile, exactly as the worker's build stage
 // does, so both phases run against the same vertical the seed declares.
-const vertical = getVertical(smokeProfile.vertical);
-
-// Both phases target the same prospect; the seed lives in smoke-fixtures.ts.
-const lead = smokeLead;
-const profile = smokeProfile;
+const vertical = getVertical(profile.vertical);
 
 const systemPrompt = buildAgentSystemPrompt();
 const kickoff = buildKickoff({ lead, profile, vertical });
@@ -66,7 +69,8 @@ const log = (line = ""): void => {
   process.stderr.write(`${line}\n`);
 };
 
-log(`smoke:research — vertical ${vertical.id}`);
+log(`smoke:research — profile ${scenario.key} (${scenario.label})`);
+log(`Lead ${lead.first_name} ${lead.last_name} at ${lead.company}; vertical ${vertical.id}.`);
 log(copied ? "Copied the research prompt to the clipboard." : "pbcopy unavailable; pipe stdout instead.");
 log(`Paste it into a Claude Code session with the Exa search tools, run the five`);
 log(`phases, then save the emitted research object to ${RESEARCH_OUT}.`);
