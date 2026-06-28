@@ -172,6 +172,13 @@ test("DESIGN_BRIEF demands one signature element with restraint, not stacked dev
   assert.ok(/alternating/i.test(DESIGN_BRIEF));
 });
 
+test("DESIGN_BRIEF keeps subordinate headings quiet so the signature stays singular", () => {
+  // A row of loud brand-colored display headings (the card-heading defect) competes
+  // with the signature, so the brief must demand restrained subordinate headings.
+  assert.ok(/subordinate headings quiet/i.test(DESIGN_BRIEF));
+  assert.ok(/card and section headings/i.test(DESIGN_BRIEF));
+});
+
 test("DESIGN_BRIEF advertises the widened token variables", () => {
   assert.ok(DESIGN_BRIEF.includes("--surface-elevated"));
   assert.ok(DESIGN_BRIEF.includes("--shadow"));
