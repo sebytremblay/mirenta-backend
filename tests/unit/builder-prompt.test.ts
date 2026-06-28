@@ -72,7 +72,7 @@ const spec: PageSpec = {
   valueRenderSectionId: "the-hours",
   ctaSectionId: "lets-talk",
   quickLinkTargets: ["the-hours", "lets-talk"],
-  artDirection: { name: "Terminal Editorial", typeTreatment: "Monospace headings over a serif body.", motifs: ["A hairline rule under each heading."] },
+  artDirection: { name: "Terminal Editorial", signatureElement: "A monospace command-line motif framing the hero heading.", typeTreatment: "Monospace headings over a serif body.", motifs: ["A hairline rule under each heading."] },
 };
 
 const profile: ProductProfile = {
@@ -154,6 +154,8 @@ test("renderSpecBlock names the value-render and cta sections", () => {
   const block = renderSpecBlock(spec);
   assert.ok(block.includes('VALUE-RENDER SECTION: id="the-hours"'));
   assert.ok(block.includes('CTA SECTION: id="lets-talk"'));
+  assert.ok(/SIGNATURE ELEMENT/.test(block));
+  assert.ok(block.includes("A monospace command-line motif framing the hero heading."));
 });
 
 test("DESIGN_BRIEF drives off the bespoke spec and keeps the anti-AI-copy rules", () => {
@@ -162,6 +164,12 @@ test("DESIGN_BRIEF drives off the bespoke spec and keeps the anti-AI-copy rules"
   assert.ok(/render every listed section/i.test(DESIGN_BRIEF));
   assert.ok(/tricolon/i.test(DESIGN_BRIEF));
   assert.ok(/vary sentence length/i.test(DESIGN_BRIEF));
+});
+
+test("DESIGN_BRIEF demands one signature element with restraint, not stacked devices", () => {
+  assert.ok(/signature element/i.test(DESIGN_BRIEF));
+  // The brief must warn off the alternating-grounds-as-only-mechanism default.
+  assert.ok(/alternating/i.test(DESIGN_BRIEF));
 });
 
 test("DESIGN_BRIEF advertises the widened token variables", () => {

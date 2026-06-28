@@ -126,6 +126,9 @@ Two rules keep the displayed arithmetic honest, since a founder checks the math:
 - Name EVERY input you declare in the mechanism as {value.<key>}. A factor the sentence omits makes the figure look wrong (10 pitches times 2 hours reading as 11 hides a third factor). When you apply an automation or capture rate, declare it as an input with a [0, 1] clamp and name it in the sentence, so the reader sees why the product lands where it does.
 - Do not restate the cadence in headlineLabel. The value string carries "each week" or "per year" already, so a label like "Hours reclaimed" reads clean while "Hours reclaimed each week" doubles it.
 
+One rule keeps the framing honest, since a founder rejects a sentence that misreads their work:
+- Quantify the founder's CURRENT manual effort and the time or money it costs them today, never an artifact the seller produces. The founder personalizes outreach by hand; the founder does not already write the polished page the seller generates. Write "the {value.leads} prospects you research and write to by hand each week" or "the {value.hours} hours you spend personalizing outreach", not "the pages you write each week", which assumes the founder already produces the seller's output. Anchor the sentence in the manual work the product replaces.
+
 # Writing style
 
 No contractions, active voice, present tense, strong verbs, no weak openers, no em dashes. Mechanism templates read as one plain sentence.

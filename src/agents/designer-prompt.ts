@@ -61,14 +61,19 @@ export const PAGE_SPEC_TOOL_SCHEMA = {
       type: "object",
       properties: {
         name: { type: "string", description: "Your name for this page's deliberate hand, not a menu pick" },
+        signatureElement: {
+          type: "string",
+          description:
+            "The ONE bold structural or visual move this page spends its boldness on, described concretely enough for the builder to execute it (for example a single oversized typographic statement, one asymmetric split layout, one distinctive value visual, or one editorial pull treatment). Name one move, not a list. Everything else stays quiet so the page reads as composed, not cluttered.",
+        },
         typeTreatment: { type: "string", description: "Prose the builder follows for type and hierarchy" },
         motifs: {
           type: "array",
           items: { type: "string" },
-          description: "CSS-only decorative moves that spend the brand tokens; never external assets",
+          description: "A few quiet CSS-only supporting details that spend the brand tokens; never external assets, never a second bold move competing with the signature element",
         },
       },
-      required: ["name", "typeTreatment", "motifs"],
+      required: ["name", "signatureElement", "typeTreatment", "motifs"],
     },
   },
   required: ["sections", "valueRenderSectionId", "ctaSectionId", "quickLinkTargets", "artDirection"],
@@ -89,7 +94,11 @@ Hard requirements the spec must satisfy:
 
 # The art direction
 
-Name the deliberate hand for this page (not a pick from a menu). Write a type treatment the builder follows and a few CSS-only motifs. Motifs spend the founder's brand tokens; they never pull external assets.
+Name the deliberate hand for this page (not a pick from a menu), then commit to ONE signature element: the single bold move this page spends its boldness on. A page earns a founder's attention through one strong idea executed with conviction, not through many devices stacked together. Choose the signature element you judge strongest for this founder, describe it concretely enough for the builder to execute it, and keep everything else quiet so it reads as composed rather than cluttered.
+
+Pick one move, not a catalog. A signature element is a single oversized typographic statement, OR one asymmetric split that breaks the centered column, OR one distinctive value visual, OR one editorial pull treatment, OR one structural device that frames the whole page. Do not stack a saturated hero AND alternating bands AND a dark panel AND a chart and call the sum a design; that stack is the generic template the page must avoid. Let one move lead and let the rest recede.
+
+Write a type treatment the builder follows and a few quiet CSS-only motifs that support the signature element without competing with it. Motifs spend the founder's brand tokens; they never pull external assets.
 
 # Writing style
 
@@ -169,6 +178,7 @@ export function normalizePageSpec(raw: unknown): PageSpec {
   if (
     !art ||
     typeof art.name !== "string" ||
+    typeof art.signatureElement !== "string" ||
     typeof art.typeTreatment !== "string" ||
     !Array.isArray(art.motifs) ||
     !art.motifs.every((m) => typeof m === "string")
@@ -192,6 +202,7 @@ export function normalizePageSpec(raw: unknown): PageSpec {
     quickLinkTargets: r.quickLinkTargets as string[],
     artDirection: {
       name: art.name,
+      signatureElement: art.signatureElement,
       typeTreatment: art.typeTreatment,
       motifs: art.motifs as string[],
     },

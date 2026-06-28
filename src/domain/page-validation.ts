@@ -13,7 +13,9 @@ export class PageValidationError extends Error {
 
 const ALWAYS_ALLOWED_HOSTS = ["fonts.googleapis.com", "fonts.gstatic.com"];
 
-const MAX_BODY_WORDS = 1100;
+// The hard ceiling sits above the ~600-word soft target the brief sets, leaving
+// slack for a content-rich lead while still rejecting a page that runs long.
+const MAX_BODY_WORDS = 850;
 
 export interface ValidatePageOptions {
   value: ValueResult;
@@ -174,7 +176,7 @@ export function validatePage(html: string, opts: ValidatePageOptions): void {
   const words = bodyText === "" ? 0 : bodyText.split(" ").length;
   if (words > MAX_BODY_WORDS) {
     throw new PageValidationError(
-      `body copy runs long (${words} words, budget under ~750); tighten the page`,
+      `body copy runs long (${words} words, target near ~600); tighten the page`,
     );
   }
 }

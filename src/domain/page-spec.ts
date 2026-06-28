@@ -47,11 +47,14 @@ export interface SectionSpec {
 }
 
 // The per-lead art direction. name is designer-chosen, NOT a closed menu, so the
-// page reads as one deliberate hand. typeTreatment and motifs are prose the
-// builder follows; they decorate within the brand tokens and never alter the
-// section set or add external assets.
+// page reads as one deliberate hand. signatureElement names the ONE bold move the
+// page spends its boldness on; everything else stays quiet, which is what keeps
+// the page from reading as cluttered template boilerplate. typeTreatment and
+// motifs are prose the builder follows; they decorate within the brand tokens and
+// never alter the section set or add external assets.
 export interface ArtDirection {
   name: string;
+  signatureElement: string;
   typeTreatment: string;
   motifs: string[];
 }
@@ -142,9 +145,11 @@ export function validatePageSpec(spec: PageSpec): void {
     !spec.artDirection ||
     typeof spec.artDirection.name !== "string" ||
     spec.artDirection.name.trim() === "" ||
+    typeof spec.artDirection.signatureElement !== "string" ||
+    spec.artDirection.signatureElement.trim() === "" ||
     typeof spec.artDirection.typeTreatment !== "string" ||
     spec.artDirection.typeTreatment.trim() === ""
   ) {
-    throw new PageSpecError("art direction requires a name and a type treatment");
+    throw new PageSpecError("art direction requires a name, a signature element, and a type treatment");
   }
 }

@@ -14,7 +14,7 @@ function validSpec(): PageSpec {
     valueRenderSectionId: "the-case",
     ctaSectionId: "lets-talk",
     quickLinkTargets: ["the-case", "lets-talk"],
-    artDirection: { name: "Editorial restraint", typeTreatment: "Serif display, hairline rules", motifs: ["numbered index"] },
+    artDirection: { name: "Editorial restraint", signatureElement: "One oversized serif statement opening the hero", typeTreatment: "Serif display, hairline rules", motifs: ["numbered index"] },
   };
 }
 
@@ -69,6 +69,12 @@ test("validatePageSpec requires an art direction name and type treatment", () =>
   const spec = validSpec();
   spec.artDirection.typeTreatment = "";
   assert.throws(() => validatePageSpec(spec), PageSpecError);
+});
+
+test("validatePageSpec requires a signature element so the page commits to one bold move", () => {
+  const spec = validSpec();
+  spec.artDirection.signatureElement = "";
+  assert.throws(() => validatePageSpec(spec), /signature element/);
 });
 
 test("validatePageSpec rejects an empty section list", () => {

@@ -48,7 +48,7 @@ const spec: PageSpec = {
   valueRenderSectionId: "business-case",
   ctaSectionId: "book",
   quickLinkTargets: ["business-case", "book"],
-  artDirection: { name: "Editorial", typeTreatment: "Serif display", motifs: [] },
+  artDirection: { name: "Editorial", signatureElement: "One oversized serif headline anchoring the hero", typeTreatment: "Serif display", motifs: [] },
 };
 
 const options: ValidatePageOptions = {

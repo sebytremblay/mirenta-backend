@@ -68,6 +68,7 @@ function validSpec() {
     quickLinkTargets: ["the-return", "book"],
     artDirection: {
       name: "Terminal Editorial",
+      signatureElement: "A monospace command-line motif framing the hero heading.",
       typeTreatment: "Monospace headings over a serif body.",
       motifs: ["A hairline rule under each heading."],
     },
@@ -89,6 +90,7 @@ test("normalizes a well-formed spec and runs the well-formedness pass", () => {
   assert.equal(spec.sections.length, 4);
   assert.equal(spec.valueRenderSectionId, "the-return");
   assert.equal(spec.artDirection.name, "Terminal Editorial");
+  assert.equal(spec.artDirection.signatureElement, "A monospace command-line motif framing the hero heading.");
 });
 
 test("rejects a spec whose valueRenderSectionId does not point at a value_render", () => {
@@ -125,6 +127,12 @@ test("rejects a quick-link target that does not resolve", () => {
 test("rejects art direction missing a type treatment", () => {
   const raw = validSpec();
   (raw.artDirection as Record<string, unknown>).typeTreatment = "";
+  assert.throws(() => normalizePageSpec(raw), PageSpecSchemaError);
+});
+
+test("rejects art direction missing a signature element", () => {
+  const raw = validSpec();
+  delete (raw.artDirection as Record<string, unknown>).signatureElement;
   assert.throws(() => normalizePageSpec(raw), PageSpecSchemaError);
 });
 
