@@ -4,6 +4,7 @@ import {
   buildDesignerPrompt,
   normalizePageSpec,
   PageSpecSchemaError,
+  DESIGNER_SYSTEM_PROMPT,
   type DesignerInput,
 } from "../../src/agents/designer-prompt.ts";
 import type { ResearchObject } from "../../src/domain/research.ts";
@@ -83,6 +84,11 @@ test("builds a prompt grounded in the research and the recipe headings", () => {
   assert.match(prompt, /Growth/);
   assert.match(prompt, /What this returns/);
   assert.match(prompt, /emit_page_spec exactly once/);
+});
+
+test("system prompt frames headings as the seller pitching the lead", () => {
+  assert.match(DESIGNER_SYSTEM_PROMPT, /seller/i);
+  assert.match(DESIGNER_SYSTEM_PROMPT, /founder's own marketing slogan/i);
 });
 
 test("normalizes a well-formed spec and runs the well-formedness pass", () => {

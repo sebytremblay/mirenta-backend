@@ -4,6 +4,7 @@ import {
   buildStrategistPrompt,
   validateStrategy,
   StrategySchemaError,
+  STRATEGIST_SYSTEM_PROMPT,
   type StrategistInput,
 } from "../../src/agents/strategist-prompt.ts";
 import { evaluateRecipe } from "../../src/domain/recipe.ts";
@@ -54,6 +55,14 @@ test("builds a prompt naming the lead, role, company, and seller product", () =>
   assert.match(prompt, /Mirenta/);
   assert.match(prompt, /origami\.chat/);
   assert.match(prompt, /emit_strategy exactly once/);
+});
+
+test("system prompt frames the page as the seller pitching the lead, not the lead's own marketing", () => {
+  // The lead's product domains must never become the page's subject; doing so
+  // pitches the lead's product back to them. The strategist anchors domains in
+  // the founder's priorities as a buyer instead.
+  assert.match(STRATEGIST_SYSTEM_PROMPT, /seller/i);
+  assert.match(STRATEGIST_SYSTEM_PROMPT, /never the product categories the lead sells/i);
 });
 
 test("notes a missing website rather than rendering an empty string", () => {

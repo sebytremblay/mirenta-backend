@@ -179,6 +179,13 @@ test("DESIGN_BRIEF keeps subordinate headings quiet so the signature stays singu
   assert.ok(/card and section headings/i.test(DESIGN_BRIEF));
 });
 
+test("DESIGN_BRIEF pitches the seller's product, never the lead's own marketing", () => {
+  // The page must not open with the lead's tagline or recite the lead's product
+  // features back to them; it sells the seller's product to the lead.
+  assert.ok(/whose page this is/i.test(DESIGN_BRIEF));
+  assert.ok(/never markets the lead's own product back to them/i.test(DESIGN_BRIEF));
+});
+
 test("DESIGN_BRIEF advertises the widened token variables", () => {
   assert.ok(DESIGN_BRIEF.includes("--surface-elevated"));
   assert.ok(DESIGN_BRIEF.includes("--shadow"));
