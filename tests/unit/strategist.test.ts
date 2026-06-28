@@ -35,7 +35,7 @@ function validSumStrategy() {
       unit: "currency_usd",
       sectionTitle: "What this returns",
       headlineLabel: "Annual saving",
-      mechanismTemplate: "Mirenta returns {result} by folding {input.tooling} and {input.contractors} into one pass.",
+      mechanismTemplate: "Mirenta returns {result} by folding {value.tooling} in tooling and {value.contractors} in contractors into one pass.",
       inputs: [
         { key: "tooling", label: "tooling spend", min: 0, max: 100000 },
         { key: "contractors", label: "contractor spend", min: 0, max: 500000 },
@@ -164,6 +164,19 @@ test("rejects an empty domains plan", () => {
 
 test("rejects a non-object payload", () => {
   assert.throws(() => validateStrategy(null), /not an object/);
+});
+
+test("rejects a recipe whose mechanism omits a declared input, hiding a factor", () => {
+  const raw = validSumStrategy();
+  // Drops {value.contractors}, so the sentence cannot reconcile to the figure.
+  raw.recipe.mechanismTemplate = "Mirenta returns {result} by folding {value.tooling} into one pass.";
+  assert.throws(() => validateStrategy(raw), /omits input contractors/);
+});
+
+test("rejects a headline label that restates the unit cadence", () => {
+  const raw = validSumStrategy();
+  raw.recipe.headlineLabel = "What you save each year";
+  assert.throws(() => validateStrategy(raw), /restates the currency_usd cadence/);
 });
 
 test("rejects a recipe missing the result ceiling", () => {

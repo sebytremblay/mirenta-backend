@@ -122,6 +122,10 @@ Rules that keep the figure honest:
 
 The mechanism sentence must read as one clean, grammatical sentence a founder believes. Write {result} where the final figure belongs (it already carries its unit, so add no unit word after it). Write {value.<key>} where a sourced number belongs, and {input.<key>} where the input's noun-phrase label belongs. Read your template back as if the tokens were filled: it must parse as plain English, never repeat a unit, and never drop a raw label into a slot that reads as a number. Example for a multiply recipe: "Mirenta returns {result} by automating the {value.pitches} pitches you send each week that each take {value.hours} hours by hand."
 
+Two rules keep the displayed arithmetic honest, since a founder checks the math:
+- Name EVERY input you declare in the mechanism as {value.<key>}. A factor the sentence omits makes the figure look wrong (10 pitches times 2 hours reading as 11 hides a third factor). When you apply an automation or capture rate, declare it as an input with a [0, 1] clamp and name it in the sentence, so the reader sees why the product lands where it does.
+- Do not restate the cadence in headlineLabel. The value string carries "each week" or "per year" already, so a label like "Hours reclaimed" reads clean while "Hours reclaimed each week" doubles it.
+
 # Writing style
 
 No contractions, active voice, present tense, strong verbs, no weak openers, no em dashes. Mechanism templates read as one plain sentence.
@@ -217,6 +221,35 @@ function validateRecipeShape(raw: unknown): MetricRecipe {
 
   const op = r.op as MetricRecipe["op"];
   const unit = r.unit as MetricRecipe["unit"];
+
+  // Every declared input must be named in the mechanism as {value.<key>}, so
+  // every factor the figure depends on shows in the sentence and the arithmetic
+  // reconciles. A recipe that hides a factor (a sub-1 multiplier the sentence
+  // omits) makes the displayed math look broken; reject it at birth.
+  const mechanism = r.mechanismTemplate as string;
+  for (const input of inputs) {
+    if (!mechanism.includes(`{value.${input.key}}`)) {
+      throw new StrategySchemaError(
+        `recipe mechanism omits input ${input.key}: name every input as {value.${input.key}} so the figure reconciles`,
+      );
+    }
+  }
+
+  // The headline label must not restate the exact cadence phrase the value
+  // string carries, or the render doubles it ("Hours back each week: ~11 hours
+  // each week"). The value string says "each week" or "per year"; a label may
+  // still read "Annual saving", since the unit owns the trailing cadence.
+  const CADENCE_BY_UNIT: Partial<Record<MetricRecipe["unit"], RegExp>> = {
+    hours_per_week: /\b(each|per)\s+week\b/i,
+    currency_usd: /\b(each|per)\s+year\b/i,
+  };
+  const cadence = CADENCE_BY_UNIT[unit];
+  if (cadence && cadence.test(r.headlineLabel as string)) {
+    throw new StrategySchemaError(
+      `recipe headlineLabel restates the ${unit} cadence; the value string already carries it`,
+    );
+  }
+
   const recipe: MetricRecipe = {
     op,
     unit,

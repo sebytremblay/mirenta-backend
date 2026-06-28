@@ -18,6 +18,10 @@ const value: ValueResult = {
   sectionTitle: "What this frees up",
   headline: { label: "Founder time reclaimed", value: "~4 to 6 founder-hours reclaimed each week" },
   mechanism: "A seed-stage founder runs go-to-market by hand.",
+  breakdown: [
+    { label: "weekly pitches", value: "8", estimated: false },
+    { label: "hours per pitch", value: "2", estimated: true },
+  ],
   footnote: "Drawn from a stage-band benchmark.",
 };
 

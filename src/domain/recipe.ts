@@ -10,7 +10,7 @@
 // multiplied a full rep roster by full baseline meetings) with required clamps,
 // a multiply ceiling, and an absolute result cap.
 
-import type { ValueResult } from "./value-contract.ts";
+import type { ValueResult, ValueBreakdownItem } from "./value-contract.ts";
 
 // A closed operation set, each chosen for the failure it prevents:
 // - identity: pass one input through, or render a literal qualitative claim. The
@@ -282,10 +282,12 @@ function formatValue(recipe: MetricRecipe, c: Computed): string {
   }
 }
 
-// A plain integer formatter for the per-input {value.<key>} token, so the
-// mechanism sentence names the real sourced number ("14 prospects") rather than
-// leaking the input's descriptive label into a slot that reads as a number.
-const PLAIN = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+// A plain formatter for the per-input {value.<key>} token, so the mechanism
+// sentence names the real sourced number ("14 prospects") rather than leaking
+// the input's descriptive label into a slot that reads as a number. It keeps up
+// to two fraction digits so a sub-1 factor (a 0.7 automation rate) renders as
+// "0.7" rather than rounding to "1" and breaking the visible arithmetic.
+const PLAIN = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 
 function fillMechanism(recipe: MetricRecipe, formattedValue: string, computed: Computed): string {
   let out = recipe.mechanismTemplate.replace(/\{result\}/g, formattedValue);
@@ -300,6 +302,27 @@ function fillMechanism(recipe: MetricRecipe, formattedValue: string, computed: C
     out = out.replace(new RegExp(`\\{input\\.${input.key}\\}`, "g"), input.label);
   }
   return out;
+}
+
+// The sourced numbers behind the figure, one per declared input, formatted
+// plainly with each input's estimated flag. The builder renders this as an
+// honest visual that reconciles to the headline, so the figure reads earned
+// rather than asserted. A qualitative recipe and a bandless band recipe declare
+// no numeric inputs, so the breakdown is empty for those.
+function buildBreakdown(
+  recipe: MetricRecipe,
+  inputs: RecipeInputs,
+  computed: Computed,
+): ValueBreakdownItem[] {
+  return recipe.inputs.map((input) => {
+    const clamped = computed.clampedValues[input.key];
+    const sourced = inputs.values[input.key];
+    return {
+      label: input.label,
+      value: PLAIN.format(clamped ?? 0),
+      estimated: sourced?.estimated === true,
+    };
+  });
 }
 
 // Evaluate a recipe against its sourced inputs to the founder value render. Every
@@ -336,11 +359,13 @@ export function evaluateRecipe(recipe: MetricRecipe, inputs: RecipeInputs): Valu
 
   const value = formatValue(recipe, computed);
   const mechanism = fillMechanism(recipe, value, computed);
+  const breakdown = buildBreakdown(recipe, inputs, computed);
 
   return {
     sectionTitle: recipe.sectionTitle,
     headline: { label: recipe.headlineLabel, value },
     mechanism,
+    breakdown,
     footnote: computed.estimated
       ? "This figure draws on values inferred from public signals rather than the founder's own measured numbers, and serves as illustration pending a conversation."
       : undefined,

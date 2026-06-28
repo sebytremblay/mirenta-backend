@@ -49,7 +49,7 @@ const SECTION_KIND_GUIDANCE: Record<SectionSpec["kind"], string> = {
   challenges: "the pressure each priority creates, as cards",
   pov: "the seller's point of view tied to each priority, with each VERIFIED respected-voice quote placed inside as a styled blockquote attributed and tagged by tier",
   value_render:
-    "the precomputed value: the headline value expression verbatim and prominent in var(--font-display) with its label, the one-sentence mechanism as plain prose beneath, and the footnote when present as small print. Render no metric tiles, no charts, no scenario cards",
+    "the precomputed value as the visual centerpiece of the page: the headline value expression verbatim and large in var(--font-display) with its label, the one-sentence mechanism as plain prose beneath, and the footnote when present as small print. Render the supplied breakdown numbers as an honest visual that reconciles to the headline (labelled stat cells, or a compact inline bar or column figure built only from brand tokens and inline SVG). Show ONLY the supplied figure and breakdown numbers; invent no metric, percentage, projection, chart series, or scenario the value block does not list",
   cta: "a founder-to-founder ask in the seller's voice, rendering the booking action when a booking URL is supplied, otherwise instructing the reader to reply to the outreach email. Use no form",
   footer: "the supplied disclaimer text",
   narrative: "a short prose passage that carries the through-line for this founder, grounded in the research",
@@ -77,12 +77,16 @@ PAGE SPEC (the structure is bespoke to this lead, not a fixed template)
 ART DIRECTION (named by the designer, not a fixed menu)
 - The user message names the art direction, a type treatment, and a few motifs. Commit to that one direction for the whole page so it reads as one deliberate hand, not a template. Execute the type treatment and the motifs using ONLY the brand tokens and CSS. The art direction is decoration: it must not add, rename, or remove any section, id, link, role, or figure the spec names.
 
-LAYOUT AND STYLE
-- Center content in a container near 1120px max width. Hold prose to a 62 to 70 character measure.
-- Use fluid clamp() type scales for headings. Use mobile-first responsive grids that collapse one to two to three columns at 720px and 1000px.
-- Write a large, expressive <style> block. CSS does not count toward the word budget, so invest in type scale, spacing rhythm, and the chosen direction's details.
-- Use inline SVG for decorative marks, dividers, and the wordmark. Inline SVG does not count toward the word budget. Give inline SVG no external href or src and no script.
-- Build depth with CSS only: gradients from the brand tokens, var(--shadow) and var(--shadow-lg), var(--surface-elevated), and layered var(--brand-tint). Use no external image except the provided logo and favicon. Use no @import and no background-image URL.
+LAYOUT AND STYLE (build a real design system, not a plain document)
+This page must look like a designer built it, not a form filled in. Aim for the polish of a top startup landing page. Thin output reads as AI-generated, so invest heavily in the <style> block; CSS does not count toward the word budget.
+- Define a design system at the top of <style>, layered over the brand tokens: a spacing scale (for example --s1 4px through --s9 96px) used consistently for every margin and pad, a fluid clamp() type scale for h1/h2/h3/lede, and a radius and a layered shadow set (a small ambient shadow and a large lift shadow) derived from the brand color.
+- Center content in a container near 1120px max width. Hold prose to a 62 to 70 character measure. Give sections generous vertical rhythm (near --s9 top and bottom), never a flat uniform pad.
+- Make the hero a full-bleed banner with presence: a layered background built from brand-token gradients (a linear base plus a soft radial highlight), the partnership lockup, an eyebrow, a large display <h1>, a lede, and the quick-link group styled as real buttons or chips. The hero must not read as plain text on a tint.
+- Alternate section grounds so the page has rhythm and depth: plain surface, then a muted wash (var(--surface-muted) or layered var(--brand-tint)), then at least one dark anchor section (var(--surface-dark) with var(--surface-dark-fg)) for the value render or CTA. Separate sections with deliberate borders or spacing, not a single hairline rule repeated.
+- Render cards with structure, not bare boxes: padding from the scale, a border or accent edge from brand tokens, an ambient shadow at rest and a lift shadow plus a subtle translateY on hover. Number or mark priority and challenge cards. Style blockquotes as designed pull quotes with an accent rule, a tint background, and a clear attribution footer, the way a real case page treats an executive quote.
+- Make the value render the visual peak of the page: a large display figure, a labelled breakdown rendered as stat cells or a compact inline-SVG bar or column figure that reconciles to the headline, all from brand tokens.
+- Use inline SVG for decorative marks, dividers, wordmarks, and the value figure's chart. Inline SVG does not count toward the word budget. Give inline SVG no external href or src and no script.
+- Build all depth with CSS only: gradients from the brand tokens, the shadow set, var(--surface-elevated), and layered var(--brand-tint). Use no external image except the provided logo and favicon. Use no @import and no background-image URL.
 - Apply hover and focus transitions through CSS, and honor prefers-reduced-motion.
 
 FIGURES
@@ -113,6 +117,15 @@ export function renderValueBlock(value: ValueResult): string {
   lines.push(`Section title: ${value.sectionTitle}`);
   lines.push(`Headline: ${value.headline.label}: ${value.headline.value}`);
   lines.push(`Mechanism: ${value.mechanism}`);
+  if (value.breakdown.length > 0) {
+    lines.push(
+      "Breakdown (the sourced numbers behind the figure; render these as a visual that reconciles to the headline, for example labelled stat cells or a simple inline bar built from brand tokens; never invent a number not listed here):",
+    );
+    for (const item of value.breakdown) {
+      const tag = item.estimated ? " (estimated)" : "";
+      lines.push(`  - ${item.label}: ${item.value}${tag}`);
+    }
+  }
   if (value.footnote) lines.push(`Footnote: ${value.footnote}`);
   return lines.join("\n");
 }

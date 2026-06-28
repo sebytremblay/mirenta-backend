@@ -11,6 +11,7 @@ function compliantResult(estimated: boolean): ValueResult {
     sectionTitle: "What this frees up",
     headline: { label: "Founder time reclaimed", value: "~4 to 6 hours each week" },
     mechanism: "A seed-stage founder runs go-to-market by hand.",
+    breakdown: [{ label: "weekly hours", value: "5", estimated }],
     footnote: estimated ? "Drawn from inferred signals." : undefined,
   };
 }
@@ -53,6 +54,21 @@ test("assertValueModelContract throws when mechanism is empty", () => {
   assert.throws(() => assertValueModelContract(result, true), (err: unknown) => {
     return err instanceof ValueModelContractError && /mechanism required/.test(err.message);
   });
+});
+
+test("assertValueModelContract throws when breakdown is not an array", () => {
+  const result = compliantResult(true);
+  (result as { breakdown: unknown }).breakdown = undefined;
+  assert.throws(() => assertValueModelContract(result, true), (err: unknown) => {
+    return err instanceof ValueModelContractError && /breakdown required/.test(err.message);
+  });
+});
+
+test("assertValueModelContract accepts an empty breakdown for a qualitative value", () => {
+  const result = compliantResult(false);
+  result.breakdown = [];
+  result.headline.value = "a hire you do not make this year";
+  assertValueModelContract(result, false);
 });
 
 test("assertValueModelContract throws when footnote is missing and estimated=true", () => {

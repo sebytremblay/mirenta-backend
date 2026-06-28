@@ -54,6 +54,36 @@ test("the mechanism fills {value.<key>} with the clamped number and {input.<key>
     "Mirenta returns ~28 hours each week by automating the 14 pitches you send each week that each take 2 hours by hand (hours per pitch).",
   );
   assert.ok(!out.mechanism.includes("weekly pitches"), "the label never leaks into a number slot");
+  // The breakdown carries every sourced number behind the figure so the builder
+  // renders an honest visual that reconciles to the headline.
+  assert.deepEqual(out.breakdown, [
+    { label: "weekly pitches", value: "14", estimated: false },
+    { label: "hours per pitch", value: "2", estimated: false },
+  ]);
+});
+
+test("the breakdown keeps a fractional factor rather than rounding it to 1", () => {
+  const recipe: MetricRecipe = {
+    op: "multiply",
+    unit: "hours_per_week",
+    sectionTitle: "Time back",
+    headlineLabel: "Hours reclaimed",
+    mechanismTemplate:
+      "Mirenta returns {result} from {value.pitches} pitches at {value.hours} hours each, automated {value.rate} of the way.",
+    inputs: [
+      { key: "pitches", label: "weekly pitches", min: 0, max: 40 },
+      { key: "hours", label: "hours per pitch", min: 0, max: 8 },
+      { key: "rate", label: "automation rate", min: 0, max: 1 },
+    ],
+    maxFactor: 1000,
+    resultCeiling: 1000,
+  };
+  const out = evaluateRecipe(recipe, {
+    values: { pitches: sourced(8), hours: sourced(2), rate: sourced(0.7) },
+  });
+  // 8 * 2 * 0.7 = 11.2, and the 0.7 factor renders as "0.7", never "1".
+  assert.match(out.mechanism, /automated 0\.7 of the way/);
+  assert.equal(out.breakdown[2]!.value, "0.7");
 });
 
 test("qualitative identity renders the literal verbatim with no numeric inputs", () => {
