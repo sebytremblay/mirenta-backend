@@ -29,6 +29,33 @@ test("identity passes a single numeric input through and formats by unit", () =>
   assert.equal(out.footnote, undefined);
 });
 
+test("the mechanism fills {value.<key>} with the clamped number and {input.<key>} with the label", () => {
+  const recipe: MetricRecipe = {
+    op: "multiply",
+    unit: "hours_per_week",
+    sectionTitle: "Time back",
+    headlineLabel: "Hours reclaimed",
+    // {result} carries its own unit; {value.*} is the number; {input.*} the label.
+    mechanismTemplate:
+      "Mirenta returns {result} by automating the {value.pitches} pitches you send each week that each take {value.hours} hours by hand ({input.hours}).",
+    inputs: [
+      { key: "pitches", label: "weekly pitches", min: 0, max: 40 },
+      { key: "hours", label: "hours per pitch", min: 0, max: 8 },
+    ],
+    maxFactor: 1000,
+    resultCeiling: 1000,
+  };
+  const out = evaluateRecipe(recipe, { values: { pitches: sourced(14), hours: sourced(2) } });
+  assert.equal(out.headline.value, "~28 hours each week");
+  // The number lands in the value slots, the label only in the input slot, and
+  // no descriptive label leaks where the sentence reads as a number.
+  assert.equal(
+    out.mechanism,
+    "Mirenta returns ~28 hours each week by automating the 14 pitches you send each week that each take 2 hours by hand (hours per pitch).",
+  );
+  assert.ok(!out.mechanism.includes("weekly pitches"), "the label never leaks into a number slot");
+});
+
 test("qualitative identity renders the literal verbatim with no numeric inputs", () => {
   const recipe: MetricRecipe = {
     op: "identity",

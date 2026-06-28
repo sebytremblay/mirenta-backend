@@ -20,4 +20,14 @@ Check a box only when its acceptance criterion passes (typecheck + the named tes
 
 ## Review loop log
 
-(Append one dated entry per iteration: click-blockers found, fixes applied, verdict.)
+### 2026-06-27 — iteration 1 (Origami + Menza, two skeptical-founder reviewers)
+
+Both reviewers independently ranked the SAME #1 click-blocker, so it is a deterministic code defect, not run noise: the value **mechanism sentence renders garbled**. Two faults:
+1. The template's `{input.<key>}` token fills with the input LABEL (a descriptor like "High-value prospects contacted per week"), but the strategist writes the sentence expecting a NUMBER there, so labels land in value slots and read as gibberish.
+2. `{result}` already carries its unit ("~28 hours each week"), yet templates append a second unit word ("hours per week", "each quarter"), double-counting.
+
+Secondary findings (content, not code): unverified-feeling quotes lacked visible sourcing; priorities read template-symmetric; the value figure felt unearned without a breakdown. The breakdown gap is the same root cause as fault 1 — a clean mechanism sentence with real sourced numbers answers it.
+
+Verdict both pages: WOULD-NOT-CLICK, single biggest blocker the garbled mechanism.
+
+Fix applied: add a `{value.<key>}` token the evaluator fills with the clamped sourced NUMBER, keep `{input.<key>}` for the label, and sharpen the strategist guidance so it writes number-grounded sentences and never appends a unit after `{result}`.

@@ -44,7 +44,7 @@ const RECIPE_SCHEMA = {
     mechanismTemplate: {
       type: "string",
       description:
-        "One sentence with {result} and {input.<key>} tokens. The evaluator fills these; never write the number yourself.",
+        "One plain sentence the evaluator fills. Tokens: {result} (the final figure, already carrying its unit, for example \"~28 hours each week\" or \"$15,000 to $35,000 per year\"); {value.<key>} (the sourced NUMBER for an input, for example \"14\"); {input.<key>} (the input's human label). Use {value.<key>} wherever the sentence reads as a number and {input.<key>} only as a noun phrase. Write no unit word after {result}; it already carries one. Never write the figure yourself.",
     },
     inputs: {
       type: "array",
@@ -119,6 +119,8 @@ Rules that keep the figure honest:
 - Set resultCeiling to the largest figure that stays credible for this founder's stage.
 - Prefer a modest, defensible number over an impressive one. A founder trusts a figure they recognize and dismisses one that flatters.
 - When no honest number exists, choose op identity, unit qualitative, and state the point of view in literalValue.
+
+The mechanism sentence must read as one clean, grammatical sentence a founder believes. Write {result} where the final figure belongs (it already carries its unit, so add no unit word after it). Write {value.<key>} where a sourced number belongs, and {input.<key>} where the input's noun-phrase label belongs. Read your template back as if the tokens were filled: it must parse as plain English, never repeat a unit, and never drop a raw label into a slot that reads as a number. Example for a multiply recipe: "Mirenta returns {result} by automating the {value.pitches} pitches you send each week that each take {value.hours} hours by hand."
 
 # Writing style
 

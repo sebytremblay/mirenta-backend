@@ -62,6 +62,40 @@ test("guarded transition advances only from the expected status", async () => {
   assert.equal((await getJob(orgId, job.id))!.status, "researching");
 });
 
+test("the four-stage status ladder advances only one guarded step at a time", async () => {
+  const lead = await db()
+    .from("leads")
+    .insert({ org_id: orgId, first_name: "Q", last_name: "R", company: "Co" })
+    .select()
+    .single();
+  const job = await createJob({ org_id: orgId, lead_id: lead.data!.id, batch_id: null });
+
+  // Walk the full ladder the worker drives: pending -> planning -> researching
+  // -> designing -> building -> done. Each step persists its stage artifact, and
+  // the guard refuses to skip a stage, so a stale tick can never jump the ladder.
+  const ladder: { from: typeof job.status; to: typeof job.status; patch: Record<string, unknown> }[] = [
+    { from: "pending", to: "planning", patch: {} },
+    { from: "planning", to: "researching", patch: { strategy: { plan: {}, recipe: {} } } },
+    { from: "researching", to: "designing", patch: {} },
+    { from: "designing", to: "building", patch: { page_spec: { sections: [] } } },
+    { from: "building", to: "done", patch: { site_url: "http://example.com/p" } },
+  ];
+
+  for (const step of ladder) {
+    // A guard from the wrong prior status does nothing.
+    const skipped = await updateJob(job.id, "done", { status: step.to });
+    assert.equal(skipped, null, `cannot reach ${step.to} from done`);
+
+    const moved = await updateJob(job.id, step.from, { status: step.to, ...step.patch });
+    assert.ok(moved, `advance ${step.from} -> ${step.to}`);
+    assert.equal((await getJob(orgId, job.id))!.status, step.to);
+  }
+
+  const final = await getJob(orgId, job.id);
+  assert.ok(final!.strategy, "the strategy artifact persisted across the ladder");
+  assert.ok(final!.page_spec, "the page spec artifact persisted across the ladder");
+});
+
 test("submission-time dedupe reuses a job for the same email without orphaning a lead", async () => {
   const email = `dupe-${Date.now()}@plexus.com`;
   const first = await submit(orgId, {

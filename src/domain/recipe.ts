@@ -148,20 +148,31 @@ interface Computed {
   low: number;
   high: number;
   estimated: boolean;
+  // The clamped sourced value of every declared input, keyed by input key. The
+  // mechanism sentence fills {value.<key>} from this, so the displayed sentence
+  // grounds in the real number rather than the input's descriptive label.
+  clampedValues: Record<string, number>;
 }
 
 function computeOp(recipe: MetricRecipe, inputs: RecipeInputs): Computed {
+  // Resolve every declared input once and keep the clamped values, so the
+  // mechanism sentence can name the real number behind each input.
+  const clampedValues: Record<string, number> = {};
+  for (const input of recipe.inputs) {
+    clampedValues[input.key] = resolveInput(recipe, inputs, input.key).value;
+  }
+
   switch (recipe.op) {
     case "identity": {
       // Qualitative identity carries no numeric result; the caller renders the
       // literal. A numeric identity passes one declared input through.
       if (recipe.unit === "qualitative") {
-        return { low: 0, high: 0, estimated: inputs.band?.estimated ?? false };
+        return { low: 0, high: 0, estimated: inputs.band?.estimated ?? false, clampedValues };
       }
       const only = recipe.inputs[0];
       if (!only) throw new RecipeError("identity recipe declares no input");
       const r = resolveInput(recipe, inputs, only.key);
-      return { low: r.value, high: r.value, estimated: r.estimated };
+      return { low: r.value, high: r.value, estimated: r.estimated, clampedValues };
     }
     case "sum": {
       if (recipe.inputs.length === 0) throw new RecipeError("sum recipe declares no inputs");
@@ -172,7 +183,7 @@ function computeOp(recipe: MetricRecipe, inputs: RecipeInputs): Computed {
         total += r.value;
         estimated = estimated || r.estimated;
       }
-      return { low: total, high: total, estimated };
+      return { low: total, high: total, estimated, clampedValues };
     }
     case "multiply": {
       if (recipe.inputs.length === 0) throw new RecipeError("multiply recipe declares no inputs");
@@ -191,7 +202,7 @@ function computeOp(recipe: MetricRecipe, inputs: RecipeInputs): Computed {
           `multiply product ${product} exceeds maxFactor ${recipe.maxFactor}`,
         );
       }
-      return { low: product, high: product, estimated };
+      return { low: product, high: product, estimated, clampedValues };
     }
     case "ratio": {
       if (!recipe.numeratorKey || !recipe.denominatorKey) {
@@ -202,7 +213,12 @@ function computeOp(recipe: MetricRecipe, inputs: RecipeInputs): Computed {
       if (den.value === 0) {
         throw new RecipeError("ratio denominator is zero");
       }
-      return { low: num.value / den.value, high: num.value / den.value, estimated: num.estimated || den.estimated };
+      return {
+        low: num.value / den.value,
+        high: num.value / den.value,
+        estimated: num.estimated || den.estimated,
+        clampedValues,
+      };
     }
     case "range_from_band": {
       if (!recipe.bands || recipe.bands.length === 0) {
@@ -218,7 +234,7 @@ function computeOp(recipe: MetricRecipe, inputs: RecipeInputs): Computed {
       if (!Number.isFinite(band.low) || !Number.isFinite(band.high) || band.low > band.high) {
         throw new RecipeError(`recipe band ${band.name} has a malformed [low, high] pair`);
       }
-      return { low: band.low, high: band.high, estimated: inputs.band.estimated };
+      return { low: band.low, high: band.high, estimated: inputs.band.estimated, clampedValues };
     }
     default: {
       // Exhaustiveness guard. An unknown op throws rather than rendering nothing.
@@ -266,9 +282,21 @@ function formatValue(recipe: MetricRecipe, c: Computed): string {
   }
 }
 
-function fillMechanism(recipe: MetricRecipe, formattedValue: string): string {
+// A plain integer formatter for the per-input {value.<key>} token, so the
+// mechanism sentence names the real sourced number ("14 prospects") rather than
+// leaking the input's descriptive label into a slot that reads as a number.
+const PLAIN = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+
+function fillMechanism(recipe: MetricRecipe, formattedValue: string, computed: Computed): string {
   let out = recipe.mechanismTemplate.replace(/\{result\}/g, formattedValue);
   for (const input of recipe.inputs) {
+    // {value.<key>} fills with the clamped sourced number; {input.<key>} fills
+    // with the human label. A template that wants the number uses value, one that
+    // wants the descriptor uses input, so neither slot reads as the wrong kind.
+    const clamped = computed.clampedValues[input.key];
+    if (clamped !== undefined) {
+      out = out.replace(new RegExp(`\\{value\\.${input.key}\\}`, "g"), PLAIN.format(clamped));
+    }
     out = out.replace(new RegExp(`\\{input\\.${input.key}\\}`, "g"), input.label);
   }
   return out;
@@ -307,7 +335,7 @@ export function evaluateRecipe(recipe: MetricRecipe, inputs: RecipeInputs): Valu
   }
 
   const value = formatValue(recipe, computed);
-  const mechanism = fillMechanism(recipe, value);
+  const mechanism = fillMechanism(recipe, value, computed);
 
   return {
     sectionTitle: recipe.sectionTitle,
