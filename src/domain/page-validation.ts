@@ -1,5 +1,6 @@
 import type { ResearchObject } from "./research.ts";
-import type { ValueResult } from "../verticals/index.ts";
+import type { ValueResult } from "./value-contract.ts";
+import type { PageSpec } from "./page-spec.ts";
 
 export class PageValidationError extends Error {
   readonly transient: boolean;
@@ -18,8 +19,25 @@ export interface ValidatePageOptions {
   value: ValueResult;
   research: ResearchObject;
   assetHosts: string[];
-  requiredAnchors: string[];
+  // The bespoke page spec the rendered HTML must satisfy. Validation checks the
+  // HTML against the spec the designer emitted, not a hardcoded section list.
+  spec: PageSpec;
   stopReason?: string | null;
+}
+
+// Extract the HTML slice belonging to a section, from the opening tag carrying
+// id="<sectionId>" to the next closing </section> or </header>. A best-effort
+// window good enough to confirm the value figure renders INSIDE the value-render
+// section rather than anywhere on the page. Returns "" when the id is absent.
+function sectionSlice(html: string, sectionId: string): string {
+  const idMatch = new RegExp(`<[^>]*\\bid\\s*=\\s*["']${escapeRegExp(sectionId)}["'][^>]*>`, "i").exec(
+    html,
+  );
+  if (!idMatch) return "";
+  const start = idMatch.index;
+  const rest = html.slice(start);
+  const closeMatch = /<\/(section|header|main|article)\s*>/i.exec(rest);
+  return closeMatch ? rest.slice(0, closeMatch.index + closeMatch[0].length) : rest;
 }
 
 function escapeRegExp(s: string): string {
@@ -65,12 +83,6 @@ export function validatePage(html: string, opts: ValidatePageOptions): void {
     }
   }
 
-  for (const fig of collectRequiredFigures(opts.value)) {
-    if (!html.includes(fig)) {
-      throw new PageValidationError(`required value figure missing from page: ${fig}`);
-    }
-  }
-
   const unsafe: Array<[RegExp, string]> = [
     [/<script[\s>]/i, "<script> tag"],
     [/<iframe[\s>]/i, "<iframe> tag"],
@@ -109,16 +121,47 @@ export function validatePage(html: string, opts: ValidatePageOptions): void {
     }
   }
 
-  if (!/role\s*=\s*["']banner["']/i.test(html)) {
-    throw new PageValidationError('hero banner (role="banner") missing');
+  // Exactly one banner landmark, as the spec declares (the spec is validated to
+  // carry exactly one banner section before the build runs).
+  const banners = (html.match(/role\s*=\s*["']banner["']/gi) ?? []).length;
+  if (banners !== 1) {
+    throw new PageValidationError(`expected exactly one banner landmark, found ${banners}`);
   }
-  for (const anchor of opts.requiredAnchors) {
-    const id = anchor.replace(/^#/, "");
-    if (!new RegExp(`id\\s*=\\s*["']${escapeRegExp(id)}["']`, "i").test(html)) {
-      throw new PageValidationError(`required section id missing: #${id}`);
+
+  // Every section the spec declares must render with its id, so the page matches
+  // the bespoke structure the designer composed rather than drifting from it.
+  for (const section of opts.spec.sections) {
+    if (!new RegExp(`id\\s*=\\s*["']${escapeRegExp(section.id)}["']`, "i").test(html)) {
+      throw new PageValidationError(`declared section id missing: #${section.id}`);
     }
-    if (!new RegExp(`href\\s*=\\s*["']#${escapeRegExp(id)}["']`, "i").test(html)) {
-      throw new PageValidationError(`required quick-link to #${id} missing`);
+  }
+
+  // The CTA section the spec names must render.
+  if (!new RegExp(`id\\s*=\\s*["']${escapeRegExp(opts.spec.ctaSectionId)}["']`, "i").test(html)) {
+    throw new PageValidationError(`cta section missing: #${opts.spec.ctaSectionId}`);
+  }
+
+  // The value figure must appear on the page AND inside the section the spec
+  // declares as the value render, so the figure lands where the designer placed
+  // it rather than buried in unrelated copy. This runs after the section-id
+  // checks so a missing value-render section reports the clearer structural error.
+  const valueSlice = sectionSlice(html, opts.spec.valueRenderSectionId);
+  for (const fig of collectRequiredFigures(opts.value)) {
+    if (!html.includes(fig)) {
+      throw new PageValidationError(`required value figure missing from page: ${fig}`);
+    }
+    if (!valueSlice.includes(fig)) {
+      throw new PageValidationError(
+        `value figure missing from the value-render section #${opts.spec.valueRenderSectionId}: ${fig}`,
+      );
+    }
+  }
+
+  // Every quick-link target the spec names must render both its section id and a
+  // hero quick-link that resolves to it.
+  for (const target of opts.spec.quickLinkTargets) {
+    if (!new RegExp(`href\\s*=\\s*["']#${escapeRegExp(target)}["']`, "i").test(html)) {
+      throw new PageValidationError(`quick-link to #${target} missing`);
     }
   }
 

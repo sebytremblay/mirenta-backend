@@ -28,11 +28,10 @@ export interface SmokeScenario {
   lead: SmokeLead;
 }
 
-// The one customer every scenario markets: Mirenta itself. Its vertical
-// (sales_marketing) shapes both the research brief and the value model, which
-// reads a public stage band rather than a number the founder must disclose, so
-// it fits any founder lead. This is the real Mirenta product profile, unchanged
-// from the original single-prospect seed.
+// The one customer every scenario markets: Mirenta itself. The strategist now
+// reads the lead and this profile to design the research plan and the value
+// recipe per lead, so no vertical bucket shapes the brief. This is the real
+// Mirenta product profile, unchanged from the original single-prospect seed.
 export const smokeProfile: ProductProfile = {
   org_id: "00000000-0000-0000-0000-000000000000",
   company_name: "Mirenta",
@@ -44,8 +43,6 @@ export const smokeProfile: ProductProfile = {
   proof_points: [],
   cta_text: "Book a demo",
   brand: { primary_color: "#1f6feb" },
-  vertical: "sales_marketing",
-  economics: null,
   created_at: new Date(0).toISOString(),
   updated_at: new Date(0).toISOString(),
 };

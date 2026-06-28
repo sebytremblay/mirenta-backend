@@ -1,8 +1,8 @@
-import type { VerticalEconomics } from "../verticals/types.ts";
-
 export type JobStatus =
   | "pending"
+  | "planning"
   | "researching"
+  | "designing"
   | "building"
   | "publishing"
   | "done"
@@ -43,8 +43,6 @@ export interface ProductProfile {
   proof_points: ProofPoint[] | null;
   cta_text: string | null;
   brand: Brand | null;
-  vertical: string;
-  economics: VerticalEconomics | null;
   created_at: string;
   updated_at: string;
 }
@@ -82,6 +80,10 @@ export interface Job {
   lead_id: string;
   batch_id: string | null;
   status: JobStatus;
+  // The strategist artifact ({plan, recipe}) and the designer artifact (PageSpec),
+  // stored as JSONB and validated on read. Both are null until their stage runs.
+  strategy: unknown;
+  page_spec: unknown;
   research_id: string | null;
   research_session_id: string | null;
   html_s3_key: string | null;
@@ -101,7 +103,7 @@ export interface ResearchRow {
   created_at: string;
 }
 
-export type TokenUsageAgent = "research" | "builder";
+export type TokenUsageAgent = "strategist" | "research" | "designer" | "builder";
 
 export interface TokenUsage {
   id: string;

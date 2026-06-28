@@ -13,8 +13,6 @@ function profile(over: Partial<ProductProfile> = {}): ProductProfile {
     proof_points: null,
     cta_text: null,
     brand: null,
-    vertical: "salesforce_employee_service",
-    economics: null,
     created_at: "",
     updated_at: "",
     ...over,

@@ -54,7 +54,9 @@ export interface Config {
   readonly anthropic: {
     readonly apiKey: string;
     readonly baseUrl: string;
+    readonly strategistModel: string;
     readonly researchModel: string;
+    readonly designerModel: string;
     readonly builderModel: string;
     readonly apiMode: string;
   };
@@ -120,6 +122,10 @@ export const config: Config = Object.freeze({
     // the dev shell points that at a browser-auth gateway that 401s the Managed
     // Agents endpoints.
     baseUrl: optional("MIRENTA_ANTHROPIC_BASE_URL", "https://api.anthropic.com"),
+    // The two planning stages run on Opus: compact structured outputs where
+    // judgment matters and token volume stays small.
+    strategistModel: optional("ANTHROPIC_STRATEGIST_MODEL", "claude-opus-4-8"),
+    designerModel: optional("ANTHROPIC_DESIGNER_MODEL", "claude-opus-4-8"),
     // researchModel bakes onto the persistent Managed Agents agent at
     // provisioning time, so changing it here requires re-running
     // scripts/provision-managed-agents.ts; the live agent keeps its old model

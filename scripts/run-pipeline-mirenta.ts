@@ -30,7 +30,6 @@ try {
     ],
     cta_text: "Book a working session",
     brand: { primary_color: "#3b5bdb" },
-    vertical: "sales_marketing",
   });
   console.log("  org:", org.id);
 

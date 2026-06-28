@@ -26,7 +26,6 @@ try {
       "The employee service platform that unifies HR and IT support on one trusted AI foundation",
     cta_text: "Book a working session",
     brand: { primary_color: "#0176d3" },
-    vertical: "salesforce_employee_service",
   });
   console.log("  org:", org.id);
 

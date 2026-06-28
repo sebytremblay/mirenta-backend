@@ -14,7 +14,8 @@ import {
   injectRuntimeAssets,
   PageValidationError,
 } from "../domain/page-validation.ts";
-import { assertValueModelContract } from "../verticals/contract.ts";
+import { assertValueModelContract } from "../domain/value-contract.ts";
+import { evaluateRecipe } from "../domain/recipe.ts";
 import type { ProductProfile } from "../domain/entities.ts";
 
 export type { BuildSiteInput } from "./builder-prompt.ts";
@@ -23,8 +24,6 @@ export interface BuildSiteResult {
   html: string;
   usage: TokenUsageTotals;
 }
-
-export const REQUIRED_ANCHORS = ["#business-case", "#book"];
 
 const MAX_ATTEMPTS = 3;
 
@@ -71,25 +70,23 @@ export function collectAssetHosts(
 }
 
 export async function buildSite(input: BuildSiteInput): Promise<BuildSiteResult> {
-  const { onStep, vertical, lead, profile, research } = input;
+  const { onStep, recipe, lead, profile, research } = input;
 
   onStep?.({ phase: "value", detail: "computing business value" });
-  const valueModel = vertical.createValueModel(profile);
-  const validatedInputs = valueModel.validateInputs(
-    research.extension.value_inputs,
-    research.extension.estimated,
-    research.extension.context,
-  );
-  const value = valueModel.compute(validatedInputs);
+  // Deterministic code evaluates the recipe against the research's sourced inputs.
+  // The LLM never does arithmetic and never writes the displayed number, so the
+  // no-fabrication invariant holds for any metric the strategist planned.
+  const value = evaluateRecipe(recipe, research.extension.recipe_inputs);
 
   assertValueModelContract(value, research.extension.estimated);
 
   onStep?.({ phase: "brand", detail: "resolving brand tokens" });
   const brand = research.brand;
   // The lead company seeds the deterministic font pairing, so the same prospect
-  // always renders the same faces and the smoke chain reproduces production.
+  // always renders the same faces and the smoke chain reproduces production. The
+  // house neutral is the brand-token fallback now that no vertical supplies one.
   const fontSeed = lead.company;
-  const tokens = deriveTokens(profile, brand, vertical.defaultAccentColor, fontSeed);
+  const tokens = deriveTokens(profile, brand, undefined, fontSeed);
   const tokenBlock = renderTokenBlock(tokens);
   const logoUrl = resolveLogoUrl(profile, brand);
   const faviconHref = resolveFaviconHref(lead.website_url, brand);
@@ -131,7 +128,7 @@ export async function buildSite(input: BuildSiteInput): Promise<BuildSiteResult>
         value,
         research,
         assetHosts,
-        requiredAnchors: REQUIRED_ANCHORS,
+        spec: input.spec,
         stopReason,
       });
     } catch (err) {

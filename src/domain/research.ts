@@ -1,4 +1,4 @@
-import type { VerticalSpec } from "../verticals/index.ts";
+import type { MetricRecipe, RecipeInputs } from "./recipe.ts";
 
 export type AuthorityTier = "self" | "backer" | "tribe";
 
@@ -21,14 +21,15 @@ export interface DomainPriority {
 }
 
 export interface ResearchExtension {
+  // The domains the strategist's plan named, surfaced through the founder's lens.
   domains: string[];
   priorities: DomainPriority[];
-  // Numeric signals a vertical's compute reads. Narrowed per vertical.
-  value_inputs: Record<string, number>;
-  // Open per-vertical categorical signals (a stage band for one vertical, a
-  // go-to-market motion for another). Each vertical's validateInputs narrows
-  // `context` to the keys it needs, exactly as it narrows value_inputs.
-  context: Record<string, string>;
+  // The sourced inputs the metric recipe reads. The research agent fills each
+  // input the recipe names with a sourced number (or a band for range_from_band)
+  // and marks it sourced or estimated. evaluateRecipe runs the formula over this.
+  recipe_inputs: RecipeInputs;
+  // The OR of every recipe input's estimated flag, surfaced for the disclosure
+  // footnote. Kept on the extension so the build stage reads it without re-deriving.
   estimated: boolean;
 }
 
@@ -49,7 +50,6 @@ export interface ProspectBrand {
 }
 
 export interface ResearchObject {
-  vertical: string;
   account: ResearchAccount;
   voices: RespectedVoice[];
   extension: ResearchExtension;
@@ -59,7 +59,6 @@ export interface ResearchObject {
 export const RESEARCH_TOOL_SCHEMA = {
   type: "object",
   properties: {
-    vertical: { type: "string" },
     account: {
       type: "object",
       properties: {
@@ -117,16 +116,36 @@ export const RESEARCH_TOOL_SCHEMA = {
             required: ["domain", "pov", "why_now"],
           },
         },
-        value_inputs: { type: "object", additionalProperties: { type: "number" } },
-        context: {
+        recipe_inputs: {
           type: "object",
           description:
-            "Vertical-named categorical signals (for example a stage band or a go-to-market motion). Fill the keys the vertical's guidance names. Leave empty when the vertical names none.",
-          additionalProperties: { type: "string" },
+            "The sourced inputs the metric recipe names. Fill `values` with one entry per recipe input key, each an object {value: number, estimated: boolean}. When the recipe's op is range_from_band, also fill `band` with {name: string, estimated: boolean} naming the sourced band.",
+          properties: {
+            values: {
+              type: "object",
+              additionalProperties: {
+                type: "object",
+                properties: {
+                  value: { type: "number" },
+                  estimated: { type: "boolean" },
+                },
+                required: ["value", "estimated"],
+              },
+            },
+            band: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                estimated: { type: "boolean" },
+              },
+              required: ["name", "estimated"],
+            },
+          },
+          required: ["values"],
         },
         estimated: { type: "boolean" },
       },
-      required: ["domains", "priorities", "value_inputs", "context", "estimated"],
+      required: ["domains", "priorities", "recipe_inputs", "estimated"],
     },
     brand: {
       type: "object",
@@ -143,7 +162,7 @@ export const RESEARCH_TOOL_SCHEMA = {
       },
     },
   },
-  required: ["vertical", "account", "voices", "extension"],
+  required: ["account", "voices", "extension"],
 } as const;
 
 export class ResearchSchemaError extends Error {
@@ -157,20 +176,31 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((v) => typeof v === "string");
 }
 
-function toNumericMap(raw: unknown): Record<string, number> {
-  if (typeof raw !== "object" || raw === null) return {};
-  const out: Record<string, number> = {};
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+// Parse the sourced recipe inputs the research agent produced. Each value entry
+// must carry a finite number and an explicit estimated flag; the band, when
+// present, must carry a name and an estimated flag. A malformed entry is dropped
+// here and surfaces at evaluateRecipe as a missing-input throw, so the build
+// stage fails loud rather than rendering a fabricated figure.
+function toRecipeInputs(raw: unknown): RecipeInputs {
+  const out: RecipeInputs = { values: {} };
+  if (typeof raw !== "object" || raw === null) return out;
+  const r = raw as Record<string, unknown>;
+  const values = r.values;
+  if (typeof values === "object" && values !== null) {
+    for (const [k, v] of Object.entries(values as Record<string, unknown>)) {
+      if (typeof v !== "object" || v === null) continue;
+      const entry = v as Record<string, unknown>;
+      if (typeof entry.value === "number" && Number.isFinite(entry.value)) {
+        out.values[k] = { value: entry.value, estimated: entry.estimated === true };
+      }
+    }
   }
-  return out;
-}
-
-function toStringMap(raw: unknown): Record<string, string> {
-  if (typeof raw !== "object" || raw === null) return {};
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (typeof v === "string" && v.trim() !== "") out[k] = v;
+  const band = r.band;
+  if (typeof band === "object" && band !== null) {
+    const b = band as Record<string, unknown>;
+    if (typeof b.name === "string" && b.name.trim() !== "") {
+      out.band = { name: b.name, estimated: b.estimated === true };
+    }
   }
   return out;
 }
@@ -209,22 +239,25 @@ function normalizeProspectBrand(raw: unknown): ProspectBrand | undefined {
   return Object.keys(brand).length > 0 ? brand : undefined;
 }
 
-export function validateResearch(raw: unknown, vertical: VerticalSpec): ResearchObject {
+// Validate a research payload against the recipe the strategist persisted. The
+// recipe names which inputs the research must source; this checks every named
+// numeric input arrived as a finite number and, for a range_from_band recipe,
+// that a band arrived. A gap throws here so the worker fails the research stage
+// permanently rather than carrying a hole into the build.
+export function validateResearch(raw: unknown, recipe: MetricRecipe): ResearchObject {
   try {
-    return validateResearchInner(raw, vertical);
+    return validateResearchInner(raw, recipe);
   } catch (err) {
     if (err instanceof ResearchSchemaError) throw err;
     throw new ResearchSchemaError((err as Error).message);
   }
 }
 
-function validateResearchInner(raw: unknown, vertical: VerticalSpec): ResearchObject {
+function validateResearchInner(raw: unknown, recipe: MetricRecipe): ResearchObject {
   if (typeof raw !== "object" || raw === null) {
     throw new Error("research payload is not an object");
   }
   const r = raw as Record<string, unknown>;
-
-  if (typeof r.vertical !== "string") throw new Error("research.vertical missing");
 
   const account = r.account as Record<string, unknown> | undefined;
   if (!account || typeof account.summary !== "string") {
@@ -248,11 +281,7 @@ function validateResearchInner(raw: unknown, vertical: VerticalSpec): ResearchOb
       throw new Error(`research.voices[${i}] malformed`);
     }
     const quote = voice.quote as Record<string, unknown> | undefined;
-    if (
-      !quote ||
-      typeof quote.text !== "string" ||
-      typeof quote.source_url !== "string"
-    ) {
+    if (!quote || typeof quote.text !== "string" || typeof quote.source_url !== "string") {
       throw new Error(`research.voices[${i}].quote malformed`);
     }
     return {
@@ -285,22 +314,36 @@ function validateResearchInner(raw: unknown, vertical: VerticalSpec): ResearchOb
     return { domain: pri.domain, pov: pri.pov, why_now: pri.why_now };
   });
 
-  const value_inputs = toNumericMap(ext.value_inputs);
-  const context = toStringMap(ext.context);
-  const estimated = ext.estimated === true;
-  vertical.validateInputs(value_inputs, estimated, context);
+  const recipe_inputs = toRecipeInputs(ext.recipe_inputs);
+
+  // Every numeric input the recipe names must arrive as a sourced number. A
+  // range_from_band recipe must also carry a sourced band. The estimated flag is
+  // the OR of every sourced input plus the band.
+  let anyEstimated = false;
+  for (const input of recipe.inputs) {
+    const sourced = recipe_inputs.values[input.key];
+    if (!sourced) {
+      throw new Error(`research.extension.recipe_inputs.values missing recipe input: ${input.key}`);
+    }
+    anyEstimated = anyEstimated || sourced.estimated;
+  }
+  if (recipe.op === "range_from_band") {
+    if (!recipe_inputs.band) {
+      throw new Error("research.extension.recipe_inputs.band missing for a range_from_band recipe");
+    }
+    anyEstimated = anyEstimated || recipe_inputs.band.estimated;
+  }
 
   const brand = normalizeProspectBrand(r.brand);
 
   return {
-    vertical: r.vertical,
     account: {
       summary: account.summary,
       recent_moves: account.recent_moves,
       self_description_language: account.self_description_language,
     },
     voices,
-    extension: { domains: ext.domains, priorities, value_inputs, context, estimated },
+    extension: { domains: ext.domains, priorities, recipe_inputs, estimated: anyEstimated },
     ...(brand ? { brand } : {}),
   };
 }

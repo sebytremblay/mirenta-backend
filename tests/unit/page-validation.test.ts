@@ -6,8 +6,9 @@ import {
   PageValidationError,
   type ValidatePageOptions,
 } from "../../src/domain/page-validation.ts";
-import type { ValueResult } from "../../src/verticals/index.ts";
+import type { ValueResult } from "../../src/domain/value-contract.ts";
 import type { ResearchObject } from "../../src/domain/research.ts";
+import type { PageSpec } from "../../src/domain/page-spec.ts";
 
 const value: ValueResult = {
   sectionTitle: "What this frees up",
@@ -17,7 +18,6 @@ const value: ValueResult = {
 };
 
 const research: ResearchObject = {
-  vertical: "sales_marketing",
   account: { summary: "An early-stage startup.", recent_moves: [], self_description_language: "We build." },
   voices: [
     {
@@ -33,14 +33,28 @@ const research: ResearchObject = {
       quote: { text: "This unverified claim must never reach the page.", source_url: "https://x.test/b", verified: false },
     },
   ],
-  extension: { domains: ["Sales"], priorities: [], value_inputs: {}, context: { stage_band: "seed" }, estimated: false },
+  extension: { domains: ["Sales"], priorities: [], recipe_inputs: { values: {} }, estimated: false },
+};
+
+// The spec the goodHtml() page satisfies: a hero banner, a value-render section
+// (#business-case), and a CTA (#book), with both quick-links resolving.
+const spec: PageSpec = {
+  sections: [
+    { id: "hero", kind: "hero", landmark: "banner", heading: "Built for Jordan at Acme", contentRefs: [] },
+    { id: "business-case", kind: "value_render", landmark: "region", heading: "What this frees up", contentRefs: ["value"] },
+    { id: "book", kind: "cta", landmark: "region", heading: "Thirty minutes", contentRefs: [] },
+  ],
+  valueRenderSectionId: "business-case",
+  ctaSectionId: "book",
+  quickLinkTargets: ["business-case", "book"],
+  artDirection: { name: "Editorial", typeTreatment: "Serif display", motifs: [] },
 };
 
 const options: ValidatePageOptions = {
   value,
   research,
   assetHosts: ["cdn.example.com"],
-  requiredAnchors: ["#business-case", "#book"],
+  spec,
   stopReason: "end_turn",
 };
 
@@ -55,7 +69,7 @@ function goodHtml(): string {
 <style>:root{--brand:#c8102e;} body{font-family:var(--font-sans);}</style>
 </head>
 <body>
-<header class="hero" role="banner">
+<header id="hero" class="hero" role="banner">
   <img src="https://cdn.example.com/logo.png" alt="Acme" />
   <h1 id="hero-h">Built for Jordan at Acme</h1>
   <nav><a href="#business-case">See the business case</a> <a href="#book">Book a call</a></nav>
@@ -150,14 +164,26 @@ test("rejects an unverified quote that leaks onto the page", () => {
   assert.throws(() => validatePage(html, options), /unverified quote/);
 });
 
-test("rejects a missing #business-case section id", () => {
+test("rejects a declared section id that the page omits", () => {
   const html = goodHtml().replace('id="business-case"', 'id="the-case"');
-  assert.throws(() => validatePage(html, options), /#business-case/);
+  assert.throws(() => validatePage(html, options), /declared section id missing: #business-case/);
 });
 
-test("rejects a missing quick-link to #book", () => {
+test("rejects a missing quick-link to a declared target", () => {
   const html = goodHtml().replace('<a href="#book">Book a call</a>', "<span>Book a call</span>");
-  assert.throws(() => validatePage(html, options), /#book/);
+  assert.throws(() => validatePage(html, options), /quick-link to #book missing/);
+});
+
+test("rejects the value figure rendered outside the declared value-render section", () => {
+  // Move the figure out of #business-case into the hero. It still appears on the
+  // page, but not where the spec placed it, so validation rejects it.
+  const html = goodHtml()
+    .replace(`<p>${value.headline.label}: ${value.headline.value}</p>`, "<p>see above</p>")
+    .replace("<h1 id=\"hero-h\">Built for Jordan at Acme</h1>", `<h1 id="hero-h">Built for Jordan at Acme — ${value.headline.value}</h1>`);
+  assert.throws(
+    () => validatePage(html, options),
+    /value figure missing from the value-render section/,
+  );
 });
 
 test("rejects a missing hero banner", () => {

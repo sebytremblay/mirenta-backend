@@ -3,12 +3,15 @@ import assert from "node:assert/strict";
 import {
   buildUserPrompt,
   renderValueBlock,
+  renderSpecBlock,
   DESIGN_BRIEF,
   type BuildSiteInput,
   type PromptAssets,
 } from "../../src/agents/builder-prompt.ts";
-import type { ValueResult } from "../../src/verticals/index.ts";
+import type { ValueResult } from "../../src/domain/value-contract.ts";
 import type { ResearchObject } from "../../src/domain/research.ts";
+import type { MetricRecipe } from "../../src/domain/recipe.ts";
+import type { PageSpec } from "../../src/domain/page-spec.ts";
 import type { ProductProfile } from "../../src/domain/entities.ts";
 
 const value: ValueResult = {
@@ -19,7 +22,6 @@ const value: ValueResult = {
 };
 
 const research: ResearchObject = {
-  vertical: "sales_marketing",
   account: { summary: "A seed-stage startup.", recent_moves: ["Closed a seed round"], self_description_language: "We build." },
   voices: [
     {
@@ -38,10 +40,35 @@ const research: ResearchObject = {
   extension: {
     domains: ["Sales", "Marketing"],
     priorities: [{ domain: "Sales", pov: "Find the first repeatable channel.", why_now: "Runway is finite." }],
-    value_inputs: {},
-    context: { stage_band: "seed" },
-    estimated: false,
+    recipe_inputs: { values: {}, band: { name: "seed", estimated: true } },
+    estimated: true,
   },
+};
+
+const recipe: MetricRecipe = {
+  op: "range_from_band",
+  unit: "hours_per_week",
+  sectionTitle: "What this frees up",
+  headlineLabel: "Founder time reclaimed",
+  mechanismTemplate: "Mirenta reclaims {result}.",
+  inputs: [],
+  maxFactor: 1,
+  resultCeiling: 168,
+  bands: [{ name: "seed", low: 4, high: 6 }],
+};
+
+const spec: PageSpec = {
+  sections: [
+    { id: "hero", kind: "hero", landmark: "banner", heading: "Built for Angelo at Plexus", contentRefs: [] },
+    { id: "channels", kind: "priorities", landmark: "region", heading: "Your next channel", contentRefs: ["Sales"] },
+    { id: "the-hours", kind: "value_render", landmark: "region", heading: "What this frees up", contentRefs: ["value"] },
+    { id: "lets-talk", kind: "cta", landmark: "region", heading: "Thirty minutes", contentRefs: [] },
+    { id: "fine-print", kind: "footer", landmark: "contentinfo", heading: "A note on the figures", contentRefs: [] },
+  ],
+  valueRenderSectionId: "the-hours",
+  ctaSectionId: "lets-talk",
+  quickLinkTargets: ["the-hours", "lets-talk"],
+  artDirection: { name: "Terminal Editorial", typeTreatment: "Monospace headings over a serif body.", motifs: ["A hairline rule under each heading."] },
 };
 
 const profile: ProductProfile = {
@@ -53,8 +80,6 @@ const profile: ProductProfile = {
   proof_points: [],
   cta_text: "Trade notes founder to founder",
   brand: { primary_color: "#0176d3" },
-  vertical: "sales_marketing",
-  economics: null,
   created_at: "2026-01-01T00:00:00.000Z",
   updated_at: "2026-01-01T00:00:00.000Z",
 };
@@ -63,7 +88,8 @@ const input: BuildSiteInput = {
   lead: { first_name: "Angelo", last_name: "Rossi", role: "Founder", company: "Plexus Corp", website_url: "https://plexus.test" },
   profile,
   research,
-  vertical: { defaultAccentColor: "#0176d3" } as BuildSiteInput["vertical"],
+  recipe,
+  spec,
 };
 
 const assets: PromptAssets = {
@@ -93,14 +119,24 @@ test("buildUserPrompt tags the voice by tier and identity", () => {
   assert.ok(prompt.includes("self"));
 });
 
-test("buildUserPrompt carries the resolved assets and required anchors", () => {
+test("buildUserPrompt carries the resolved assets and the spec quick-links", () => {
   const prompt = buildUserPrompt(input, value, assets);
   assert.ok(prompt.includes("https://cdn.test/logo.png"));
   assert.ok(prompt.includes("https://book.test/demo"));
   assert.ok(prompt.includes("https://fonts.googleapis.com/css2?family=Oswald&display=swap"));
   assert.ok(prompt.includes(":root{--brand:#0176d3;}"));
-  assert.ok(prompt.includes('href="#business-case"'));
-  assert.ok(prompt.includes('href="#book"'));
+  assert.ok(prompt.includes('href="#the-hours"'));
+  assert.ok(prompt.includes('href="#lets-talk"'));
+});
+
+test("buildUserPrompt renders the bespoke section list, ids, and art direction", () => {
+  const prompt = buildUserPrompt(input, value, assets);
+  for (const id of ["hero", "channels", "the-hours", "lets-talk", "fine-print"]) {
+    assert.ok(prompt.includes(`id="${id}"`), `missing section id ${id}`);
+  }
+  assert.ok(prompt.includes("Terminal Editorial"));
+  assert.ok(prompt.includes("Monospace headings over a serif body."));
+  assert.ok(prompt.includes("A hairline rule under each heading."));
 });
 
 test("buildUserPrompt falls back to a wordmark and reply-to-email when assets are absent", () => {
@@ -110,12 +146,16 @@ test("buildUserPrompt falls back to a wordmark and reply-to-email when assets ar
   assert.ok(/reply to the outreach email/i.test(prompt));
 });
 
-test("DESIGN_BRIEF offers an art-direction menu and the anti-AI-copy rules", () => {
+test("renderSpecBlock names the value-render and cta sections", () => {
+  const block = renderSpecBlock(spec);
+  assert.ok(block.includes('VALUE-RENDER SECTION: id="the-hours"'));
+  assert.ok(block.includes('CTA SECTION: id="lets-talk"'));
+});
+
+test("DESIGN_BRIEF drives off the bespoke spec and keeps the anti-AI-copy rules", () => {
+  assert.ok(/page spec/i.test(DESIGN_BRIEF));
   assert.ok(/art direction/i.test(DESIGN_BRIEF));
-  assert.ok(/commit to/i.test(DESIGN_BRIEF) && /exactly one/i.test(DESIGN_BRIEF));
-  const directions = ["editorial", "brutalist", "warm-minimal", "technical-mono", "modern-refined"];
-  const present = directions.filter((d) => new RegExp(d, "i").test(DESIGN_BRIEF));
-  assert.ok(present.length >= 3, `expected >=3 named directions, found ${present.length}`);
+  assert.ok(/render every listed section/i.test(DESIGN_BRIEF));
   assert.ok(/tricolon/i.test(DESIGN_BRIEF));
   assert.ok(/vary sentence length/i.test(DESIGN_BRIEF));
 });

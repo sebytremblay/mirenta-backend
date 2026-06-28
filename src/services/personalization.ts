@@ -3,9 +3,6 @@ import {
   upsertProductProfile as dbUpsertProductProfile,
 } from "../db/client.ts";
 import { REQUIRED_PROFILE_FIELDS, type ProductProfile } from "../domain/entities.ts";
-import type { VerticalEconomics } from "../verticals/types.ts";
-import { DEFAULT_VERTICAL_ID, getVertical, isKnownVertical } from "../verticals/index.ts";
-import { ValueModelContractError } from "../verticals/contract.ts";
 
 export interface ProfileInput {
   company_name?: string;
@@ -15,8 +12,6 @@ export interface ProfileInput {
   proof_points?: { claim: string; source?: string }[];
   cta_text?: string;
   brand?: { primary_color?: string; logo_url?: string; [key: string]: unknown };
-  vertical?: string;
-  economics?: VerticalEconomics;
 }
 
 export class ProfileValidationError extends Error {
@@ -59,23 +54,6 @@ export async function saveProfile(
   const missing = REQUIRED_PROFILE_FIELDS.filter((f) => required[f] === "");
   if (missing.length > 0) throw new ProfileValidationError(missing);
 
-  const verticalId = input.vertical?.trim() || DEFAULT_VERTICAL_ID;
-  if (!isKnownVertical(verticalId)) {
-    throw new ProfileValidationError([`vertical: unknown id "${verticalId}"`]);
-  }
-
-  let economics: VerticalEconomics | null = null;
-  if (input.economics != null) {
-    try {
-      economics = getVertical(verticalId).validateEconomics(input.economics);
-    } catch (err) {
-      if (err instanceof ValueModelContractError) {
-        throw new ProfileValidationError([`economics: ${err.message}`]);
-      }
-      throw err;
-    }
-  }
-
   return dbUpsertProductProfile({
     org_id: orgId,
     ...required,
@@ -83,7 +61,5 @@ export async function saveProfile(
     proof_points: input.proof_points ?? null,
     cta_text: input.cta_text ?? null,
     brand: input.brand ?? null,
-    vertical: verticalId,
-    economics,
   });
 }

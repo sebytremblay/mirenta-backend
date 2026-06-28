@@ -2,7 +2,8 @@ import { runManagedSession } from "../providers/managed-agents.ts";
 import type { TokenUsageTotals } from "../providers/usage.ts";
 import { validateResearch } from "../domain/research.ts";
 import type { ResearchObject } from "../domain/research.ts";
-import type { VerticalSpec } from "../verticals/index.ts";
+import type { MetricRecipe } from "../domain/recipe.ts";
+import type { ResearchPlan } from "./strategist-prompt.ts";
 import { config } from "../config/env.ts";
 import type { Lead, ProductProfile } from "../domain/entities.ts";
 
@@ -11,7 +12,10 @@ export const EMIT_RESEARCH_TOOL = "emit_research";
 export interface ResearchInput {
   lead: Pick<Lead, "first_name" | "last_name" | "role" | "company" | "website_url">;
   profile: Pick<ProductProfile, "company_name" | "product_name" | "value_prop">;
-  vertical: VerticalSpec;
+  // The strategist's plan drives the targeting; the recipe names the inputs to
+  // source. Both come from the persisted strategy artifact, not a vertical.
+  plan: ResearchPlan;
+  recipe: MetricRecipe;
   onStep?: (step: { phase: string; detail: string }) => void;
 }
 
@@ -20,7 +24,7 @@ export function buildAgentSystemPrompt(): string {
 
 # Your Mission
 
-Research one founder in their world and produce a structured research object the downstream builder trusts. Your task message names the target vertical, the domains to organize priorities around, the respected voices to hunt, and the inputs to gather. Follow that brief. The founder runs lean and moves fast, so weigh speed, traction, survival, and the next milestone in everything you surface.
+Research one founder in their world and produce a structured research object the downstream builder trusts. Your task message names the domains to organize priorities around, the respected voices to hunt, and the metric inputs to source. Follow that brief. The founder runs lean and moves fast, so weigh speed, traction, survival, and the next milestone in everything you surface.
 
 # Five Research Phases
 
@@ -49,14 +53,13 @@ An empty voices array is valid. When the founder leaves no public trail and no b
 
 Verification folds into the voice. After extracting a voice's quote, re-fetch the source page with the Exa fetch tool and confirm the wording matches. Set the quote's verified flag true only when the re-fetch confirms it. Drop any voice whose quote fails the re-fetch. Each quote carries text, a source_url pointing to the original publication, and the verified flag. Do not invent or paraphrase quotes.
 
-## Phase 4: Inputs
+## Phase 4: Metric Inputs
 
-Gather whatever inputs your task's guidance names, and nothing more:
-- Numeric inputs go in extension.value_inputs as a flat map of numbers.
-- Categorical inputs (for example a stage band or a go-to-market motion) go in extension.context as a flat map of strings, under the exact keys your task names.
-- When your task names neither, leave both maps empty.
+Your task names the exact inputs the value recipe needs. Source each one as a fact and place it in extension.recipe_inputs:
+- For every input key your task names, add an entry to extension.recipe_inputs.values under that exact key, an object {value: number, estimated: boolean}.
+- When your task asks for a band (a categorical stage, for example "seed" or "series-a"), set extension.recipe_inputs.band to {name: string, estimated: boolean} naming the band you sourced.
 
-Use actual figures and facts when you find them in posts, filings, launch pages, or releases, and set estimated: false. Otherwise estimate per your task's guidance and set estimated: true.
+Use actual figures and facts when you find them in posts, filings, launch pages, or releases, and set estimated: false. When you must infer a value from public signals, set estimated: true. Source every key the task names; a missing key fails the build, so return your best sourced or estimated number rather than omitting it.
 
 ## Phase 5: Brand Capture
 
@@ -79,7 +82,7 @@ All prose fields (summary, identity, POV, why_now) follow the house style:
 
 # Output
 
-Call ${EMIT_RESEARCH_TOOL} exactly once when all five phases finish. Set \`vertical\` and \`extension.domains\` to the values your task specifies, populate \`voices\` with the verified respected voices, and fill \`extension.context\` per your task's guidance. Produce a complete object the downstream builder trusts, including the brand tokens from Phase 5. Be thorough, search liberally, and verify every quote.`;
+Call ${EMIT_RESEARCH_TOOL} exactly once when all five phases finish. Set extension.domains to the domains your task specifies, populate voices with the verified respected voices, and fill extension.recipe_inputs with every input key the task names. Set extension.estimated to true when any sourced input or band carries estimated true. Produce a complete object the downstream builder trusts, including the brand tokens from Phase 5. Be thorough, search liberally, and verify every quote.`;
 }
 
 export function buildKickoff(input: ResearchInput): string {
@@ -87,7 +90,17 @@ export function buildKickoff(input: ResearchInput): string {
   const leadRole = input.lead.role ? ` (${input.lead.role})` : "";
   const company = input.lead.company;
   const website = input.lead.website_url || "(no website provided; search for it)";
-  const { vertical } = input;
+  const { plan, recipe } = input;
+
+  const inputLines = recipe.inputs
+    .map((i) => `- ${i.key}: ${i.label} (expect a number; clamp range ${i.min} to ${i.max})`)
+    .join("\n");
+  const bandLine =
+    recipe.op === "range_from_band"
+      ? `\nThis recipe needs a band. Set extension.recipe_inputs.band to the sourced band, one of: ${(recipe.bands ?? [])
+          .map((b) => b.name)
+          .join(", ")}.`
+      : "";
 
   return `Research ${company} and produce the research object for a one-pager targeting ${leadName}${leadRole}.
 
@@ -95,22 +108,20 @@ Company website: ${website}
 Seller: ${input.profile.company_name}
 Product: ${input.profile.product_name} — ${input.profile.value_prop}
 
-# Vertical: ${vertical.id}
+# Research plan
 
-Target domains: ${vertical.domains.join(", ")}. Set extension.domains to exactly these.
-
-Domain priorities (Phase 1):
-${vertical.domainGuidance}
+Target domains: ${plan.domains.join(", ")}. Set extension.domains to exactly these.
 
 Respected voices (Phase 2):
-${vertical.voiceTargeting}
+${plan.voiceTargeting}
 
-Inputs (Phase 4):
-${vertical.inputGuidance}
+Metric inputs (Phase 4):
+${plan.inputSourcing}
 
-Fill extension.value_inputs and extension.context exactly as the Phase 4 guidance names: numbers in value_inputs, categorical signals in context under the keys the guidance specifies, and leave a map empty when the guidance names nothing for it.
+Source each of these input keys and place it in extension.recipe_inputs.values under the exact key:
+${inputLines || "- (no numeric inputs; this recipe needs none)"}${bandLine}
 
-Begin with Phase 1: Account Research and Founder Priorities. Work through all five phases, then call ${EMIT_RESEARCH_TOOL} exactly once with the complete structured result, with vertical set to "${vertical.id}".`;
+Begin with Phase 1: Account Research and Founder Priorities. Work through all five phases, then call ${EMIT_RESEARCH_TOOL} exactly once with the complete structured result.`;
 }
 
 export interface ResearchResult {
@@ -133,7 +144,7 @@ export async function runResearch(input: ResearchInput): Promise<ResearchResult>
   });
 
   input.onStep?.({ phase: "validate", detail: "validating research object" });
-  const validated = validateResearch(raw, input.vertical);
+  const validated = validateResearch(raw, input.recipe);
   input.onStep?.({ phase: "done", detail: "research complete" });
 
   return { research: validated, usage };

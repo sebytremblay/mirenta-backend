@@ -1,6 +1,8 @@
 import type { ResearchObject } from "../domain/research.ts";
 import type { ProductProfile } from "../domain/entities.ts";
-import type { ValueResult, VerticalSpec } from "../verticals/index.ts";
+import type { ValueResult } from "../domain/value-contract.ts";
+import type { MetricRecipe } from "../domain/recipe.ts";
+import type { PageSpec, SectionSpec } from "../domain/page-spec.ts";
 
 export interface BuildSiteInput {
   lead: {
@@ -12,7 +14,12 @@ export interface BuildSiteInput {
   };
   profile: ProductProfile;
   research: ResearchObject;
-  vertical: VerticalSpec;
+  // The metric recipe the strategist planned. The builder evaluates it against the
+  // research's sourced inputs to the displayed value figure; the LLM never computes.
+  recipe: MetricRecipe;
+  // The bespoke page spec the designer composed. The builder renders exactly these
+  // sections, in this order, under this art direction.
+  spec: PageSpec;
   onStep?: (s: { phase: string; detail: string }) => void;
 }
 
@@ -33,7 +40,22 @@ export function escapeHtml(raw: string): string {
     .replace(/'/g, "&#39;");
 }
 
-export const DESIGN_BRIEF = `You are the Mirenta Website Builder. You generate ONE self-contained, prospect-facing HTML one-pager that presents a personalized business case. The user message supplies structured research and a precomputed value model. You render the entire document and return it through the emit_page tool.
+// What each section kind asks the builder to render. The designer chooses which
+// kinds appear and in what order; this fixes the meaning of each kind so the
+// builder and the spec share one vocabulary without a hardcoded skeleton.
+const SECTION_KIND_GUIDANCE: Record<SectionSpec["kind"], string> = {
+  hero: "the prospect and seller lockup, an eyebrow naming the lead by name and role, the heading as an <h1>, a short lede, and the hero quick-link group",
+  priorities: "the researched domain priorities as scannable cards",
+  challenges: "the pressure each priority creates, as cards",
+  pov: "the seller's point of view tied to each priority, with each VERIFIED respected-voice quote placed inside as a styled blockquote attributed and tagged by tier",
+  value_render:
+    "the precomputed value: the headline value expression verbatim and prominent in var(--font-display) with its label, the one-sentence mechanism as plain prose beneath, and the footnote when present as small print. Render no metric tiles, no charts, no scenario cards",
+  cta: "a founder-to-founder ask in the seller's voice, rendering the booking action when a booking URL is supplied, otherwise instructing the reader to reply to the outreach email. Use no form",
+  footer: "the supplied disclaimer text",
+  narrative: "a short prose passage that carries the through-line for this founder, grounded in the research",
+};
+
+export const DESIGN_BRIEF = `You are the Mirenta Website Builder. You generate ONE self-contained, prospect-facing HTML one-pager that presents a personalized business case. The user message supplies structured research, a precomputed value model, and a bespoke PAGE SPEC: the exact sections to render, in order, and the art direction to follow. You render the entire document and return it through the emit_page tool.
 
 OUTPUT CONTRACT
 - Call emit_page with a single field "html" holding the COMPLETE document.
@@ -47,13 +69,13 @@ BRAND
 - Use var(--font-display) for headings and var(--font-sans) for body. When a Google Fonts <link> is provided, include it and the two font preconnect links (https://fonts.googleapis.com and https://fonts.gstatic.com) in the <head>.
 - Render the lead company logo when a logo URL is provided; otherwise render a clean text wordmark of the company name. Pair it with the seller name as a partnership lockup in the hero.
 
-ART DIRECTION
-- Select EXACTLY ONE direction below. Commit to it for the whole page. Do not blend directions. Execute every move the direction names, so the page reads as one deliberate hand, not a template.
-- EDITORIAL: a serif var(--font-display) at a large display size, generous line-height, a hairline var(--border) rule under each section heading, an oversized drop-initial on the hero lede, an asymmetric two-column priorities layout with a wide left margin. Signature move: a numbered running index (01, 02, 03) set in var(--muted) beside each priority heading. Value render: the value expression set very large in var(--font-display) against open whitespace, the mechanism as a single justified line beneath.
-- BRUTALIST-STRUCTURED: a heavy condensed var(--font-display), tight letter-spacing, flat blocks of var(--brand) and var(--surface-dark) with squared corners (set border-radius: 0 on cards and buttons), thick 2px var(--border) lines. Signature move: a full-bleed var(--surface-dark) band (text in var(--surface-dark-fg)) for the point-of-view section, with each quote set large. Value render: the value expression in a bordered block, mono-feeling, the label in uppercase var(--muted).
-- WARM-MINIMAL: a humanist sans, airy whitespace, soft var(--radius) cards on var(--surface-muted), one var(--brand-tint) wash behind the hero. Signature move: pill-shaped eyebrow tags and a single var(--accent) underline that grows on hover (CSS only, gated by prefers-reduced-motion). Value render: the value expression centered on a var(--brand-tint-strong) panel with the mechanism as warm prose below.
-- TECHNICAL-MONO: a mono or grotesque var(--font-display), label-caps eyebrows (uppercase, letter-spacing, small), visible 1px var(--border) grid dividers between cards, a left 3px solid var(--accent) rule on every card and blockquote. Signature move: monospace data-style labels (KEY / VALUE rows) framing the priorities. Value render: the value expression in var(--font-display) inside a thin var(--border) frame, the footnote as a code-comment-style small line.
-- MODERN-REFINED: a geometric sans var(--font-display), a restrained palette, elevated cards using var(--shadow) on var(--surface-elevated), a hero with a layered var(--brand-tint) to var(--brand-tint-strong) gradient. Signature move: the value headline sits on a contrasting var(--surface-dark) panel with var(--shadow-lg). Value render: the value expression on that elevated dark panel, prominent, the mechanism beneath in var(--text).
+PAGE SPEC (the structure is bespoke to this lead, not a fixed template)
+- The user message lists the exact sections to render, in order, each with an id, a kind, an ARIA landmark, and a heading. Render every listed section, in the listed order, using the listed id and landmark, and the listed heading as the section's labelled heading. Add no section the spec omits and drop none it names.
+- Each section kind tells you what to place inside it. Follow the kind guidance in the user message. The value_render section carries the value figure; the cta section carries the call to action.
+- Build the hero quick-link group from the listed quick-link targets: one <a href="#id"> per target, each resolving to a section id in this document.
+
+ART DIRECTION (named by the designer, not a fixed menu)
+- The user message names the art direction, a type treatment, and a few motifs. Commit to that one direction for the whole page so it reads as one deliberate hand, not a template. Execute the type treatment and the motifs using ONLY the brand tokens and CSS. The art direction is decoration: it must not add, rename, or remove any section, id, link, role, or figure the spec names.
 
 LAYOUT AND STYLE
 - Center content in a container near 1120px max width. Hold prose to a 62 to 70 character measure.
@@ -61,25 +83,16 @@ LAYOUT AND STYLE
 - Write a large, expressive <style> block. CSS does not count toward the word budget, so invest in type scale, spacing rhythm, and the chosen direction's details.
 - Use inline SVG for decorative marks, dividers, and the wordmark. Inline SVG does not count toward the word budget. Give inline SVG no external href or src and no script.
 - Build depth with CSS only: gradients from the brand tokens, var(--shadow) and var(--shadow-lg), var(--surface-elevated), and layered var(--brand-tint). Use no external image except the provided logo and favicon. Use no @import and no background-image URL.
-- Apply hover and focus transitions through CSS, and honor prefers-reduced-motion. The signature move is decoration only: it must not add, rename, or remove any section, id, link, role, or figure.
-
-REQUIRED SECTIONS, IN THIS ORDER, WITH THESE EXACT ids
-1. Hero: a header element with role="banner". Include the prospect and seller lockup, an eyebrow that names the lead by name and role, an <h1>, and a short lede. Include a quick-link group with TWO links: one with href="#business-case" and one with href="#book". Both targets must resolve in this document.
-2. Priorities: the researched domain priorities as scannable cards.
-3. Challenges: the pressure each priority creates, as cards.
-4. Point of view and goals: tie each priority to the seller solution. Place each VERIFIED respected-voice quote INSIDE the section it supports, as a styled blockquote attributed to the voice and tagged by its tier. Never render a standalone quote list.
-5. Value render: a section with id="business-case". Render the value the model supplies, not a dashboard. Show the headline value expression verbatim and prominently in var(--font-display), with its label beside or beneath it. Render the one-sentence mechanism directly under the headline as plain prose. Render the footnote, when present, as small print below the mechanism. Render no metric tiles, no charts, and no scenario cards.
-6. CTA: a section with id="book". Make a founder-to-founder ask in the seller's own voice. Render the booking action from the provided booking URL when present; otherwise instruct the reader to reply to the outreach email. Use no form.
-7. Footer with role="contentinfo" carrying the supplied disclaimer text.
+- Apply hover and focus transitions through CSS, and honor prefers-reduced-motion.
 
 FIGURES
-- The value model supplies one value expression as an exact display string. Render that string verbatim. Never invent, recompute, or reformat the figure, and add no figure the model did not supply.
+- The value model supplies one value expression as an exact display string. Render that string verbatim inside the value_render section. Never invent, recompute, or reformat the figure, and add no figure the model did not supply.
 
 READING TIME
 - Target roughly 600 to 750 words of body copy, a read under three minutes. Prefer scannable cards and tight sentences over long paragraphs.
 
 ACCESSIBILITY
-- Use landmark roles (banner, main, contentinfo). Tie aria-labelledby on each section to its heading id. Provide a visually hidden .sr-only utility. Apply :focus-visible outlines on links. Respect prefers-reduced-motion for any transition.
+- Use the landmark roles the spec assigns (banner, main, contentinfo, region). Tie aria-labelledby on each section to its heading id. Provide a visually hidden .sr-only utility. Apply :focus-visible outlines on links. Respect prefers-reduced-motion for any transition.
 
 WRITING STYLE (enforce strictly)
 - No contractions. Active voice. Present tense. Strong verbs. No weak openers ("there is", "it is"). No em dashes. No AI filler words (delve, leverage, robust, seamless, unlock, transformative).
@@ -104,12 +117,42 @@ export function renderValueBlock(value: ValueResult): string {
   return lines.join("\n");
 }
 
+// Render the bespoke spec into the prompt: the ordered sections with their ids,
+// kinds, landmarks, and headings, plus the kind guidance and the art direction.
+export function renderSpecBlock(spec: PageSpec): string {
+  const sectionLines = spec.sections
+    .map((s, i) => {
+      const refs = s.contentRefs.length > 0 ? ` [draws on: ${s.contentRefs.map(escapeHtml).join(", ")}]` : "";
+      return `${i + 1}. id="${s.id}" kind=${s.kind} landmark=${s.landmark} heading="${escapeHtml(s.heading)}"${refs}\n   Render: ${SECTION_KIND_GUIDANCE[s.kind]}`;
+    })
+    .join("\n");
+
+  const motifs =
+    spec.artDirection.motifs.length > 0
+      ? spec.artDirection.motifs.map((m) => `- ${escapeHtml(m)}`).join("\n")
+      : "- (none named; keep decoration restrained)";
+
+  return `SECTIONS (render every one, in this order, with the exact id and landmark)
+${sectionLines}
+
+VALUE-RENDER SECTION: id="${spec.valueRenderSectionId}" carries the value figure.
+CTA SECTION: id="${spec.ctaSectionId}" carries the call to action.
+
+HERO QUICK-LINKS (one <a href="#id"> per target, each resolving to a section above)
+${spec.quickLinkTargets.map((t) => `- href="#${t}"`).join("\n")}
+
+ART DIRECTION: ${escapeHtml(spec.artDirection.name)}
+Type treatment: ${escapeHtml(spec.artDirection.typeTreatment)}
+Motifs:
+${motifs}`;
+}
+
 export function buildUserPrompt(
   input: BuildSiteInput,
   value: ValueResult,
   assets: PromptAssets,
 ): string {
-  const { lead, profile, research } = input;
+  const { lead, profile, research, spec } = input;
   const fullName = `${lead.first_name} ${lead.last_name}`;
   const role = lead.role ? escapeHtml(lead.role) : "";
 
@@ -185,10 +228,9 @@ ${assets.tokenBlock}
 ASSETS
 ${assetLines.join("\n")}
 
-REQUIRED ANCHORS
-Include a hero quick-link with href="#business-case" and one with href="#book". Give the business case section id="business-case" and the CTA section id="book".
+${renderSpecBlock(spec)}
 
-FOOTER DISCLAIMER (render verbatim in the footer)
+FOOTER DISCLAIMER (render verbatim in the section assigned the contentinfo landmark)
 ${disclaimer}
 
 Generate the complete page now.`;

@@ -10,8 +10,6 @@ export function makeProfile(overrides: Partial<ProductProfile> = {}): ProductPro
     proof_points: null,
     cta_text: null,
     brand: null,
-    vertical: "salesforce_employee_service",
-    economics: null,
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",
     ...overrides,
