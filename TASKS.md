@@ -31,3 +31,23 @@ Secondary findings (content, not code): unverified-feeling quotes lacked visible
 Verdict both pages: WOULD-NOT-CLICK, single biggest blocker the garbled mechanism.
 
 Fix applied: add a `{value.<key>}` token the evaluator fills with the clamped sourced NUMBER, keep `{input.<key>}` for the label, and sharpen the strategist guidance so it writes number-grounded sentences and never appends a unit after `{result}`.
+
+### 2026-06-27 — iteration 2 (Origami + Menza, two skeptical-founder reviewers)
+
+The grammar fix held: both sentences now parse. Reviewers converged on two NEW figure defects, both checkable facts (gated deterministically per the two-reviewer-panel rule, not left to a prompt):
+1. **Hidden factor breaks the visible arithmetic.** Origami showed "10 pitches x 2 hours" yet the headline read 11, because a sub-1 automation factor moved the figure without appearing in the sentence. The math looked broken and the number arbitrary.
+2. **Doubled cadence in the headline.** Rendered "Hours back each week: ~11 hours each week"; the label restated the cadence the unit string already carries.
+
+Verdict both pages: WOULD-NOT-CLICK.
+
+Fixes applied (commit 04fb1d1): the strategist now rejects a mechanism that omits any declared input as `{value.<key>}` and a headline label that restates the unit cadence; the evaluator emits a `breakdown` of every sourced number and keeps fractional factors (0.7 no longer rounds to 1). Same commit answers the user's parallel design complaint.
+
+### 2026-06-27 — design escalation (user feedback: "pages look super basic and underwhelming")
+
+The user flagged the generated pages as flat and uncreative and pointed to `sample-sites/employee-service/tractor_supply.html` as the bar. Root cause: the builder brief asked for a thin document and the `value_render` guidance forbade the very elements (charts, stat tiles) that give a case page impact. Fix (commit 04fb1d1): the DESIGN BRIEF now demands a real design system (spacing scale, fluid type scale, layered shadows), a full-bleed hero, alternating grounds with a dark anchor, structured cards with hover lift, designed pull quotes, and a magnitude-encoded value visual fed by the new breakdown. Pages grew from ~16KB to 28KB (Origami) and 23KB (Menza), both passing production `validatePage`.
+
+### 2026-06-27 — iteration 3 (design-literate founder reviewers, judging polish + click)
+
+Both reviewers confirmed the figure now reconciles (22x2x0.65~=29; 35x2.2x0.82~=63) and the pages carry real design systems. Both still rated DESIGN: BELOW-BAR for three repeatable reasons, fixed deterministically in the brief: hero gradient too gentle, section washes too near-white to read as distinct bands, value chart not magnitude-encoded (uniform boxes / prose substituting for a chart). Brief now requires a saturated full-strength hero, visibly contrasting grounds, and a height-encoded SVG chart.
+
+Remaining WOULD-NOT-CLICK blockers (arbitrary input volumes, unexplained automation rate, self-quote, generic priorities) are research/content quality. They are inherent to subagents MOCKING the research stage in the smoke chain; the production Haiku research agent sources grounded numbers and concrete priorities from Exa. The deterministic pipeline (figure honesty, design system, validation) is sound; content fidelity rides on the live research stage, not on code changes.
