@@ -142,6 +142,7 @@ test("passes through a well-formed brand and drops invalid fields", () => {
     font_family: "Inter",
     logo_url: "http://acme.example/logo.png", // not https, dropped
     favicon_url: "https://acme.example/favicon.ico",
+    verified: true,
   };
   const r = validateResearch(p, sumRecipe);
   assert.equal(r.brand?.primary_color, "#1A2B3C");
@@ -156,4 +157,48 @@ test("a malformed brand does not fail the whole object", () => {
   const r = validateResearch(p, sumRecipe);
   assert.equal(r.brand, undefined);
   assert.equal(r.voices.length, 1);
+});
+
+test("drops a brand without verified true so a guessed logo never ships", () => {
+  const p = validPayload();
+  (p as Record<string, unknown>).brand = {
+    primary_color: "#6366f1",
+    logo_url: "https://www.origami.chat/logo.svg",
+    verified: false,
+  };
+  const r = validateResearch(p, sumRecipe);
+  assert.equal(r.brand, undefined);
+});
+
+test("drops a brand missing the verified field so a guessed palette never ships", () => {
+  const p = validPayload();
+  (p as Record<string, unknown>).brand = {
+    primary_color: "#1A2B3C",
+    accent_color: "#FF5733",
+    logo_url: "https://acme.example/logo.svg",
+  };
+  const r = validateResearch(p, sumRecipe);
+  assert.equal(r.brand, undefined);
+});
+
+test("passes through a verified brand with valid hex colors and https logo", () => {
+  const p = validPayload();
+  (p as Record<string, unknown>).brand = {
+    primary_color: "#1A2B3C",
+    accent_color: "#FF5733",
+    background_color: "#FFFFFF",
+    text_color: "#000000",
+    font_family: "Inter",
+    logo_url: "https://acme.example/logo.svg",
+    favicon_url: "https://acme.example/favicon.ico",
+    verified: true,
+  };
+  const r = validateResearch(p, sumRecipe);
+  assert.equal(r.brand?.primary_color, "#1A2B3C");
+  assert.equal(r.brand?.accent_color, "#FF5733");
+  assert.equal(r.brand?.background_color, "#FFFFFF");
+  assert.equal(r.brand?.text_color, "#000000");
+  assert.equal(r.brand?.font_family, "Inter");
+  assert.equal(r.brand?.logo_url, "https://acme.example/logo.svg");
+  assert.equal(r.brand?.favicon_url, "https://acme.example/favicon.ico");
 });

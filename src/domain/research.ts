@@ -47,6 +47,7 @@ export interface ProspectBrand {
   font_family?: string;
   logo_url?: string;
   favicon_url?: string;
+  verified?: boolean;
 }
 
 export interface ResearchObject {
@@ -159,6 +160,11 @@ export const RESEARCH_TOOL_SCHEMA = {
         font_family: { type: "string", description: "Primary typeface name the site uses" },
         logo_url: { type: "string", description: "Absolute https URL to the prospect's logo image" },
         favicon_url: { type: "string", description: "Absolute https URL to the prospect's favicon" },
+        verified: {
+          type: "boolean",
+          description:
+            "Set this true only after you fetched the prospect's live site and read these exact values from it. Leave this field absent or false when you cannot confirm the values. The page then renders a clean text wordmark and a neutral palette rather than a guessed brand.",
+        },
       },
     },
   },
@@ -213,7 +219,13 @@ const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 
 function normalizeProspectBrand(raw: unknown): ProspectBrand | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
+
+  // Drop an unverified or unsourced brand wholesale so a guessed logo or palette
+  // never reaches the builder. The resolver falls back to the text wordmark and
+  // seller/house palette when the brand is dropped.
   const b = raw as Record<string, unknown>;
+  if (b.verified !== true) return undefined;
+
   const color = (v: unknown): string | undefined =>
     typeof v === "string" && HEX_COLOR.test(v) ? v : undefined;
   const httpsUrl = (v: unknown): string | undefined =>

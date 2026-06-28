@@ -71,6 +71,8 @@ Read the founder's own website and capture its visual identity so the one-pager 
 
 Source every value from the founder's real site. Omit any field you cannot confirm rather than guessing; a missing field falls back cleanly downstream. Provide absolute https URLs only, since the page serves over https.
 
+Set brand.verified to true only after you actually fetched the live site and read the colors and logo from it. Never construct or guess a logo URL or a color. When you cannot fetch the site, omit the brand object or leave verified false. An unverified brand is dropped wholesale so a guessed logo or palette never reaches the builder; the resolver then falls back to the text wordmark and seller or house palette.
+
 # Writing Style
 
 All prose fields (summary, identity, POV, why_now) follow the house style:
