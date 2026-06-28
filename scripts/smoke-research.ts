@@ -1,109 +1,78 @@
-// Delivers the research agent prompt so a human can paste it into a Claude Code
-// session and run the research by hand. This makes NO live API call.
+// Link 2 of the four-link smoke chain: the research agent. Reads the Strategy
+// link 1 produced, validates it through the real validateStrategy, and builds the
+// research kickoff off the strategist's plan and recipe. This makes NO live API
+// call. In production the managed agent runs this same prompt with the Exa tools.
 //
-// stdout carries ONLY the prompt, so it pipes clean:
-//   npm run --silent smoke:research | pbcopy
-// On macOS the prompt also copies to the clipboard automatically. Diagnostics
-// and wiring checks print to stderr, so they never pollute the copied text.
-import { spawnSync } from "node:child_process";
+//   npm run --silent smoke:research -- --profile=menza
+//
+// Pass the SAME --profile flag link 1 received so both links describe the same
+// lead. On macOS the prompt copies to the clipboard. Paste it into a Claude Code
+// session with the Exa search tools, run the five phases, and save the emitted
+// research object to /tmp/mirenta-research.json.
 import { buildAgentSystemPrompt, buildKickoff, EMIT_RESEARCH_TOOL } from "../src/agents/research.ts";
 import { RESEARCH_TOOL_SCHEMA } from "../src/domain/research.ts";
-import { getVertical } from "../src/verticals/index.ts";
+import { validateStrategy } from "../src/agents/strategist-prompt.ts";
 import { selectScenario, smokeProfile } from "./smoke-fixtures.ts";
+import {
+  RESEARCH_FILE,
+  STRATEGY_FILE,
+  emitPrompt,
+  log,
+  outputContract,
+  readArtifact,
+  runChecks,
+} from "./smoke-prompt.ts";
 
-// The research output path the builder smoke reads. Keep the two scripts in sync.
-const RESEARCH_OUT = "/tmp/mirenta-research.json";
-
-// The customer is always Mirenta; only the lead swaps. Resolve the lead from the
-// --profile flag (or SMOKE_PROFILE env); phase two must receive the same flag so
-// both phases describe the same prospect. The seeds live in smoke-fixtures.ts.
 const scenario = selectScenario();
-const lead = scenario.lead;
-const profile = smokeProfile;
 
-// Resolve the vertical from the profile, exactly as the worker's build stage
-// does, so both phases run against the same vertical the seed declares.
-const vertical = getVertical(profile.vertical);
+try {
+  // Read link 1's Strategy exactly as the worker's research stage does: parse the
+  // persisted artifact, then validate it through validateStrategy. A missing or
+  // malformed strategy fails the same way it fails the worker permanently.
+  const strategy = validateStrategy(readArtifact(STRATEGY_FILE, "npm run --silent smoke:strategist"));
+  const { plan, recipe } = strategy;
 
-const systemPrompt = buildAgentSystemPrompt();
-const kickoff = buildKickoff({ lead, profile, vertical });
+  const systemPrompt = buildAgentSystemPrompt();
+  const kickoff = buildKickoff({ lead: scenario.lead, profile: smokeProfile, plan, recipe });
 
-// In production the agent calls the emit_research tool, whose argument shape is
-// RESEARCH_TOOL_SCHEMA. A pasted Claude Code session has no such tool, so spell
-// the structured output out: emit JSON matching the exact schema validateResearch
-// enforces, and save it where the builder smoke reads it. The schema is the one
-// source of truth, printed verbatim, so the smoke never drifts from the worker.
-const outputContract = `# Structured output
+  const contract = outputContract(
+    EMIT_RESEARCH_TOOL,
+    RESEARCH_TOOL_SCHEMA,
+    RESEARCH_FILE,
+    `Source every recipe input key the kickoff names and place it under extension.recipe_inputs.values: ${recipe.inputs
+      .map((i) => i.key)
+      .join(", ") || "(none; this recipe needs no numeric input)"}.`,
+  );
 
-This session has no ${EMIT_RESEARCH_TOOL} tool. Instead of calling it, produce its argument as JSON.
+  const prompt = `${systemPrompt}\n\n${kickoff}\n\n${contract}`;
+  const copied = emitPrompt(prompt);
 
-Write a single JSON object that conforms EXACTLY to this JSON Schema (the same schema the ${EMIT_RESEARCH_TOOL} tool enforces in production). Emit no prose, no markdown fences around the final answer beyond one \`\`\`json block, and no fields outside the schema:
+  log(`smoke:research — profile ${scenario.key} (${scenario.label})`);
+  log(`Lead ${scenario.lead.first_name} ${scenario.lead.last_name} at ${scenario.lead.company}.`);
+  log(`Plan domains: ${plan.domains.join(", ")}. Recipe op: ${recipe.op} (${recipe.unit}).`);
+  log(copied ? "Copied the research prompt to the clipboard." : "pbcopy unavailable; pipe stdout instead.");
+  log(`Paste it into a Claude Code session with the Exa tools, then save the research to ${RESEARCH_FILE}.`);
+  log();
 
-\`\`\`json
-${JSON.stringify(RESEARCH_TOOL_SCHEMA, null, 2)}
-\`\`\`
-
-Set "vertical" to "${vertical.id}". Save the JSON object to ${RESEARCH_OUT} so the builder step can read it.`;
-
-// The full pasteable prompt: the agent role, its first task, and the output shape.
-const prompt = `${systemPrompt}\n\n${kickoff}\n\n${outputContract}`;
-
-// Copy to the macOS clipboard when pbcopy exists, so the prompt is paste-ready.
-function copyToClipboard(text: string): boolean {
-  try {
-    return spawnSync("pbcopy", { input: text }).status === 0;
-  } catch {
-    return false;
-  }
+  runChecks("SMOKE RESEARCH", [
+    {
+      name: "prompt hunts respected voices on the self/backer/tribe ladder",
+      pass: /self/.test(prompt) && /backer/.test(prompt) && /tribe/.test(prompt),
+    },
+    {
+      name: "prompt carries the strategist plan domains",
+      pass: plan.domains.every((d) => prompt.includes(d)),
+    },
+    {
+      name: "prompt names every recipe input key the research must source",
+      pass: recipe.inputs.every((i) => prompt.includes(i.key)),
+    },
+    {
+      name: "prompt carries the research schema with every required key",
+      pass: RESEARCH_TOOL_SCHEMA.required.every((k) => prompt.includes(`"${k}"`)),
+    },
+  ]);
+} catch (e) {
+  log(`SMOKE RESEARCH: FAIL ${(e as Error).constructor.name}: ${(e as Error).message}`);
+  process.exitCode = 1;
 }
-
-const copied = copyToClipboard(prompt);
-
-// stdout: the raw prompt only when piped, so `| pbcopy` carries exactly it.
-if (!process.stdout.isTTY) {
-  process.stdout.write(prompt);
-}
-
-// stderr: everything human-facing.
-const log = (line = ""): void => {
-  process.stderr.write(`${line}\n`);
-};
-
-log(`smoke:research — profile ${scenario.key} (${scenario.label})`);
-log(`Lead ${lead.first_name} ${lead.last_name} at ${lead.company}; vertical ${vertical.id}.`);
-log(copied ? "Copied the research prompt to the clipboard." : "pbcopy unavailable; pipe stdout instead.");
-log(`Paste it into a Claude Code session with the Exa search tools, run the five`);
-log(`phases, then save the emitted research object to ${RESEARCH_OUT}.`);
-log();
-
-const checks = [
-  {
-    name: "prompt hunts respected voices, not an executive roster",
-    pass: /respect|voice/i.test(prompt) && !/\bexecutive roster\b/i.test(prompt),
-  },
-  {
-    name: "prompt names the self/backer/tribe ladder",
-    pass: /self/.test(prompt) && /backer/.test(prompt) && /tribe/.test(prompt),
-  },
-  {
-    name: "prompt carries the vertical voice targeting",
-    pass: prompt.includes(vertical.voiceTargeting.slice(0, 24)),
-  },
-  {
-    name: "prompt names the vertical id",
-    pass: prompt.includes(vertical.id),
-  },
-  {
-    name: "prompt carries the structured-output schema with every required key",
-    pass: RESEARCH_TOOL_SCHEMA.required.every((k) => prompt.includes(`"${k}"`)),
-  },
-];
-
-let allPass = true;
-for (const check of checks) {
-  log(`  ${check.pass ? "PASS" : "FAIL"}  ${check.name}`);
-  if (!check.pass) allPass = false;
-}
-log();
-log(allPass ? "SMOKE RESEARCH: PASS" : "SMOKE RESEARCH: FAIL (a prompt check failed)");
-if (!allPass) process.exitCode = 1;

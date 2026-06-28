@@ -1,8 +1,8 @@
-// The shared seeds for the two-phase smoke chain. Phase one (smoke:research)
-// builds the research prompt for one prospect; phase two (smoke:builder) renders
-// the page for the SAME prospect from the research phase one produced. Both
-// phases import this single source and resolve the SAME scenario through
-// selectScenario, so they never describe different prospects and never drift.
+// The shared seeds for the four-link smoke chain. Each link builds the prompt for
+// one LLM stage and chains to the next through a /tmp artifact: strategist ->
+// research -> designer -> builder, then render. Every link imports this single
+// source and resolves the SAME scenario through selectScenario, so they never
+// describe different prospects and never drift.
 //
 // The customer is ALWAYS Mirenta: every scenario markets Mirenta, our real
 // product, to a lead. A scenario swaps only the lead, never the customer,
@@ -11,9 +11,9 @@
 // verified against the YC company directory; "origami" keeps the original
 // illustrative prospect the chain shipped against first. Swap leads with a flag
 // (each script copies its prompt to the clipboard on its own, so no pbcopy pipe):
-//   npm run --silent smoke:research -- --profile=menza
-//   SMOKE_PROFILE=menza npm run --silent smoke:builder
-// Pass the SAME key to both phases so the two phases describe the same prospect.
+//   npm run --silent smoke:strategist -- --profile=menza
+//   SMOKE_PROFILE=menza npm run --silent smoke:designer
+// Pass the SAME key to every link so they all describe the same prospect.
 import type { Lead, ProductProfile } from "../src/domain/entities.ts";
 
 // A lead carries only the fields the research kickoff (Pick<Lead, ...>) and the

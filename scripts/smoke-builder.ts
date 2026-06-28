@@ -1,19 +1,14 @@
-// Delivers the builder prompt so a human can paste it into a Claude Code session
-// and generate the page by hand. This makes NO live API call. It is phase two of
-// the two-phase smoke chain: it reads the research object phase one (smoke:research)
-// produced at /tmp/mirenta-research.json and renders the page for that SAME
-// prospect. The two phases share their seed through smoke-fixtures.ts, so they
-// never describe different prospects.
+// Link 4 of the four-link smoke chain: the builder. Reads the Strategy (recipe),
+// the research, and the PageSpec the prior links produced; evaluates the recipe
+// deterministically; resolves the brand tokens exactly as buildSite does; and
+// builds the prompt that renders the bespoke one-pager. This makes NO live API
+// call. Run code between the links so a bad artifact fails loud in the harness.
 //
-// Phase two REQUIRES phase one's output. When the file is absent it fails loud
-// with the command to run first, rather than substituting baked-in data — a
-// silent fallback would let phase two pass without phase one ever running.
+//   npm run --silent smoke:builder -- --profile=menza
 //
-// stdout carries ONLY the prompt, so it pipes clean:
-//   npm run --silent smoke:builder | pbcopy
-// On macOS the prompt also copies to the clipboard automatically. Diagnostics
-// and wiring checks print to stderr, so they never pollute the copied text.
-import { spawnSync } from "node:child_process";
+// Pass the SAME --profile flag the prior links received. On macOS the prompt
+// copies to the clipboard. Paste it into a Claude Code session, run it, and save
+// the emitted HTML to /tmp/mirenta-page.html, then validate it with smoke:render.
 import {
   DESIGN_BRIEF,
   buildUserPrompt,
@@ -27,88 +22,50 @@ import {
   resolveFaviconHref,
   resolveFontPlan,
 } from "../src/agents/brand-tokens.ts";
+import { validateStrategy } from "../src/agents/strategist-prompt.ts";
 import { validateResearch } from "../src/domain/research.ts";
-import { getVertical } from "../src/verticals/index.ts";
-import type { VerticalSpec } from "../src/verticals/index.ts";
-import type { ResearchObject } from "../src/domain/research.ts";
+import { normalizePageSpec } from "../src/agents/designer-prompt.ts";
+import { evaluateRecipe } from "../src/domain/recipe.ts";
+import { assertValueModelContract } from "../src/domain/value-contract.ts";
 import { selectScenario, smokeProfile } from "./smoke-fixtures.ts";
-import { readFileSync } from "node:fs";
+import {
+  PAGE_HTML_FILE,
+  PAGE_SPEC_FILE,
+  RESEARCH_FILE,
+  STRATEGY_FILE,
+  emitPrompt,
+  log,
+  outputContract,
+  readArtifact,
+  runChecks,
+} from "./smoke-prompt.ts";
 
-// Phase one (smoke:research) writes here; phase two reads it. The path lives in
-// both scripts; smoke-fixtures.ts holds the shared seeds they run against.
-const RESEARCH_IN = "/tmp/mirenta-research.json";
-
-// The customer is always Mirenta; only the lead swaps. Resolve the lead from the
-// --profile flag (or SMOKE_PROFILE env); pass the SAME flag phase one received
-// so both phases describe the same prospect.
 const scenario = selectScenario();
-const sampleLead = scenario.lead;
-const sampleProfile = smokeProfile;
-
-// Read the research exactly as the worker's build stage does: resolve the
-// vertical from the profile through getVertical (tick.ts), then validate the
-// payload through validateResearch. Phase one's file is REQUIRED — its absence
-// throws so the smoke fails loud rather than rendering baked-in data, and a
-// present-but-invalid file fails the same way a malformed research row fails the
-// worker permanently. The smoke never papers over output production would reject.
-function loadResearch(): { research: ResearchObject; vertical: VerticalSpec; source: string } {
-  let text: string;
-  try {
-    text = readFileSync(RESEARCH_IN, "utf8");
-  } catch {
-    throw new Error(
-      `no research at ${RESEARCH_IN}. Run phase one first: ` +
-        `npm run --silent smoke:research, paste the prompt into a Claude Code ` +
-        `session, and save the emitted research object to ${RESEARCH_IN}.`,
-    );
-  }
-
-  const raw = JSON.parse(text) as unknown;
-  const vertical = getVertical(sampleProfile.vertical);
-  const research = validateResearch(raw, vertical);
-  return { research, vertical, source: RESEARCH_IN };
-}
-
-function copyToClipboard(text: string): boolean {
-  try {
-    return spawnSync("pbcopy", { input: text }).status === 0;
-  } catch {
-    return false;
-  }
-}
-
-const log = (line = ""): void => {
-  process.stderr.write(`${line}\n`);
-};
+const lead = scenario.lead;
+const profile = smokeProfile;
 
 try {
-  const { research, vertical, source } = loadResearch();
+  // Replay the worker's build stage over the chain's artifacts. Each validator is
+  // the real one, so a malformed recipe, research, or spec fails here exactly as
+  // it fails the worker, not silently in a pasted session.
+  const { recipe } = validateStrategy(readArtifact(STRATEGY_FILE, "npm run --silent smoke:strategist"));
+  const research = validateResearch(readArtifact(RESEARCH_FILE, "npm run --silent smoke:research"), recipe);
+  const spec = normalizePageSpec(readArtifact(PAGE_SPEC_FILE, "npm run --silent smoke:designer"));
 
-  // Compute the value model exactly as buildSite does, threading context.
-  const valueModel = vertical.createValueModel(sampleProfile);
-  const validatedInputs = valueModel.validateInputs(
-    research.extension.value_inputs,
-    research.extension.estimated,
-    research.extension.context,
-  );
-  const value = valueModel.compute(validatedInputs);
+  // Deterministic code evaluates the recipe; the LLM never computes the figure.
+  const value = evaluateRecipe(recipe, research.extension.recipe_inputs);
+  assertValueModelContract(value, research.extension.estimated);
 
-  // Resolve assets the same way the builder does, seeding the deterministic font
-  // pairing on the lead company exactly as buildSite does.
-  const fontSeed = sampleLead.company;
-  const tokens = deriveTokens(sampleProfile, research.brand, vertical.defaultAccentColor, fontSeed);
+  // Resolve assets the same way buildSite does, seeding the font pairing on the
+  // lead company so the smoke reproduces production.
+  const fontSeed = lead.company;
+  const tokens = deriveTokens(profile, research.brand, undefined, fontSeed);
   const tokenBlock = renderTokenBlock(tokens);
-  const logoUrl = resolveLogoUrl(sampleProfile, research.brand);
-  const faviconHref = resolveFaviconHref(sampleLead.website_url, research.brand);
+  const logoUrl = resolveLogoUrl(profile, research.brand);
+  const faviconHref = resolveFaviconHref(lead.website_url, research.brand);
   const fontHref = resolveFontPlan(research.brand, fontSeed).href;
 
-  const input: BuildSiteInput = {
-    lead: sampleLead,
-    profile: sampleProfile,
-    research,
-    vertical,
-  };
-
+  const input: BuildSiteInput = { lead, profile, research, recipe, spec };
   const userPrompt = buildUserPrompt(input, value, {
     tokenBlock,
     logoUrl,
@@ -117,42 +74,27 @@ try {
     booking: null,
   });
 
-  // In production the builder calls the emit_page tool, whose argument shape is
-  // PAGE_TOOL_SCHEMA. A pasted Claude Code session has no such tool, so spell the
-  // structured output out: return the page as JSON matching the exact schema the
-  // tool enforces. The schema is the one source of truth, printed verbatim, so
-  // the smoke never drifts from the builder.
-  const outputContract = `# Structured output
+  const contract = outputContract(
+    EMIT_PAGE_TOOL,
+    PAGE_TOOL_SCHEMA,
+    PAGE_HTML_FILE,
+    'The "html" field holds the COMPLETE document, from <!DOCTYPE html> through </html>. Render every section the spec lists, in order, under the named art direction. Save ONLY the html string (not the JSON wrapper) to the file.',
+  );
 
-This session has no ${EMIT_PAGE_TOOL} tool. Instead of calling it, produce its argument as JSON.
-
-Write a single JSON object that conforms EXACTLY to this JSON Schema (the same schema the ${EMIT_PAGE_TOOL} tool enforces in production). The "html" field holds the COMPLETE document, from <!DOCTYPE html> through </html>. Emit the JSON inside one \`\`\`json block and nothing else:
-
-\`\`\`json
-${JSON.stringify(PAGE_TOOL_SCHEMA, null, 2)}
-\`\`\``;
-
-  // The full pasteable prompt: the design brief, the seeded task, the output shape.
-  const prompt = `${DESIGN_BRIEF}\n\n${userPrompt}\n\n${outputContract}`;
-
-  const copied = copyToClipboard(prompt);
-
-  // stdout: the raw prompt only when piped, so `| pbcopy` carries exactly it.
-  if (!process.stdout.isTTY) {
-    process.stdout.write(prompt);
-  }
+  const prompt = `${DESIGN_BRIEF}\n\n${userPrompt}\n\n${contract}`;
+  const copied = emitPrompt(prompt);
 
   log(`smoke:builder — profile ${scenario.key} (${scenario.label})`);
-  log(`Lead ${sampleLead.first_name} ${sampleLead.last_name} at ${sampleLead.company}; vertical ${vertical.id}.`);
-  log(`Loaded research from ${source}.`);
-  log(`Voices ${research.voices.length}; stage band ${research.extension.context.stage_band ?? "n/a"}.`);
+  log(`Lead ${lead.first_name} ${lead.last_name} at ${lead.company}.`);
+  log(`Recipe ${recipe.op} (${recipe.unit}) -> "${value.headline.value}". Sections: ${spec.sections.map((s) => s.kind).join(" > ")}.`);
+  log(`Art direction: ${spec.artDirection.name}.`);
   log(copied ? "Copied the builder prompt to the clipboard." : "pbcopy unavailable; pipe stdout instead.");
-  log("Paste it into a Claude Code session to generate the page.");
+  log(`Paste it into a Claude Code session, then save the HTML to ${PAGE_HTML_FILE} and run smoke:render.`);
   log();
 
-  const checks = [
+  runChecks("SMOKE BUILDER", [
     {
-      name: "value render carries the headline expression verbatim",
+      name: "value render carries the precomputed headline expression verbatim",
       pass: prompt.includes(value.headline.value),
     },
     {
@@ -160,60 +102,26 @@ ${JSON.stringify(PAGE_TOOL_SCHEMA, null, 2)}
       pass: prompt.includes(value.mechanism),
     },
     {
-      name: "prompt names the prospect company",
-      pass: prompt.includes(sampleLead.company),
+      name: "prompt lists every bespoke section id the designer named",
+      pass: spec.sections.every((s) => prompt.includes(`id="${s.id}"`)),
     },
     {
-      name: "design brief asks founder to founder, not for a demo booking",
-      pass: /founder-to-founder|founder to founder/i.test(DESIGN_BRIEF),
+      name: "prompt names the value-render and CTA section ids",
+      pass: prompt.includes(spec.valueRenderSectionId) && prompt.includes(spec.ctaSectionId),
     },
     {
-      name: "design brief forbids the old metric tiles, charts, and scenario cards",
-      pass: /no metric tiles/i.test(DESIGN_BRIEF) && /no\b[^.]*scenario cards/i.test(DESIGN_BRIEF),
-    },
-    {
-      name: "design brief renders the value expression and its mechanism",
-      pass: /headline value expression/i.test(DESIGN_BRIEF) && /mechanism/i.test(DESIGN_BRIEF),
-    },
-    {
-      name: "prompt carries the emit_page structured-output schema with every required key",
-      pass:
-        prompt.includes(EMIT_PAGE_TOOL) &&
-        PAGE_TOOL_SCHEMA.required.every((k) => prompt.includes(`"${k}"`)),
-    },
-    {
-      name: "design brief offers an art-direction menu of at least three named directions",
-      pass:
-        /art direction/i.test(DESIGN_BRIEF) &&
-        ["editorial", "brutalist", "warm-minimal", "technical-mono", "modern-refined"].filter(
-          (name) => new RegExp(name, "i").test(DESIGN_BRIEF),
-        ).length >= 3,
-    },
-    {
-      name: "design brief tells the model to commit to exactly one direction",
-      pass: /commit to/i.test(DESIGN_BRIEF) && /exactly one/i.test(DESIGN_BRIEF),
+      name: "prompt carries the designer art direction, not a fixed menu",
+      pass: prompt.includes(spec.artDirection.name) && /ART DIRECTION \(named by the designer/.test(prompt),
     },
     {
       name: "design brief carries the anti-AI-copy rules",
-      pass:
-        /tricolon/i.test(DESIGN_BRIEF) &&
-        /superlative/i.test(DESIGN_BRIEF) &&
-        /vary sentence length/i.test(DESIGN_BRIEF),
+      pass: /tricolon/i.test(DESIGN_BRIEF) && /superlative/i.test(DESIGN_BRIEF) && /vary sentence length/i.test(DESIGN_BRIEF),
     },
     {
-      name: "design brief advertises the new expressive tokens",
-      pass: /--surface-elevated/.test(DESIGN_BRIEF) && /--shadow/.test(DESIGN_BRIEF),
+      name: "prompt carries the emit_page schema with every required key",
+      pass: prompt.includes(EMIT_PAGE_TOOL) && PAGE_TOOL_SCHEMA.required.every((k) => prompt.includes(`"${k}"`)),
     },
-  ];
-
-  let allPass = true;
-  for (const check of checks) {
-    log(`  ${check.pass ? "PASS" : "FAIL"}  ${check.name}`);
-    if (!check.pass) allPass = false;
-  }
-  log();
-  log(allPass ? "SMOKE BUILDER: PASS" : "SMOKE BUILDER: FAIL (a prompt check failed)");
-  if (!allPass) process.exitCode = 1;
+  ]);
 } catch (e) {
   log(`SMOKE BUILDER: FAIL ${(e as Error).constructor.name}: ${(e as Error).message}`);
   process.exitCode = 1;

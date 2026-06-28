@@ -1,17 +1,13 @@
-// Renders a saved builder page artifact to an .html file and opens it for visual
-// inspection. This makes NO live API call. It is the third, optional step of the
-// smoke chain: after smoke:builder produces the prompt and a human pastes it into
-// a Claude Code session, save the returned page here and render it.
+// The validation step of the four-link smoke chain. Reads the saved builder page,
+// reconstructs the production validatePage options from the SAME chain artifacts
+// the builder used (the recipe, the research, the page spec), runs the production
+// validatePage and injectRuntimeAssets, and opens the page for inspection. This
+// makes NO live API call. A page that would fail production fails here loud.
 //
-// Save the page the session returns to /tmp/mirenta-page.json (the {"html": ...}
-// object matching PAGE_TOOL_SCHEMA) or to a raw .html file, then run:
-//   npm run --silent smoke:render            # reads /tmp/mirenta-page.json
-//   npm run --silent smoke:render -- a.html  # reads a raw HTML file
-//
-// The script runs the SAME production validatePage and injectRuntimeAssets the
-// worker runs, reconstructing the validation options from the SAME scenario and
-// research smoke:builder used. So the file you inspect is byte-identical to what
-// production would ship, and a page that would fail production fails here loud.
+// After smoke:builder, save the HTML the session returns to /tmp/mirenta-page.html
+// (raw) or a {"html": ...} JSON file, then run:
+//   npm run --silent smoke:render            # reads /tmp/mirenta-page.html
+//   npm run --silent smoke:render -- a.html  # reads a path you pass
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import {
@@ -20,36 +16,26 @@ import {
   PageValidationError,
   type ValidatePageOptions,
 } from "../src/domain/page-validation.ts";
-import {
-  PAGE_TOOL_SCHEMA,
-  collectAssetHosts,
-  REQUIRED_ANCHORS,
-} from "../src/agents/builder.ts";
-import {
-  resolveLogoUrl,
-  resolveFaviconHref,
-} from "../src/agents/brand-tokens.ts";
+import { PAGE_TOOL_SCHEMA, collectAssetHosts } from "../src/agents/builder.ts";
+import { resolveLogoUrl, resolveFaviconHref } from "../src/agents/brand-tokens.ts";
+import { validateStrategy } from "../src/agents/strategist-prompt.ts";
 import { validateResearch } from "../src/domain/research.ts";
-import { getVertical } from "../src/verticals/index.ts";
+import { normalizePageSpec } from "../src/agents/designer-prompt.ts";
+import { evaluateRecipe } from "../src/domain/recipe.ts";
 import { selectScenario, smokeProfile } from "./smoke-fixtures.ts";
+import { PAGE_HTML_FILE, PAGE_SPEC_FILE, RESEARCH_FILE, STRATEGY_FILE, log, readArtifact } from "./smoke-prompt.ts";
 
-const RESEARCH_IN = "/tmp/mirenta-research.json";
-const DEFAULT_PAGE_IN = "/tmp/mirenta-page.json";
 const PAGE_OUT = "/tmp/mirenta-page.html";
 
-const log = (line = ""): void => {
-  process.stderr.write(`${line}\n`);
-};
-
-// The first non-flag argv entry is an artifact path override; otherwise read the
-// JSON artifact smoke:builder's paste flow produces.
+// The first non-flag argv entry overrides the artifact path; otherwise read the
+// HTML the builder paste flow saves.
 function artifactPath(): string {
   const arg = process.argv.slice(2).find((a) => !a.startsWith("-"));
-  return arg ?? DEFAULT_PAGE_IN;
+  return arg ?? PAGE_HTML_FILE;
 }
 
-// Accept either the {"html": "..."} object (the PAGE_TOOL_SCHEMA argument shape,
-// the natural save target of the paste flow) or a raw .html file.
+// Accept either raw HTML or the {"html": "..."} object (the PAGE_TOOL_SCHEMA
+// argument shape) so the step reads whichever the paste flow saved.
 function loadHtml(path: string): string {
   let text: string;
   try {
@@ -57,15 +43,12 @@ function loadHtml(path: string): string {
   } catch {
     throw new Error(
       `no page artifact at ${path}. Run smoke:builder, paste the prompt into a ` +
-        `Claude Code session, and save the returned {"html": ...} JSON to ${DEFAULT_PAGE_IN} ` +
+        `Claude Code session, and save the returned HTML to ${PAGE_HTML_FILE} ` +
         `(or pass a path: npm run --silent smoke:render -- page.html).`,
     );
   }
-
   const trimmed = text.trimStart();
-  if (path.endsWith(".html") || /^<!doctype html/i.test(trimmed)) {
-    return text;
-  }
+  if (path.endsWith(".html") || /^<!doctype html/i.test(trimmed)) return text;
 
   const parsed = JSON.parse(text) as unknown;
   if (
@@ -74,9 +57,7 @@ function loadHtml(path: string): string {
     typeof (parsed as { html?: unknown }).html !== "string"
   ) {
     const key = PAGE_TOOL_SCHEMA.required[0];
-    throw new Error(
-      `artifact at ${path} is not a {"${key}": "<document>"} object and is not raw HTML.`,
-    );
+    throw new Error(`artifact at ${path} is not a {"${key}": "<document>"} object and is not raw HTML.`);
   }
   return (parsed as { html: string }).html;
 }
@@ -84,52 +65,29 @@ function loadHtml(path: string): string {
 try {
   const html = loadHtml(artifactPath());
 
-  // Reconstruct the validation options from the SAME inputs the builder used, so
-  // validation here matches production rather than rubber-stamping the artifact.
+  // Reconstruct the validation options from the SAME chain artifacts the builder
+  // used, so validation here matches production rather than rubber-stamping.
   const scenario = selectScenario();
   const lead = scenario.lead;
   const profile = smokeProfile;
-  const vertical = getVertical(profile.vertical);
 
-  let researchText: string;
-  try {
-    researchText = readFileSync(RESEARCH_IN, "utf8");
-  } catch {
-    throw new Error(
-      `no research at ${RESEARCH_IN}. The render step validates the page against ` +
-        `the same research the builder built it from; run the smoke chain first.`,
-    );
-  }
-  const research = validateResearch(JSON.parse(researchText) as unknown, vertical);
-
-  const valueModel = vertical.createValueModel(profile);
-  const value = valueModel.compute(
-    valueModel.validateInputs(
-      research.extension.value_inputs,
-      research.extension.estimated,
-      research.extension.context,
-    ),
-  );
+  const { recipe } = validateStrategy(readArtifact(STRATEGY_FILE, "npm run --silent smoke:strategist"));
+  const research = validateResearch(readArtifact(RESEARCH_FILE, "npm run --silent smoke:research"), recipe);
+  const spec = normalizePageSpec(readArtifact(PAGE_SPEC_FILE, "npm run --silent smoke:designer"));
+  const value = evaluateRecipe(recipe, research.extension.recipe_inputs);
 
   const logoUrl = resolveLogoUrl(profile, research.brand);
   const faviconHref = resolveFaviconHref(lead.website_url, research.brand);
   const assetHosts = collectAssetHosts(logoUrl, faviconHref, lead.website_url, null);
 
-  const opts: ValidatePageOptions = {
-    value,
-    research,
-    assetHosts,
-    requiredAnchors: REQUIRED_ANCHORS,
-    stopReason: "end_turn",
-  };
-
+  const opts: ValidatePageOptions = { value, research, assetHosts, spec, stopReason: "end_turn" };
   validatePage(html, opts);
 
   const finalHtml = injectRuntimeAssets(html);
   writeFileSync(PAGE_OUT, finalHtml, "utf8");
 
   log(`smoke:render — profile ${scenario.key} (${scenario.label})`);
-  log(`Validated against research at ${RESEARCH_IN}; page passes production validation.`);
+  log(`Validated against the chain artifacts; page passes production validation.`);
   log(`Wrote ${finalHtml.length} bytes to ${PAGE_OUT}.`);
 
   if (process.platform === "darwin") {
