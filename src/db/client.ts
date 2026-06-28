@@ -136,7 +136,7 @@ export async function findActiveJobByEmail(orgId: string, email: string): Promis
     .select("*, leads!inner(email)")
     .eq("org_id", orgId)
     .eq("leads.email", email)
-    .in("status", ["pending", "researching", "building", "publishing", "done"])
+    .in("status", ["pending", "planning", "researching", "designing", "building", "publishing", "done"])
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
