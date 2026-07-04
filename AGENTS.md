@@ -11,48 +11,35 @@ make lint                 # ruff check .
 make format               # ruff format .
 make typecheck            # uv run pyright (static type check)
 make check                # lint + typecheck
-make eval                 # Run LLM evals (interactive)
-make eval-quick           # Run LLM evals (default settings)
-make migrate              # Run DB migrations to latest (Alembic)
-make docker-up            # Docker: API + DB (ENV=development by default)
-make stack-up ENV=development  # Full stack: API + DB + Prometheus + Grafana
 ```
 
-> All server/DB/Docker targets accept `ENV=development|staging|production|test`.
 > Run `make help` for the full list of targets.
 
 ## Project Structure
 
 ```
 app/
-  api/v1/          # Route handlers (auth.py, chatbot.py, api.py)
+  api/v1/          # Route handlers (auth.py, organizations.py, contacts.py, ...)
   core/
     config.py      # Pydantic Settings config
-    database.py    # Async DB setup
-    langgraph/     # LangGraph agent graph + tools
+    langgraph/     # LangGraph agent graph + tools (not yet wired to a route)
     logging.py     # structlog setup
-    llm.py         # LLM service with retry logic
-    limiter.py     # Rate limiting (slowapi)
-    metrics.py     # Prometheus metrics
+    limiter.py     # Rate limiting (slowapi, in-memory)
     middleware.py  # ASGI middleware
     prompts/       # System prompts
-  models/          # SQLModel ORM models
   schemas/         # Pydantic request/response schemas + graph state
-  services/        # Business logic services
+  services/        # LLM service, Supabase client
   utils/           # Shared utilities
-evals/             # LLM evaluation framework (Langfuse-based)
-scripts/           # Environment setup, Docker build scripts
+scripts/           # Environment setup scripts
 ```
 
 ## Project Overview
 
-This is a production-ready AI agent application built with:
-- **LangGraph** for stateful, multi-step AI agent workflows
+This is a production-ready outreach-agent backend built with:
+- **LangGraph** for stateful, multi-step AI agent workflows (kept as infra for outreach message generation, not yet wired to an endpoint)
 - **FastAPI** for high-performance async REST API endpoints
 - **Langfuse** for LLM observability and tracing
-- **PostgreSQL + pgvector** for long-term memory storage (mem0ai)
-- **JWT authentication** with session management
-- **Prometheus + Grafana** for monitoring
+- **Supabase (Postgres + Auth)** for the product domain and user identity
 
 ## Quick Reference: Critical Rules
 
@@ -64,7 +51,7 @@ This is a production-ready AI agent application built with:
 - Log messages must be **lowercase_with_underscores** (e.g., `"user_login_successful"`)
 - **NO f-strings in structlog events** - pass variables as kwargs
 - Use `logger.exception()` instead of `logger.error()` to preserve tracebacks
-- Example: `logger.info("chat_request_received", session_id=session.id, message_count=len(messages))`
+- Example: `logger.info("contact_created", org_id=str(org_id), user_id=str(user.id))`
 
 ### Retry Rules
 - **Always use tenacity library** for retry logic
@@ -74,10 +61,6 @@ This is a production-ready AI agent application built with:
 ### Output Rules
 - **Always enable rich library** for formatted console outputs
 - Use rich for progress bars, tables, panels, and formatted text
-
-### Caching Rules
-- **Only cache successful responses**, never cache errors
-- Use appropriate cache TTL based on data volatility
 
 ### FastAPI Rules
 - All routes must have rate limiting decorators
@@ -114,47 +97,30 @@ This is a production-ready AI agent application built with:
 - Use LangChain's `CallbackHandler` from Langfuse for tracing all LLM calls
 - All LLM operations must have Langfuse tracing enabled
 
-### Memory (mem0ai)
-- Use `AsyncMemory` for semantic memory storage
-- Store memories per user_id for personalized experiences
-- Use async methods: `add()`, `get()`, `search()`, `delete()`
-
 ## Authentication & Security
 
-- Use JWT tokens for authentication
-- Implement session-based user management (see `app/api/v1/auth.py`)
-- Use `get_current_session` dependency for protected endpoints
-- Store sensitive data in environment variables
+- User identity is Supabase Auth — clients sign up/log in directly against Supabase; this backend only verifies the resulting JWT (`verify_supabase_token`)
+- Use `get_current_user` for every authenticated endpoint (see `app/api/v1/auth.py`) — there is no separate backend-issued token type
+- Store sensitive data (including Supabase keys) in environment variables
 - Validate all user inputs with Pydantic models
 
 ## Database Operations
 
-- Use SQLModel for ORM models (combines SQLAlchemy + Pydantic)
-- Define models in `app/models/` directory
-- Use async database operations with asyncpg
-- Use LangGraph's AsyncPostgresSaver for agent checkpointing
+- Everything lives in one Supabase Postgres project: `auth.users` (Supabase-managed) and the hand-written RLS product domain (`organizations`, `contacts`, `conversations`, etc.) — see `docs/database.md`
+- Use the Supabase client (`app/services/supabase_client.py`, `get_user_client`/`get_service_role_client`/`execute_query`) for all table access — there is no ORM
+- Use LangGraph's AsyncPostgresSaver for agent checkpointing once the agent is wired to an endpoint (same Supabase Postgres connection, its own tables)
 
 ## Performance Guidelines
 
 - Minimize blocking I/O operations
 - Use async for all database and external API calls
-- Implement caching for frequently accessed data
 - Use connection pooling for database connections
 - Optimize LLM calls with streaming responses
 
 ## Observability
 
 - Integrate Langfuse for LLM tracing on all agent operations
-- Export Prometheus metrics for API performance
-- Use structured logging with context binding (request_id, session_id, user_id)
-- Track LLM inference duration, token usage, and costs
-
-## Testing & Evaluation
-
-- Implement metric-based evaluations for LLM outputs (see `evals/` directory)
-- Create custom evaluation metrics as markdown files in `evals/metrics/prompts/`
-- Use Langfuse traces for evaluation data sources
-- Generate JSON reports with success rates
+- Use structured logging with context binding (request_id, user_id)
 
 ## Configuration Management
 
@@ -170,13 +136,10 @@ This is a production-ready AI agent application built with:
 - **Langfuse** - LLM observability and tracing
 - **Pydantic v2** - Data validation and settings
 - **structlog** - Structured logging
-- **mem0ai** - Long-term memory management
-- **PostgreSQL + pgvector** - Database and vector storage
-- **SQLModel** - ORM for database models
+- **Supabase (Postgres + Auth)** - Database and user identity
 - **tenacity** - Retry logic
 - **rich** - Terminal formatting
 - **slowapi** - Rate limiting
-- **prometheus-client** - Metrics collection
 
 ## 10 Commandments for This Project
 
@@ -186,11 +149,10 @@ This is a production-ready AI agent application built with:
 4. All logs must follow structured logging format with lowercase_underscore event names
 5. All retries must use tenacity library
 6. All console outputs should use rich formatting
-7. All caching should only store successful responses
-8. All imports must be at the top of files
-9. All database operations must be async
-10. All endpoints must have proper type hints and Pydantic models
-11. All code must pass `make typecheck` (pyright standard mode)
+7. All imports must be at the top of files
+8. All database operations must be async
+9. All endpoints must have proper type hints and Pydantic models
+10. All code must pass `make typecheck` (pyright standard mode)
 
 ## Common Pitfalls to Avoid
 
@@ -198,7 +160,6 @@ This is a production-ready AI agent application built with:
 - ❌ Adding imports inside functions
 - ❌ Forgetting rate limiting decorators on routes
 - ❌ Missing Langfuse tracing on LLM calls
-- ❌ Caching error responses
 - ❌ Using `logger.error()` instead of `logger.exception()` for exceptions
 - ❌ Blocking I/O operations without async
 - ❌ Hardcoding secrets or API keys

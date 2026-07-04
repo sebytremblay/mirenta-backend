@@ -17,7 +17,7 @@ cp .env.example .env.development
 | `APP_ENV` | `development` | Environment: `development`, `staging`, `production`, `test` |
 | `PROJECT_NAME` | `FastAPI LangGraph Template` | Displayed in API docs and logs |
 | `VERSION` | `1.0.0` | API version |
-| `DEBUG` | `false` | Enables debug logging and profiling middleware |
+| `DEBUG` | `false` | Enables debug logging |
 | `API_V1_STR` | `/api/v1` | API prefix |
 | `ALLOWED_ORIGINS` | `*` | Comma-separated CORS origins |
 
@@ -33,56 +33,25 @@ cp .env.example .env.development
 | `MAX_TOKENS` | `2000` | No | Max tokens per LLM response |
 | `MAX_LLM_CALL_RETRIES` | `3` | No | Retries per model before switching to fallback |
 | `LLM_TOTAL_TIMEOUT` | `60` | No | Max seconds for the entire fallback loop |
-| `SESSION_NAMING_ENABLED` | `true` | No | Auto-generate a session title from the user's first message using an LLM background task |
 
 ---
 
-## Long-term memory
+## Database (Supabase)
+
+Everything — Supabase Auth's `auth.users`, LangGraph's checkpoint tables (once wired to an endpoint), and the hand-managed product-domain tables (see [Database](database.md)) — lives in one Supabase Postgres project.
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `LONG_TERM_MEMORY_COLLECTION_NAME` | `longterm_memory` | pgvector collection name |
-| `LONG_TERM_MEMORY_MODEL` | `gpt-5-nano` | LLM used by mem0 to extract memories |
-| `LONG_TERM_MEMORY_EMBEDDER_MODEL` | `text-embedding-3-small` | Embedding model for semantic search |
-
----
-
-## Database
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `POSTGRES_HOST` | `localhost` | PostgreSQL host |
-| `POSTGRES_PORT` | `5432` | PostgreSQL port |
-| `POSTGRES_DB` | `food_order_db` | Database name |
-| `POSTGRES_USER` | `postgres` | Database user |
-| `POSTGRES_PASSWORD` | `postgres` | Database password |
-| `POSTGRES_POOL_SIZE` | `20` | SQLAlchemy connection pool size |
-| `POSTGRES_MAX_OVERFLOW` | `10` | Max overflow connections above pool size |
-
----
-
-## Auth
-
-| Variable | Default | Required | Description |
-| --- | --- | --- | --- |
-| `JWT_SECRET_KEY` | — | Yes | Secret used to sign JWT tokens — use a long random string in production |
-| `JWT_ALGORITHM` | `HS256` | No | JWT signing algorithm |
-| `JWT_ACCESS_TOKEN_EXPIRE_DAYS` | `30` | No | Token lifetime in days |
-
----
-
-## Cache (Valkey/Redis — optional)
-
-When `VALKEY_HOST` is set, the app uses Valkey/Redis for memory search caching and rate limiting. When absent, it falls back to an in-memory TTL cache (not shared across instances).
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `VALKEY_HOST` | `` (disabled) | Valkey/Redis host — leave empty to use in-memory fallback |
-| `VALKEY_PORT` | `6379` | Port |
-| `VALKEY_DB` | `0` | Database index |
-| `VALKEY_PASSWORD` | `` | Password (if required) |
-| `VALKEY_MAX_CONNECTIONS` | `20` | Connection pool size |
-| `CACHE_TTL_SECONDS` | `60` | TTL for cached memory search results |
+| `SUPABASE_URL` | — | Your Supabase project URL (Project Settings → API) |
+| `SUPABASE_ANON_KEY` | — | Anon/public key — used for RLS-scoped requests forwarding the caller's JWT |
+| `SUPABASE_SERVICE_ROLE_KEY` | — | Service-role key — bypasses RLS, used only for agent-runtime writes |
+| `SUPABASE_JWT_SECRET` | — | Verifies incoming Supabase-issued user JWTs locally (Project Settings → API → JWT Settings) |
+| `SUPABASE_DB_HOST` | `localhost` | Direct Postgres connection host (Project Settings → Database) |
+| `SUPABASE_DB_PORT` | `5432` | Direct Postgres connection port |
+| `SUPABASE_DB_NAME` | `postgres` | Database name |
+| `SUPABASE_DB_USER` | `postgres` | Database user |
+| `SUPABASE_DB_PASSWORD` | `postgres` | Database password |
+| `POSTGRES_POOL_SIZE` | `20` | Max size of the LangGraph checkpointer's connection pool |
 
 ---
 
@@ -102,24 +71,13 @@ When `VALKEY_HOST` is set, the app uses Valkey/Redis for memory search caching a
 | Variable | Default | Description |
 | --- | --- | --- |
 | `RATE_LIMIT_DEFAULT` | `200 per day, 50 per hour` | Fallback limit |
-| `RATE_LIMIT_CHAT` | `30 per minute` | POST /chat |
-| `RATE_LIMIT_CHAT_STREAM` | `20 per minute` | POST /chat/stream |
-| `RATE_LIMIT_MESSAGES` | `50 per minute` | GET/DELETE /messages |
-| `RATE_LIMIT_LOGIN` | `20 per minute` | POST /auth/login |
-| `RATE_LIMIT_REGISTER` | `10 per hour` | POST /auth/register |
+| `RATE_LIMIT_ORGANIZATIONS` | `60 per minute` | Organization + membership endpoints |
+| `RATE_LIMIT_KNOWLEDGE` | `60 per minute` | Knowledge endpoints |
+| `RATE_LIMIT_CONTACTS` | `60 per minute` | Contact endpoints |
+| `RATE_LIMIT_CONVERSATIONS` | `60 per minute` | Conversation + timeline endpoints |
+| `RATE_LIMIT_APPOINTMENTS` | `60 per minute` | Appointment endpoints |
 
-When Valkey is configured, rate limiting is shared across all app instances. Without it, limits are per-process.
-
----
-
-## Profiling (debug only)
-
-Only active when `DEBUG=true`. Profiles every request and saves a JSON report when the request exceeds the threshold.
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `PROFILING_DIR` | `/tmp/fastapi_profiles` | Directory for profile JSON files |
-| `PROFILING_THRESHOLD_SECONDS` | `2.0` | Minimum wall time to trigger saving a profile. Set to `0` to profile every request. |
+Rate limiting uses in-memory storage, so limits are tracked per-process (not shared across multiple app instances).
 
 ---
 

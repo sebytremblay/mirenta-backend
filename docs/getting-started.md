@@ -4,93 +4,67 @@
 
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/) — `pip install uv`
-- Docker + Docker Compose (recommended for local dev)
+- A [Supabase](https://supabase.com) project (free tier is fine) — provides Postgres and Auth
 - OpenAI API key
 - Langfuse account (optional — set `LANGFUSE_TRACING_ENABLED=false` to skip)
 
-## Option A: Docker (recommended)
+## Set up your Supabase project
 
-The fastest way to get running. One command starts the API and PostgreSQL with pgvector.
+1. Create a project at [supabase.com](https://supabase.com).
+2. From **Project Settings → API**, copy the Project URL, `anon` key, `service_role` key, and JWT Secret.
+3. From **Project Settings → Database → Connection string**, copy the direct connection host/port/user/password.
+4. Run the product-domain SQL (organizations, contacts, conversations, etc. — see `docs/database.md`) in the Supabase SQL editor.
+
+## Run locally
 
 ```bash
 git clone <repo-url> my-agent
 cd my-agent
 
-# Copy and fill in your env file
 cp .env.example .env.development
-# Required: OPENAI_API_KEY, JWT_SECRET_KEY
+# Required: OPENAI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY,
+#           SUPABASE_SERVICE_ROLE_KEY, SUPABASE_JWT_SECRET, SUPABASE_DB_*
 # Optional: LANGFUSE_* keys (or set LANGFUSE_TRACING_ENABLED=false)
 
-make install       # installs Python deps + pre-commit hooks
-make docker-up     # starts API (port 8000) + PostgreSQL
-make docker-migrate # runs Alembic migrations inside the app container
+make install       # installs deps + pre-commit hooks
+make dev           # starts server with hot reload on port 8000
 ```
 
 Open [http://localhost:8000/docs](http://localhost:8000/docs).
 
-## Option B: Local Python
-
-```bash
-git clone <repo-url> my-agent
-cd my-agent
-
-cp .env.example .env.development
-# Fill in: OPENAI_API_KEY, JWT_SECRET_KEY, POSTGRES_* (point to your DB)
-
-make install       # installs deps + pre-commit hooks
-make migrate       # creates tables via Alembic
-make dev           # starts server with hot reload on port 8000
-```
-
 ## Your first API call
 
-### 1. Register a user
+User identity is Supabase Auth — this backend never issues a user token itself. Sign up/log in directly against the Supabase Auth REST API (or a Supabase client SDK) to get an access token.
+
+### 1. Sign up via Supabase Auth
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/auth/register \
+curl -X POST "$SUPABASE_URL/auth/v1/signup" \
+  -H "apikey: $SUPABASE_ANON_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"email": "you@example.com", "password": "Secret123!", "username": "you"}'  # pragma: allowlist secret
+  -d '{"email": "you@example.com", "password": "Secret123!"}'  # pragma: allowlist secret
 ```
 
-Returns a `user_id` and a JWT token.
+Returns an `access_token` (a Supabase-issued JWT) and `refresh_token`.
 
-### 2. Create a session
+### 2. Call a product-domain endpoint
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/auth/session \
-  -H "Authorization: Bearer <token from step 1>"
+curl http://localhost:8000/api/v1/organizations \
+  -H "Authorization: Bearer <access_token from step 1>"
 ```
 
-Returns a `session_id` and a session-scoped JWT.
-
-### 3. Chat
-
-```bash
-curl -X POST http://localhost:8000/api/v1/chatbot/chat \
-  -H "Authorization: Bearer <session token>" \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "Hello!"}]}'
-```
-
-Or use the streaming endpoint for real-time responses:
-
-```bash
-curl -X POST http://localhost:8000/api/v1/chatbot/chat/stream \
-  -H "Authorization: Bearer <session token>" \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "Hello!"}]}'
-```
+Every product endpoint (organizations, knowledge, contacts, conversations, appointments) takes the same Supabase access token — Row Level Security scopes the response to whatever orgs the user belongs to. See [Authentication](authentication.md).
 
 ## Customising the agent
 
-The parts you'll most likely change:
+The LangGraph agent (`app/core/langgraph/`) isn't wired to an API endpoint yet — it's kept as infra for generating outreach messages later. The parts you'll most likely change when you wire it up:
 
 | What | Where |
 |---|---|
 | Agent personality & instructions | `app/core/prompts/system.md` |
 | Available tools | `app/core/langgraph/tools.py` |
 | LLM models & fallback order | `app/services/llm.py` → `LLMRegistry.LLMS` |
-| Memory collection name | `LONG_TERM_MEMORY_COLLECTION_NAME` in `.env` |
 
 ## Running pre-commit hooks
 
@@ -105,13 +79,10 @@ Hooks include: trailing whitespace, YAML/TOML/JSON validation, secret detection,
 ## Troubleshooting
 
 **Database connection error on startup**
-Make sure PostgreSQL is running and `POSTGRES_*` vars in your `.env` match. With Docker: `make docker-up` handles this (including migrations).
+Make sure `SUPABASE_DB_*` vars in your `.env` match your Supabase project's Connection string (Project Settings → Database), and that your network/firewall allows outbound connections to Supabase.
 
-**`could not translate host name "db"`**
-`POSTGRES_HOST=db` only resolves *inside* the Docker network (it's the Compose
-service name). If you run a command on your host (e.g. `make migrate` or `make dev`
-in the local-Python flow), set `POSTGRES_HOST=localhost` instead — the DB's port is
-published to the host via `docker-compose.yml`. Inside the container, keep `db`.
+**401 from any Supabase-gated route**
+Make sure you're sending the Supabase `access_token` (from step 1 above), and that `SUPABASE_JWT_SECRET` in your `.env` matches the JWT Secret shown in Project Settings → API — a mismatch causes every token to fail verification.
 
 **`detect-secrets` blocking a commit**
 If it's a false positive, add `# pragma: allowlist secret` to the end of the flagged line.
