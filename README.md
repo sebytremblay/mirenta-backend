@@ -1,165 +1,74 @@
-# FastAPI LangGraph Agent Template
+# Mirenta Backend
 
-A production-ready template for building AI agent backends with FastAPI and LangGraph. Handles the hard parts — stateful conversations, tool calling, observability, rate limiting, auth — so you can focus on your agent logic.
+The API backend for Mirenta — a clinic outreach platform. Clinics import their patient recall list, and an AI agent runs SMS/voice conversations to bring lapsed patients back in for care, booking appointments along the way.
 
-**Built for AI engineers** who want a solid foundation, not a tutorial project.
-
----
-
-## Powered by Atlas Cloud — Drop-in LLM Backend for LangGraph Agents
-
-[**Atlas Cloud**](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=fastapi-langgraph-agent-production-ready-template) provides an **OpenAI-compatible LLM API** that integrates seamlessly into this FastAPI + LangGraph template — no code changes to your agent graph needed. Just swap `OPENAI_BASE_URL` and `OPENAI_API_KEY` to access **DeepSeek, Qwen, GLM, Kimi, MiniMax, Gemini, Claude, GPT** and more through a single unified endpoint.
-
-The `LLMRegistry` in this template uses `langchain_openai.ChatOpenAI` — Atlas Cloud is wire-compatible, so you get instant access to 59+ curated reasoning models without touching any LangGraph logic.
-
-### Quick Setup
-
-**Step 1 — Get your free API key:** [atlascloud.ai/console/coding-plan](https://www.atlascloud.ai/console/coding-plan)
-
-**Step 2 — Update `.env.development`:**
-
-```env
-OPENAI_API_KEY=<your-atlascloud-key>
-OPENAI_BASE_URL=https://api.atlascloud.ai/v1
-DEFAULT_LLM_MODEL=deepseek-ai/deepseek-v4-pro
-```
-
-**Step 3 — Or use directly in code:**
-
-```python
-from langchain_openai import ChatOpenAI
-
-llm = ChatOpenAI(
-    model="deepseek-ai/deepseek-v4-pro",
-    openai_api_base="https://api.atlascloud.ai/v1",
-    openai_api_key="<your-atlascloud-key>",
-    max_tokens=512,  # reasoning model requires max_tokens >= 512
-)
-```
-
-This works as a drop-in replacement anywhere `ChatOpenAI` is used in your LangGraph agent — including the `LLMRegistry` and the circular fallback service.
-
-<details>
-<summary>📋 Full model catalog (59 LLMs available)</summary>
-
-| Model ID                                      | Provider     |
-| --------------------------------------------- | ------------ |
-| `deepseek-ai/DeepSeek-V3-0324`                | DeepSeek     |
-| `deepseek-ai/deepseek-r1-0528`                | DeepSeek     |
-| `deepseek-ai/DeepSeek-V3.1`                   | DeepSeek     |
-| `deepseek-ai/DeepSeek-V3.1-Terminus`          | DeepSeek     |
-| `deepseek-ai/DeepSeek-V3.2-Exp`               | DeepSeek     |
-| `deepseek-ai/deepseek-v3.2`                   | DeepSeek     |
-| `qwen/qwen3-32b`                              | Alibaba Qwen |
-| `qwen/qwen3-8b`                               | Alibaba Qwen |
-| `qwen/qwen3-235b-a22b-thinking-2507`          | Alibaba Qwen |
-| `qwen/qwen3-30b-a3b`                          | Alibaba Qwen |
-| `qwen/qwen3-30b-a3b-thinking-2507`            | Alibaba Qwen |
-| `Qwen/Qwen3-Coder`                            | Alibaba Qwen |
-| `Qwen/Qwen3-235B-A22B-Instruct-2507`          | Alibaba Qwen |
-| `Qwen/Qwen3-Next-80B-A3B-Instruct`            | Alibaba Qwen |
-| `Qwen/Qwen3-Next-80B-A3B-Thinking`            | Alibaba Qwen |
-| `Qwen/Qwen3-30B-A3B-Instruct-2507`            | Alibaba Qwen |
-| `Qwen/Qwen3-VL-235B-A22B-Instruct`            | Alibaba Qwen |
-| `moonshotai/Kimi-K2-Instruct`                 | Moonshot AI  |
-| `moonshotai/Kimi-K2-Instruct-0905`            | Moonshot AI  |
-| `moonshotai/Kimi-K2-Thinking`                 | Moonshot AI  |
-| `moonshotai/kimi-k2.5`                        | Moonshot AI  |
-| `zai-org/GLM-4.6`                             | Zhipu AI     |
-| `zai-org/glm-4.7`                             | Zhipu AI     |
-| `MiniMaxAI/MiniMax-M2`                        | MiniMax      |
-| `minimaxai/minimax-m2.1`                      | MiniMax      |
-| `google/gemini-2.5-flash`                     | Google       |
-| `google/gemini-2.5-flash-preview-202509`      | Google       |
-| `google/gemini-2.5-flash-lite`                | Google       |
-| `google/gemini-2.5-flash-lite-preview-202509` | Google       |
-| `google/gemini-2.5-pro`                       | Google       |
-| `google/gemini-3-flash-preview`               | Google       |
-| `google/gemini-2.0-flash`                     | Google       |
-| `google/gemini-2.0-flash-lite`                | Google       |
-| `openai/gpt-5.1`                              | OpenAI       |
-| `openai/gpt-5.1-chat`                         | OpenAI       |
-| `openai/gpt-5.1-codex`                        | OpenAI       |
-| `openai/gpt-5.1-codex-mini`                   | OpenAI       |
-| `openai/gpt-5.1-codex-max`                    | OpenAI       |
-| `openai/gpt-4o`                               | OpenAI       |
-| `openai/gpt-4o-mini`                          | OpenAI       |
-| `openai/gpt-4.1`                              | OpenAI       |
-| `openai/gpt-4.1-mini`                         | OpenAI       |
-| `openai/gpt-4.1-nano`                         | OpenAI       |
-| `openai/o1`                                   | OpenAI       |
-| `openai/o3`                                   | OpenAI       |
-| `openai/o3-mini`                              | OpenAI       |
-| `openai/o4-mini`                              | OpenAI       |
-| `openai/o3-pro`                               | OpenAI       |
-| `openai/gpt-5`                                | OpenAI       |
-| `openai/gpt-5-chat`                           | OpenAI       |
-| `openai/gpt-5-codex`                          | OpenAI       |
-| `openai/gpt-5-mini`                           | OpenAI       |
-| `openai/gpt-5-nano`                           | OpenAI       |
-| `openai/gpt-5-pro`                            | OpenAI       |
-| `openai/gpt-5.2`                              | OpenAI       |
-| `openai/gpt-5.2-chat`                         | OpenAI       |
-| `anthropic/claude-sonnet-4-20250514`          | Anthropic    |
-| `anthropic/claude-haiku-4.5-20251001`         | Anthropic    |
-| `anthropic/claude-sonnet-4.5-20250929`        | Anthropic    |
-| `anthropic/claude-opus-4.1-20250805`          | Anthropic    |
-| `anthropic/claude-opus-4-20250514`            | Anthropic    |
-| `anthropic/claude-opus-4.5-20251101`          | Anthropic    |
-
-[View live model list →](https://www.atlascloud.ai/?utm_source=github&utm_medium=link&utm_campaign=fastapi-langgraph-agent-production-ready-template)
-
-</details>
+Built with **FastAPI** on top of **Supabase** (Postgres + Auth, RLS-enforced), with a **LangGraph** agent kept in the codebase as infra for outreach message generation.
 
 ---
 
 ## What's included
 
-- **LangGraph** stateful agent with checkpointing, tool calling, and human-in-the-loop support (kept as infra for outreach message generation, not yet wired to an endpoint)
-- **LLM service** with circular model fallback, exponential backoff retries, and total timeout budget
+- **Product-domain API** — organizations (clinics), knowledge, contacts, conversations, appointments
+- **Supabase Auth** JWT verification — clients sign up/log in directly against Supabase; this backend only verifies the resulting token
+- **Row Level Security** on every table — the dashboard sees only what the caller's org membership allows; application code never re-implements authorization
+- **LangGraph** stateful agent with checkpointing and tool calling — kept as infra for outreach message generation, not yet wired to an endpoint
+- **LLM service** with circular model fallback, exponential backoff retries, and a total timeout budget
 - **Langfuse** tracing on all LLM calls
-- **Supabase Auth** JWT verification; rate limiting via slowapi
-- **Structured logging** with request/user context on every line
+- **Structured logging** (structlog) with request/user context on every line
+- **Rate limiting** via slowapi on every route
 
 ## Quickstart
 
 ```bash
-git clone <repo-url> my-agent && cd my-agent
-cp .env.example .env.development   # fill in your keys
+git clone <repo-url> mirenta-backend && cd mirenta-backend
+cp .env.example .env.development   # fill in Supabase + LLM keys
 make install
 make dev                           # starts the API on port 8000
 ```
 
 Open [http://localhost:8000/docs](http://localhost:8000/docs) to see the interactive API.
 
-> See [docs/getting-started.md](docs/getting-started.md) for full setup details.
+> See [docs/getting-started.md](docs/getting-started.md) for full setup details, including provisioning the Supabase project and its SQL schema.
 
 ## Documentation
 
-| Guide                                      | What it covers                                      |
-| ------------------------------------------ | --------------------------------------------------- |
-| [Getting Started](docs/getting-started.md) | Prerequisites, local setup, first API call          |
-| [Architecture](docs/architecture.md)       | System design, request flow, component diagrams     |
-| [Configuration](docs/configuration.md)     | All environment variables with defaults             |
-| [Authentication](docs/authentication.md)   | Supabase JWT flow, endpoint reference                |
-| [Database](docs/database.md)               | Schema, table ownership                             |
-| [LLM Service](docs/llm-service.md)         | Models, retries, fallback, timeout budget           |
-| [Observability](docs/observability.md)     | Langfuse, structured logging                        |
+| Guide                                      | What it covers                                       |
+| ------------------------------------------ | ----------------------------------------------------- |
+| [Getting Started](docs/getting-started.md) | Prerequisites, Supabase setup, first API call         |
+| [Architecture](docs/architecture.md)       | System design, request flow, component diagrams       |
+| [Configuration](docs/configuration.md)     | All environment variables with defaults                |
+| [Authentication](docs/authentication.md)   | Supabase JWT flow, endpoint reference                  |
+| [Database](docs/database.md)               | Schema (clinics, contacts, conversations, appointments), RLS |
+| [LLM Service](docs/llm-service.md)         | Models, retries, fallback, timeout budget              |
+| [Observability](docs/observability.md)     | Langfuse, structured logging                           |
 
 ## Project structure
 
 ```
 app/
-  api/v1/          # Route handlers
+  api/v1/          # Route handlers: auth, organizations, knowledge,
+                   # contacts, conversations, appointments
   core/
-    langgraph/     # Agent graph + tools
+    langgraph/     # Agent graph + tools (not yet wired to a route)
     prompts/       # System prompt template
     config.py      # Settings
     middleware.py  # Logging context
     limiter.py     # Rate limiting
   schemas/         # Pydantic request/response schemas
-  services/        # LLM, database services
+  services/        # LLM service, Supabase client
 ```
+
+## Data model
+
+Everything lives in one Supabase Postgres project, as hand-written SQL run through the Supabase SQL editor (no ORM, no migration tooling):
+
+- `organizations` — a clinic or clinic group, with `organization_members` for staff and roles
+- `knowledge` — free-form clinic knowledge (hours, pricing, policies) the agent draws on
+- `contacts` — patients on a clinic's recall list, sourced from a PMS export; TCPA opt-out is tracked per contact
+- `conversations` — one outreach campaign/window of interaction with a contact, logging `messages` (SMS) and `call_sessions`/`call_transcripts` (voice)
+- `appointments` — the billable outcome of a conversation
+
+See [docs/database.md](docs/database.md) for the full schema, indexes, and RLS policy table.
 
 ## Contributing
 
@@ -175,27 +84,27 @@ See [LICENSE](LICENSE).
 
 ### General
 
-**What is this template?**
-A production-ready foundation for AI agent backends built on FastAPI + LangGraph. It bundles the components you'd otherwise wire up by hand: stateful conversations, tool calling, observability, rate limiting, and JWT auth.
+**What is this?**
+The backend API for Mirenta, a clinic outreach platform. It exposes the product domain (clinics, contacts, conversations, appointments) over a Supabase-authenticated REST API, and includes a LangGraph agent kept as infra for generating outreach messages.
 
-**How does this differ from a basic LangGraph setup?**
-The base LangGraph quickstart stops at "agent runs locally". This template adds Langfuse tracing, Supabase JWT auth, slowapi rate limiting, structured logging with per-request context, and a circular-fallback LLM service — production concerns you'd otherwise build separately.
+**Is the outreach agent live?**
+Not yet. The agent graph (`app/core/langgraph/graph.py`) is built and testable in isolation but isn't wired to an API route — see [docs/architecture.md](docs/architecture.md).
 
 ### Setup & Configuration
 
 **Which LLM providers are supported?**
-Today: **OpenAI only** via the `LLMRegistry` in `app/services/llm/registry.py`. Multi-provider support (Anthropic, Google, OpenRouter) via LangChain's `init_chat_model` is planned — see [#51](https://github.com/wassim249/fastapi-langgraph-agent-production-ready-template/issues/51). Configure your model via `DEFAULT_LLM_MODEL` in `.env.development`.
+OpenAI-compatible endpoints only, via the `LLMRegistry` in `app/services/llm/registry.py`. Configure your model via `DEFAULT_LLM_MODEL` in `.env.development`. See [docs/llm-service.md](docs/llm-service.md).
+
+**Do I need Langfuse?**
+No. Set `LANGFUSE_TRACING_ENABLED=false` to disable tracing entirely; structured logs still capture request/user context.
 
 ### Development
 
-**How do I add a custom tool?**
-Drop a LangChain `@tool`-decorated function in `app/core/langgraph/tools/` and register it in the `tools` list exported from that package. The agent picks it up on next start; no graph changes needed.
+**How do I add a custom tool for the agent?**
+Drop a LangChain `@tool`-decorated function in `app/core/langgraph/tools/` and register it in the `tools` list exported from that package.
 
 **How does the LLM service handle failures?**
-Two layers: (1) per-call exponential-backoff retry via `tenacity`, (2) **circular fallback** — if the active model exhausts its retries, the service rotates to the next model in `LLMRegistry` and continues. A total timeout budget caps the whole call so latency stays bounded. See [docs/llm-service.md](docs/llm-service.md).
-
-**Can I use this without Langfuse?**
-Yes. Set `LANGFUSE_TRACING_ENABLED=false` (or omit the Langfuse keys). The agent runs unchanged; structured logs still capture request/user context.
+Two layers: (1) per-call exponential-backoff retry via `tenacity`, (2) **circular fallback** — if the active model exhausts its retries, the service rotates to the next model in `LLMRegistry` and continues. A total timeout budget caps the whole call. See [docs/llm-service.md](docs/llm-service.md).
 
 ### Troubleshooting
 
@@ -204,5 +113,8 @@ Yes. Set `LANGFUSE_TRACING_ENABLED=false` (or omit the Langfuse keys). The agent
 - Confirm `.env.development` exists — copy from `.env.example` and fill in required keys
 - Confirm `SUPABASE_DB_*` vars match your Supabase project's connection string and that outbound access to Supabase is allowed
 
+**401 from any Supabase-gated route**
+Make sure you're sending a Supabase `access_token` (not a backend-issued token — there is no such thing), and that `SUPABASE_JWT_SECRET` matches the JWT Secret in Project Settings → API. See [docs/authentication.md](docs/authentication.md).
+
 **Rate limiting is too aggressive**
-Limits are defined in `app/core/limiter.py` (slowapi). Adjust per-route decorators or the default rate in that file. See [docs/configuration.md](docs/configuration.md) for the related env vars.
+Limits are defined in `app/core/limiter.py` (slowapi). Adjust per-route decorators or the default rate in that file. See [docs/configuration.md](docs/configuration.md) for related env vars.
