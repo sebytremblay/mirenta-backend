@@ -4,7 +4,6 @@ import asyncio
 from typing import (
     AsyncGenerator,
     Optional,
-    cast,
 )
 from urllib.parse import quote_plus
 
@@ -47,7 +46,6 @@ from app.core.config import (
 )
 from app.core.langgraph.tools import tools
 from app.core.logging import logger
-from app.core.metrics import llm_inference_duration_seconds
 from app.core.observability import langfuse_callback_handler
 from app.core.prompts import load_system_prompt
 from app.schemas import (
@@ -55,7 +53,6 @@ from app.schemas import (
     Message,
 )
 from app.services.llm import llm_service
-from app.services.memory import memory_service
 from app.utils import (
     dump_messages,
     extract_text_content,
@@ -101,8 +98,8 @@ class LangGraphAgent:
 
                 connection_url = (
                     "postgresql://"
-                    f"{quote_plus(settings.POSTGRES_USER)}:{quote_plus(settings.POSTGRES_PASSWORD)}"
-                    f"@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}/{settings.POSTGRES_DB}"
+                    f"{quote_plus(settings.SUPABASE_DB_USER)}:{quote_plus(settings.SUPABASE_DB_PASSWORD)}"
+                    f"@{settings.SUPABASE_DB_HOST}:{settings.SUPABASE_DB_PORT}/{settings.SUPABASE_DB_NAME}"
                 )
 
                 self._connection_pool = AsyncConnectionPool(
@@ -137,7 +134,6 @@ class LangGraphAgent:
         Returns:
             Command: Command object with updated state and next node to execute.
         """
-        # Get the current LLM instance for metrics
         current_llm = self.llm_service.get_llm()
         model_name = (
             current_llm.model_name
@@ -147,15 +143,14 @@ class LangGraphAgent:
 
         username = config.get("metadata", {}).get("username")
         thread_id = config.get("configurable", {}).get("thread_id")
-        SYSTEM_PROMPT = load_system_prompt(username=username, long_term_memory=state.long_term_memory)
+        SYSTEM_PROMPT = load_system_prompt(username=username)
 
         # Prepare messages with system prompt
         messages = prepare_messages(state.messages, SYSTEM_PROMPT)
 
         try:
             # Use LLM service with automatic retries and circular fallback
-            with llm_inference_duration_seconds.labels(model=model_name).time():
-                response_message = await self.llm_service.call(dump_messages(messages))
+            response_message = await self.llm_service.call(dump_messages(messages))
 
             # Process response to handle structured content blocks
             response_message = process_llm_response(response_message)
@@ -308,11 +303,7 @@ class LangGraphAgent:
         }
 
         try:
-            # Run state check and memory search concurrently to save 200-500ms
-            state, relevant_memory = await asyncio.gather(
-                graph.aget_state(config),
-                memory_service.search(user_id, messages[-1].content),
-            )
+            state = await graph.aget_state(config)
 
             if state.next:
                 logger.info("resuming_interrupted_graph", session_id=session_id, next_nodes=state.next)
@@ -321,9 +312,8 @@ class LangGraphAgent:
                     config=config,
                 )
             else:
-                relevant_memory = relevant_memory or "No relevant memory found."
                 response = await graph.ainvoke(
-                    input={"messages": dump_messages(messages), "long_term_memory": relevant_memory},
+                    input={"messages": dump_messages(messages)},
                     config=config,
                 )
 
@@ -334,8 +324,6 @@ class LangGraphAgent:
                 logger.info("graph_interrupted", session_id=session_id, interrupt_value=str(interrupt_value))
                 return [Message(role="assistant", content=str(interrupt_value))]
 
-            openai_msgs = cast(list[dict], convert_to_openai_messages(response["messages"]))
-            asyncio.create_task(memory_service.add(user_id, openai_msgs, config.get("metadata")))
             return self.__process_messages(response["messages"])
         except GraphInterrupt:
             state = await graph.aget_state(config)
@@ -379,18 +367,13 @@ class LangGraphAgent:
         graph = await self._get_graph()
 
         try:
-            # Run state check and memory search concurrently to save 200-500ms
-            state, relevant_memory = await asyncio.gather(
-                graph.aget_state(config),
-                memory_service.search(user_id, messages[-1].content),
-            )
+            state = await graph.aget_state(config)
 
             if state.next:
                 logger.info("resuming_interrupted_graph_stream", session_id=session_id, next_nodes=state.next)
                 graph_input = Command(resume=messages[-1].content)
             else:
-                relevant_memory = relevant_memory or "No relevant memory found."
-                graph_input = {"messages": dump_messages(messages), "long_term_memory": relevant_memory}
+                graph_input = {"messages": dump_messages(messages)}
 
             async for token, _ in graph.astream(
                 graph_input,
@@ -404,15 +387,12 @@ class LangGraphAgent:
                 if text:
                     yield text
 
-            # After streaming completes, check for interrupt or update memory
+            # After streaming completes, check for interrupt
             state = await graph.aget_state(config)
             if state.next:
                 interrupt_value = state.tasks[0].interrupts[0].value if state.tasks else "Waiting for input."
                 logger.info("graph_interrupted_stream", session_id=session_id, interrupt_value=str(interrupt_value))
                 yield str(interrupt_value)
-            elif state.values and "messages" in state.values:
-                openai_msgs = cast(list[dict], convert_to_openai_messages(state.values["messages"]))
-                asyncio.create_task(memory_service.add(user_id, openai_msgs, config.get("metadata")))
         except GraphInterrupt:
             state = await graph.aget_state(config)
             interrupt_value = state.tasks[0].interrupts[0].value if state.tasks else "Waiting for input."

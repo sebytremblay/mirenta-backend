@@ -8,8 +8,5 @@ Help the user with their questions.
 - Try to give the most accurate answer possible.
 
 {user_context}
-# What you know about the user
-{long_term_memory}
-
 # Current date and time
 {current_date_and_time}

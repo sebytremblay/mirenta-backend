@@ -15,4 +15,3 @@ class GraphState(BaseModel):
     messages: Annotated[list, add_messages] = Field(
         default_factory=list, description="The messages in the conversation"
     )
-    long_term_memory: str = Field(default="", description="The long term memory of the conversation")

@@ -148,60 +148,47 @@ class Settings:
         # LangGraph Configuration
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
         self.DEFAULT_LLM_MODEL = os.getenv("DEFAULT_LLM_MODEL", "gpt-5-mini")
-        self.SESSION_NAMING_ENABLED = os.getenv("SESSION_NAMING_ENABLED", "true").lower() == "true"
         self.DEFAULT_LLM_TEMPERATURE = float(os.getenv("DEFAULT_LLM_TEMPERATURE", "0.2"))
         self.MAX_TOKENS = int(os.getenv("MAX_TOKENS", "2000"))
         self.MAX_LLM_CALL_RETRIES = int(os.getenv("MAX_LLM_CALL_RETRIES", "3"))
         self.LLM_TOTAL_TIMEOUT = int(os.getenv("LLM_TOTAL_TIMEOUT", "60"))
 
-        # Long term memory Configuration
-        self.LONG_TERM_MEMORY_MODEL = os.getenv("LONG_TERM_MEMORY_MODEL", "gpt-5-nano")
-        self.LONG_TERM_MEMORY_EMBEDDER_MODEL = os.getenv("LONG_TERM_MEMORY_EMBEDDER_MODEL", "text-embedding-3-small")
-        self.LONG_TERM_MEMORY_COLLECTION_NAME = os.getenv("LONG_TERM_MEMORY_COLLECTION_NAME", "longterm_memory")
-        # JWT Configuration
-        self.JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "")
-        self.JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-        self.JWT_ACCESS_TOKEN_EXPIRE_DAYS = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_DAYS", "30"))
+        # Supabase Configuration
+        self.SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+        self.SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+        self.SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+        # Verifies Supabase-issued user JWTs locally (HS256 legacy secret from
+        # Project Settings -> API -> JWT Settings).
+        self.SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
 
         # Logging Configuration
         self.LOG_DIR = Path(os.getenv("LOG_DIR", "logs"))
         self.LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
         self.LOG_FORMAT = os.getenv("LOG_FORMAT", "json")  # "json" or "console"
 
-        # Profiling Configuration (DEBUG only)
-        self.PROFILING_DIR = Path(os.getenv("PROFILING_DIR", "/tmp/fastapi_profiles"))
-        self.PROFILING_THRESHOLD_SECONDS = float(os.getenv("PROFILING_THRESHOLD_SECONDS", "2.0"))
-
-        # Postgres Configuration
-        self.POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
-        self.POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
-        self.POSTGRES_DB = os.getenv("POSTGRES_DB", "food_order_db")
-        self.POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
-        self.POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
+        # Supabase Postgres Configuration — direct connection to the Supabase
+        # project's Postgres instance (Project Settings -> Database -> Connection
+        # string). Used by the LangGraph checkpointer.
+        self.SUPABASE_DB_HOST = os.getenv("SUPABASE_DB_HOST", "localhost")
+        self.SUPABASE_DB_PORT = int(os.getenv("SUPABASE_DB_PORT", "5432"))
+        self.SUPABASE_DB_NAME = os.getenv("SUPABASE_DB_NAME", "postgres")
+        self.SUPABASE_DB_USER = os.getenv("SUPABASE_DB_USER", "postgres")
+        self.SUPABASE_DB_PASSWORD = os.getenv("SUPABASE_DB_PASSWORD", "postgres")
         self.POSTGRES_POOL_SIZE = int(os.getenv("POSTGRES_POOL_SIZE", "20"))
-        self.POSTGRES_MAX_OVERFLOW = int(os.getenv("POSTGRES_MAX_OVERFLOW", "10"))
         self.CHECKPOINT_TABLES = ["checkpoint_blobs", "checkpoint_writes", "checkpoints"]
-
-        # Valkey/Redis Cache Configuration (optional — if host is set, caching is enabled)
-        self.VALKEY_HOST = os.getenv("VALKEY_HOST", "")
-        self.VALKEY_PORT = int(os.getenv("VALKEY_PORT", "6379"))
-        self.VALKEY_DB = int(os.getenv("VALKEY_DB", "0"))
-        self.VALKEY_PASSWORD = os.getenv("VALKEY_PASSWORD", "")
-        self.VALKEY_MAX_CONNECTIONS = int(os.getenv("VALKEY_MAX_CONNECTIONS", "20"))
-        self.CACHE_TTL_SECONDS = int(os.getenv("CACHE_TTL_SECONDS", "60"))
 
         # Rate Limiting Configuration
         self.RATE_LIMIT_DEFAULT = parse_list_from_env("RATE_LIMIT_DEFAULT", ["200 per day", "50 per hour"])
 
         # Rate limit endpoints defaults
         default_endpoints = {
-            "chat": ["30 per minute"],
-            "chat_stream": ["20 per minute"],
-            "messages": ["50 per minute"],
-            "register": ["10 per hour"],
-            "login": ["20 per minute"],
             "root": ["10 per minute"],
             "health": ["20 per minute"],
+            "organizations": ["60 per minute"],
+            "knowledge": ["60 per minute"],
+            "contacts": ["60 per minute"],
+            "conversations": ["60 per minute"],
+            "appointments": ["60 per minute"],
         }
 
         # Update rate limit endpoints from environment variables
@@ -211,12 +198,6 @@ class Settings:
             value = parse_list_from_env(env_key)
             if value:
                 self.RATE_LIMIT_ENDPOINTS[endpoint] = value
-
-        # Evaluation Configuration
-        self.EVALUATION_LLM = os.getenv("EVALUATION_LLM", "gpt-5")
-        self.EVALUATION_BASE_URL = os.getenv("EVALUATION_BASE_URL", "https://api.openai.com/v1")
-        self.EVALUATION_API_KEY = os.getenv("EVALUATION_API_KEY", self.OPENAI_API_KEY)
-        self.EVALUATION_SLEEP_TIME = int(os.getenv("EVALUATION_SLEEP_TIME", "10"))
 
         # Apply environment-specific settings
         self.apply_environment_settings()
