@@ -114,7 +114,7 @@ Two layers: (1) per-call exponential-backoff retry via `tenacity`, (2) **circula
 - Confirm `SUPABASE_DB_*` vars match your Supabase project's connection string and that outbound access to Supabase is allowed
 
 **401 from any Supabase-gated route**
-Make sure you're sending a Supabase `access_token` (not a backend-issued token — there is no such thing), and that `SUPABASE_JWT_SECRET` matches the JWT Secret in Project Settings → API. See [docs/authentication.md](docs/authentication.md).
+Make sure you're sending a Supabase `access_token` (not a backend-issued token — there is no such thing), and that `SUPABASE_JWKS_URL` matches the JWKS endpoint in Project Settings → API. See [docs/authentication.md](docs/authentication.md).
 
 **Rate limiting is too aggressive**
 Limits are defined in `app/core/limiter.py` (slowapi). Adjust per-route decorators or the default rate in that file. See [docs/configuration.md](docs/configuration.md) for related env vars.

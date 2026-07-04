@@ -21,21 +21,19 @@ _service_role_lock = asyncio.Lock()
 async def get_service_role_client() -> AsyncClient:
     """Get the privileged Supabase client used by the agent runtime.
 
-    This client authenticates with the service-role key, which bypasses Row
-    Level Security entirely. Only use it for agent-runtime writes (outreach
+    This client authenticates with the secret key, which bypasses Row Level
+    Security entirely. Only use it for agent-runtime writes (outreach
     conversations, messages, calls, appointments) — never for requests made
     on behalf of a dashboard user.
 
     Returns:
-        AsyncClient: A cached Supabase client authenticated with the service-role key.
+        AsyncClient: A cached Supabase client authenticated with the secret key.
     """
     global _service_role_client
     if _service_role_client is None:
         async with _service_role_lock:
             if _service_role_client is None:
-                _service_role_client = await acreate_client(
-                    settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY
-                )
+                _service_role_client = await acreate_client(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
     return _service_role_client
 
 
@@ -48,10 +46,10 @@ async def get_user_client(access_token: str) -> AsyncClient:
             policies enforce org-membership authorization automatically.
 
     Returns:
-        AsyncClient: A Supabase client authenticated with the anon key, scoped
-            to the calling user via the forwarded access token.
+        AsyncClient: A Supabase client authenticated with the publishable key,
+            scoped to the calling user via the forwarded access token.
     """
-    client = await acreate_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
+    client = await acreate_client(settings.SUPABASE_URL, settings.SUPABASE_PUBLISHABLE_KEY)
     client.postgrest.auth(access_token)
     return client
 

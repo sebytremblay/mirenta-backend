@@ -6,7 +6,6 @@ resulting Supabase JWT.
 """
 
 from fastapi import (
-    APIRouter,
     Depends,
     HTTPException,
 )
@@ -23,7 +22,6 @@ from app.schemas.auth import SupabaseUser
 from app.utils.auth import verify_supabase_token
 from app.utils.sanitization import sanitize_string
 
-router = APIRouter()
 security = HTTPBearer()
 
 
@@ -44,7 +42,7 @@ async def get_current_user(
     try:
         token = sanitize_string(credentials.credentials)
 
-        payload = verify_supabase_token(token)
+        payload = await verify_supabase_token(token)
         if payload is None:
             logger.error("invalid_supabase_token", token_part=token[:10] + "...")
             raise HTTPException(

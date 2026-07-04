@@ -27,7 +27,7 @@ Every LLM call is traced via the LangChain `CallbackHandler`. Traces include:
 LANGFUSE_TRACING_ENABLED=true
 LANGFUSE_PUBLIC_KEY=pk-...
 LANGFUSE_SECRET_KEY=sk-...
-LANGFUSE_HOST=https://cloud.langfuse.com   # or your self-hosted URL
+LANGFUSE_BASE_URL=https://cloud.langfuse.com   # or your self-hosted URL
 ```
 
 **Disable for local dev:**

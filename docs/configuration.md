@@ -43,9 +43,9 @@ Everything — Supabase Auth's `auth.users`, LangGraph's checkpoint tables (once
 | Variable | Default | Description |
 | --- | --- | --- |
 | `SUPABASE_URL` | — | Your Supabase project URL (Project Settings → API) |
-| `SUPABASE_ANON_KEY` | — | Anon/public key — used for RLS-scoped requests forwarding the caller's JWT |
-| `SUPABASE_SERVICE_ROLE_KEY` | — | Service-role key — bypasses RLS, used only for agent-runtime writes |
-| `SUPABASE_JWT_SECRET` | — | Verifies incoming Supabase-issued user JWTs locally (Project Settings → API → JWT Settings) |
+| `SUPABASE_PUBLISHABLE_KEY` | — | Publishable key — used for RLS-scoped requests forwarding the caller's JWT |
+| `SUPABASE_SECRET_KEY` | — | Secret key — bypasses RLS, used only for agent-runtime writes |
+| `SUPABASE_JWKS_URL` | — | Verifies incoming Supabase-issued user JWTs locally against the project's public signing keys (Project Settings → API → JWT Keys) |
 | `SUPABASE_DB_HOST` | `localhost` | Direct Postgres connection host (Project Settings → Database) |
 | `SUPABASE_DB_PORT` | `5432` | Direct Postgres connection port |
 | `SUPABASE_DB_NAME` | `postgres` | Database name |
@@ -62,7 +62,7 @@ Everything — Supabase Auth's `auth.users`, LangGraph's checkpoint tables (once
 | `LANGFUSE_TRACING_ENABLED` | `true` | Set to `false` to disable tracing entirely |
 | `LANGFUSE_PUBLIC_KEY` | — | Langfuse project public key |
 | `LANGFUSE_SECRET_KEY` | — | Langfuse project secret key |
-| `LANGFUSE_HOST` | `https://cloud.langfuse.com` | Langfuse host (self-hosted or cloud) |
+| `LANGFUSE_BASE_URL` | `https://cloud.langfuse.com` | Langfuse host (self-hosted or cloud) |
 
 ---
 

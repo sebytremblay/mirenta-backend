@@ -17,7 +17,7 @@ sequenceDiagram
     A-->>C: response (RLS-scoped to the caller)
 ```
 
-The Supabase access token identifies the user (`sub` = `auth.users.id`) and is verified locally via `SUPABASE_JWT_SECRET` (`verify_supabase_token` in `app/utils/auth.py`). The same token is forwarded to Supabase's PostgREST layer for every product-domain request, so Row Level Security — not application code — decides what each request can see or change.
+The Supabase access token identifies the user (`sub` = `auth.users.id`) and is verified locally against the project's public signing keys, fetched from `SUPABASE_JWKS_URL` (`verify_supabase_token` in `app/utils/auth.py`). The same token is forwarded to Supabase's PostgREST layer for every product-domain request, so Row Level Security — not application code — decides what each request can see or change.
 
 This backend never stores a password or issues a user-identity token itself — that's entirely Supabase's responsibility, and there is no separate backend-issued token type.
 
@@ -29,14 +29,14 @@ Call Supabase Auth directly (REST API or a Supabase client SDK):
 
 ```bash
 curl -X POST "$SUPABASE_URL/auth/v1/signup" \
-  -H "apikey: $SUPABASE_ANON_KEY" \
+  -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com", "password": "Secret123!"}'  # pragma: allowlist secret
 ```
 
 ```bash
 curl -X POST "$SUPABASE_URL/auth/v1/token?grant_type=password" \
-  -H "apikey: $SUPABASE_ANON_KEY" \
+  -H "apikey: $SUPABASE_PUBLISHABLE_KEY" \
   -H "Content-Type: application/json" \
   -d '{"email": "you@example.com", "password": "Secret123!"}'  # pragma: allowlist secret
 ```
@@ -54,6 +54,6 @@ Both return `access_token`/`refresh_token`. Use `access_token` as the Bearer tok
 ## Security notes
 
 - Passwords are never seen or stored by this backend — Supabase Auth owns credential storage and hashing entirely.
-- `SUPABASE_JWT_SECRET` must match the JWT Secret shown in your Supabase project's Project Settings → API — a mismatch causes every token to fail verification.
+- `SUPABASE_JWKS_URL` must point at your Supabase project's JWKS endpoint (Project Settings → API → JWT Keys) — a mismatch causes every token to fail verification.
 - All string inputs are sanitised before use.
 - Rate limits protect the product-domain endpoints against abuse — see [Configuration](configuration.md#rate-limiting).
