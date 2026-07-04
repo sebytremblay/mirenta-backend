@@ -143,7 +143,7 @@ class Settings:
         )
         self.LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
         self.LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
-        self.LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+        self.LANGFUSE_BASE_URL = os.getenv("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")
 
         # LangGraph Configuration
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -155,11 +155,11 @@ class Settings:
 
         # Supabase Configuration
         self.SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-        self.SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
-        self.SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-        # Verifies Supabase-issued user JWTs locally (HS256 legacy secret from
-        # Project Settings -> API -> JWT Settings).
-        self.SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
+        self.SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY", "")
+        self.SUPABASE_SECRET_KEY = os.getenv("SUPABASE_SECRET_KEY", "")
+        # Verifies Supabase-issued user JWTs by fetching the project's public
+        # signing keys (Project Settings -> API -> JWT Keys).
+        self.SUPABASE_JWKS_URL = os.getenv("SUPABASE_JWKS_URL", "")
 
         # Logging Configuration
         self.LOG_DIR = Path(os.getenv("LOG_DIR", "logs"))

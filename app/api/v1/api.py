@@ -7,7 +7,6 @@ product domain (organizations, knowledge, contacts, conversations, appointments)
 from fastapi import APIRouter
 
 from app.api.v1.appointments import router as appointments_router
-from app.api.v1.auth import router as auth_router
 from app.api.v1.contacts import router as contacts_router
 from app.api.v1.conversations import router as conversations_router
 from app.api.v1.knowledge import router as knowledge_router
@@ -17,7 +16,6 @@ from app.core.logging import logger
 api_router = APIRouter()
 
 # Include routers
-api_router.include_router(auth_router, prefix="/auth", tags=["Auth"])
 api_router.include_router(organizations_router, tags=["Organizations"])
 api_router.include_router(knowledge_router, tags=["Knowledge"])
 api_router.include_router(contacts_router, tags=["Contacts"])
