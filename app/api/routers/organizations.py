@@ -26,6 +26,7 @@ from app.core.logging import logger
 from app.schemas.auth import SupabaseUser
 from app.schemas.organizations import MemberRole, Organization, OrganizationMember
 from app.services.supabase_client import execute_query, get_user_client
+from app.services.twilio_client import provision_phone_number
 
 router = APIRouter()
 
@@ -83,10 +84,25 @@ async def create_organization(
         )
 
         logger.info("organization_created", org_id=str(organization.id), user_id=str(user.id))
-        return organization
     except APIError as e:
         logger.exception("organization_creation_failed", error=e.message, user_id=str(user.id))
         raise HTTPException(status_code=400, detail=e.message)
+
+    if organization.phone is None and settings.TWILIO_ACCOUNT_SID:
+        # Best-effort: the org row already exists, so a Twilio hiccup here
+        # must not fail the request. Admins can retry via PATCH, or a
+        # dedicated re-provision endpoint, if this doesn't land.
+        try:
+            phone_number = await provision_phone_number()
+            update_response = await execute_query(
+                client.table("organizations").update({"phone": phone_number}).eq("id", str(organization.id))
+            )
+            organization = Organization(**update_response.data[0])
+            logger.info("organization_phone_provisioned", org_id=str(organization.id), phone=phone_number)
+        except Exception:
+            logger.exception("organization_phone_provisioning_failed", org_id=str(organization.id))
+
+    return organization
 
 
 @router.get("/organizations/{org_id}", response_model=Organization)
