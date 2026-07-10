@@ -4,7 +4,7 @@ Everything lives in **one Supabase Postgres project**, managed as hand-written, 
 
 User identity (`auth.users`) is owned entirely by Supabase Auth — this repo never creates or migrates a users table. See [Authentication](authentication.md).
 
-The LangGraph agent code (`app/core/langgraph/graph.py`) is kept as infra for the interaction layer but isn't wired to an endpoint yet. Once it is, its checkpointer will create its own tables (`checkpoints`, `checkpoint_blobs`, `checkpoint_writes`) in this same Postgres project — managed by LangGraph itself, not by this repo. Temporal (once added) will similarly manage its own workflow-history tables.
+The SMS interaction-layer subagent (`app/core/langgraph/sms_graph.py`) is wired up and checkpoints via `AsyncPostgresSaver`, which creates its own tables (`checkpoints`, `checkpoint_blobs`, `checkpoint_writes`) in this same Postgres project — managed by LangGraph itself, not by this repo. Temporal runs against its own separate Postgres instance (see `docker-compose.yml`) and manages its own workflow-history tables there, not in this Supabase project.
 
 ## Migrations
 
@@ -39,6 +39,7 @@ erDiagram
         uuid id PK
         text name
         text slug UK
+        text phone "Twilio number; auto-provisioned on create if omitted"
         text timezone
     }
 
@@ -146,7 +147,7 @@ erDiagram
 
 **`signals`** — everything that kicks off or re-enters the agent loop: inbound webhooks (`webhook`, `inbound_call`, `inbound_sms`, `inbound_email`), portal events, operator-injected signals (`manual`), and completed interactions re-entering as `interaction_result`. `dedup_key` is unique and rejects provider webhook replays at the edge. `contact_id` is nullable because a signal (e.g. an inbound SMS from an unrecognized number) may arrive before the contact is resolved.
 
-**`tasks`** — scheduled executable events emitted by the deterministic decision engine. `idempotency_key` is unique and derived deterministically by the decision engine, so a retried decision can never double-emit the same task. `caused_by_signal_id` gives provenance back to the triggering signal. `temporal_workflow_id`/`temporal_run_id` link the row to its Temporal child workflow once Temporal is wired up; until then this table is the durable record with no executor behind it yet. `status = 'skipped_guardrail'` records a task that was blocked at execution time (quiet hours, DNC, consent, frequency cap) rather than emission time — both checks exist so a guardrail change takes effect on already-scheduled tasks too.
+**`tasks`** — scheduled executable events emitted by the deterministic decision engine. `idempotency_key` is unique and derived deterministically by the decision engine, so a retried decision can never double-emit the same task. `caused_by_signal_id` gives provenance back to the triggering signal. `temporal_workflow_id`/`temporal_run_id` link the row to its Temporal `TaskExecutionWorkflow`, which is the actual executor — but only for `type = 'sms'` today; other task types fail immediately, there's no send-side implementation for them yet. `status = 'skipped_guardrail'` records a task that was blocked at execution time (quiet hours, DNC, consent, frequency cap) rather than emission time — both checks exist so a guardrail change takes effect on already-scheduled tasks too. `status = 'canceled'` is defined but nothing sets it yet — a newer signal making a scheduled task stale doesn't currently cancel it.
 
 **`interactions`** — a single subagent conversation across voice/SMS/email. `transcript` is the turn-by-turn log; `summary` and `outcome`/`outcome_data` are what the summarize step of the subagent produces and what feeds back into `contact_memory`. `result_signal_id` points at the `interaction_result` signal re-emitted from this interaction, closing the loop. `outcome = 'opt_out'` must be paired with a new `consent` row (`granted = false`).
 
@@ -206,4 +207,4 @@ RLS is enabled with **no policies** on `contacts`, `contact_state`, `consent`, `
 
 ### API access
 
-This backend exposes the domain via `app/api/routers/organizations.py`, `contacts.py`, `auth.py`, and (once implemented) `signals.py`. Dashboard-facing routes build a Supabase client scoped to the caller's forwarded access token (`get_user_client` in `app/services/supabase_client.py`), so RLS decides what each request can see or change; agent-runtime code uses `get_service_role_client()` to read/write the loop tables above. See [Authentication](authentication.md).
+This backend exposes the domain via `app/api/routers/organizations.py`, `contacts.py`, `auth.py`, and `signals.py` (the Twilio SMS webhook plus manual signal creation/listing for operators). Dashboard-facing routes build a Supabase client scoped to the caller's forwarded access token (`get_user_client` in `app/services/supabase_client.py`), so RLS decides what each request can see or change; agent-runtime code (Temporal activities in `activities/contact_store.py`) uses `get_service_role_client()` to read/write the loop tables above. See [Authentication](authentication.md).

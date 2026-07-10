@@ -7,6 +7,8 @@
 - A [Supabase](https://supabase.com) project (free tier is fine) — provides Postgres and Auth
 - OpenAI API key
 - Langfuse account (optional — set `LANGFUSE_TRACING_ENABLED=false` to skip)
+- Docker (optional — only needed to run a local Temporal server via `make temporal-up`, required for the agent loop end-to-end)
+- A Twilio account with a phone number, or let the API buy one for you when you create an org (optional — only needed for the SMS agent loop; the CRUD API works without it)
 
 ## Set up your Supabase project
 
@@ -56,17 +58,31 @@ curl http://localhost:8000/api/v1/organizations \
 
 Every dashboard-facing endpoint (organizations, contacts) takes the same Supabase access token — Row Level Security scopes the response to whatever orgs the user belongs to. See [Authentication](authentication.md).
 
-The agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`) aren't exposed as user-facing endpoints — they're written and read by the agent runtime via the service-role client. `GET /contacts/{id}/timeline` (once implemented) will surface a read-only merged view of them for the dashboard.
+The agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`) aren't exposed as user-facing endpoints — they're written and read by the agent runtime via the service-role client. `GET /organizations/{org_id}/contacts/{id}/timeline` surfaces a read-only merged view of them for the dashboard.
+
+## Run the full agent loop (SMS)
+
+The steps above get you the CRUD API. To actually exercise the Takeoff Runtime loop — inbound text in, LLM-drafted reply out — you also need Temporal running and a worker:
+
+```bash
+make temporal-up      # local Temporal server + UI (docker-compose), or point TEMPORAL_ADDRESS at Temporal Cloud
+make worker            # separate process: registers ContactLoopWorkflow/TaskExecutionWorkflow + activities
+```
+
+Fill in `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` in your `.env` and set `APP_BASE_URL` to a URL Twilio can reach (e.g. an ngrok tunnel in local dev) — that's what a newly-provisioned number's SMS webhook points at. Creating an org via `POST /organizations` without a `phone` will then have Twilio buy it a number automatically; texting that number should get you a real, context-aware LLM reply. See [Architecture](architecture.md) for how the pieces (decision engine, Temporal workflows, LangGraph subagent) fit together, and its [Component status](architecture.md#component-status) table for what's live (SMS) vs. not yet (voice, email, proactive outreach, auto-follow-up).
 
 ## Customising the agent
-
-The Takeoff Runtime agent loop (see [Architecture](architecture.md)) isn't wired up end-to-end yet — the decision engine, Temporal scheduling, and channel subagents are still being built. The LangGraph agent that exists today (`app/core/langgraph/`) isn't wired to an API endpoint; it's the starting point those channel subagents will fork from. The parts you'll most likely change when you wire it up:
 
 | What | Where |
 |---|---|
 | Agent personality & instructions | `app/core/prompts/system.md` |
 | Available tools | `app/core/langgraph/tools/` |
+| SMS compose/guardrail behavior | `app/core/langgraph/nodes/compose.py`, `nodes/output_guardrails.py` |
+| Decision-engine rules (what tasks get emitted for a signal) | `decision/rules.py` |
+| Compliance guardrails (quiet hours, DNC, consent, frequency cap) | `decision/guardrails.py` |
 | LLM models & fallback order | `app/services/llm/registry.py` → `LLMRegistry.LLMS` |
+
+Adding a new channel (voice/email) means: a webhook route in `app/api/routers/signals.py`, a decision-engine rule in `decision/rules.py`, a send-side activity in `activities/channels.py`, wiring the new `task.type` into `workflows/task_execution.py`, and a subagent under `app/core/langgraph/` subclassing `BaseChannelAgent`. Voice already has a `voice_graph.py` stub to build from; email has nothing yet.
 
 ## Running pre-commit hooks
 
