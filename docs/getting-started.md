@@ -13,7 +13,7 @@
 1. Create a project at [supabase.com](https://supabase.com).
 2. From **Project Settings → API**, copy the Project URL, publishable key, secret key, and JWKS URL.
 3. From **Project Settings → Database → Connection string**, copy the direct connection host/port/user/password.
-4. Run the product-domain SQL (organizations, contacts, conversations, etc. — see `docs/database.md`) in the Supabase SQL editor.
+4. Run the migrations in `supabase/migrations/` in order (`0001` through `0007`) via the Supabase SQL editor or CLI — see `docs/database.md` for what each one adds.
 
 ## Run locally
 
@@ -54,17 +54,19 @@ curl http://localhost:8000/api/v1/organizations \
   -H "Authorization: Bearer <access_token from step 1>"
 ```
 
-Every product endpoint (organizations, knowledge, contacts, conversations, appointments) takes the same Supabase access token — Row Level Security scopes the response to whatever orgs the user belongs to. See [Authentication](authentication.md).
+Every dashboard-facing endpoint (organizations, contacts) takes the same Supabase access token — Row Level Security scopes the response to whatever orgs the user belongs to. See [Authentication](authentication.md).
+
+The agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`) aren't exposed as user-facing endpoints — they're written and read by the agent runtime via the service-role client. `GET /contacts/{id}/timeline` (once implemented) will surface a read-only merged view of them for the dashboard.
 
 ## Customising the agent
 
-The LangGraph agent (`app/core/langgraph/`) isn't wired to an API endpoint yet — it's kept as infra for generating outreach messages later. The parts you'll most likely change when you wire it up:
+The Takeoff Runtime agent loop (see [Architecture](architecture.md)) isn't wired up end-to-end yet — the decision engine, Temporal scheduling, and channel subagents are still being built. The LangGraph agent that exists today (`app/core/langgraph/`) isn't wired to an API endpoint; it's the starting point those channel subagents will fork from. The parts you'll most likely change when you wire it up:
 
 | What | Where |
 |---|---|
 | Agent personality & instructions | `app/core/prompts/system.md` |
-| Available tools | `app/core/langgraph/tools.py` |
-| LLM models & fallback order | `app/services/llm.py` → `LLMRegistry.LLMS` |
+| Available tools | `app/core/langgraph/tools/` |
+| LLM models & fallback order | `app/services/llm/registry.py` → `LLMRegistry.LLMS` |
 
 ## Running pre-commit hooks
 

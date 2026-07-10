@@ -71,11 +71,13 @@ Everything — Supabase Auth's `auth.users`, LangGraph's checkpoint tables (once
 | Variable | Default | Description |
 | --- | --- | --- |
 | `RATE_LIMIT_DEFAULT` | `200 per day, 50 per hour` | Fallback limit |
+| `RATE_LIMIT_ROOT` | `10 per minute` | `/` |
+| `RATE_LIMIT_HEALTH` | `20 per minute` | `/health` and the versioned health router |
 | `RATE_LIMIT_ORGANIZATIONS` | `60 per minute` | Organization + membership endpoints |
-| `RATE_LIMIT_KNOWLEDGE` | `60 per minute` | Knowledge endpoints |
-| `RATE_LIMIT_CONTACTS` | `60 per minute` | Contact endpoints |
-| `RATE_LIMIT_CONVERSATIONS` | `60 per minute` | Conversation + timeline endpoints |
-| `RATE_LIMIT_APPOINTMENTS` | `60 per minute` | Appointment endpoints |
+| `RATE_LIMIT_CONTACTS` | `60 per minute` | Contact + contact-timeline endpoints |
+| `RATE_LIMIT_SIGNALS` | `60 per minute` | Manual signal creation/listing endpoints |
+| `RATE_LIMIT_SMS_WEBHOOK` | `120 per minute` | Twilio inbound SMS webhook |
+| `RATE_LIMIT_AGENT_CHAT` | `30 per minute` | Reserved for the interaction-layer chat endpoint, once wired up |
 
 Rate limiting uses in-memory storage, so limits are tracked per-process (not shared across multiple app instances).
 

@@ -1,0 +1,77 @@
+"""Unit tests for decision/rules.py and decision/engine.py."""
+
+from datetime import datetime, timezone
+
+from decision.engine import evaluate
+from decision.rules import decide_on_interaction_result, decide_on_inbound_sms
+from tests.decision.factories import make_contact, make_contact_state, make_signal
+
+
+def test_decide_on_inbound_sms_emits_sms_task_when_clean() -> None:
+    now = datetime(2026, 7, 10, 14, 0, tzinfo=timezone.utc)  # outside quiet hours in UTC-aligned tz
+    contact = make_contact(status="active", timezone_name="UTC")
+    contact_state = make_contact_state(contact_id=contact.id, org_id=contact.org_id)
+    signal = make_signal(type="inbound_sms", contact_id=contact.id, org_id=contact.org_id, payload={"body": "hi"})
+
+    output = decide_on_inbound_sms(signal=signal, contact=contact, contact_state=contact_state, consent=None, now=now)
+
+    assert len(output.tasks) == 1
+    task = output.tasks[0]
+    assert task.type == "sms"
+    assert task.payload["goal"] == "reply_to_inbound_sms"
+    assert task.payload["trigger_signal_id"] == str(signal.id)
+    assert output.contact_state_patch["contact_attempts"] == 1
+    assert output.guardrail_denials == []
+
+
+def test_decide_on_inbound_sms_blocked_by_dnc_emits_no_task() -> None:
+    now = datetime(2026, 7, 10, 14, 0, tzinfo=timezone.utc)
+    contact = make_contact(status="dnc", timezone_name="UTC")
+    contact_state = make_contact_state(contact_id=contact.id, org_id=contact.org_id)
+    signal = make_signal(type="inbound_sms", contact_id=contact.id, org_id=contact.org_id)
+
+    output = decide_on_inbound_sms(signal=signal, contact=contact, contact_state=contact_state, consent=None, now=now)
+
+    assert output.tasks == []
+    assert output.contact_state_patch == {}
+    assert any(denial.check == "dnc" for denial in output.guardrail_denials)
+
+
+def test_decide_on_interaction_result_sets_opted_out_state() -> None:
+    now = datetime.now(timezone.utc)
+    contact = make_contact()
+    contact_state = make_contact_state(contact_id=contact.id, org_id=contact.org_id)
+    signal = make_signal(
+        type="interaction_result", contact_id=contact.id, org_id=contact.org_id, payload={"outcome": "opt_out"}
+    )
+
+    output = decide_on_interaction_result(
+        signal=signal, contact=contact, contact_state=contact_state, consent=None, now=now
+    )
+
+    assert output.tasks == []
+    assert output.contact_state_patch["current_state"] == "opted_out"
+
+
+def test_evaluate_dispatches_inbound_sms_to_rules_handler() -> None:
+    now = datetime(2026, 7, 10, 14, 0, tzinfo=timezone.utc)
+    contact = make_contact(timezone_name="UTC")
+    contact_state = make_contact_state(contact_id=contact.id, org_id=contact.org_id)
+    signal = make_signal(type="inbound_sms", contact_id=contact.id, org_id=contact.org_id, payload={"body": "hi"})
+
+    output = evaluate(signal=signal, contact=contact, contact_state=contact_state, consent=None, now=now)
+
+    assert len(output.tasks) == 1
+
+
+def test_evaluate_unknown_signal_type_returns_empty_output() -> None:
+    now = datetime.now(timezone.utc)
+    contact = make_contact()
+    contact_state = make_contact_state(contact_id=contact.id, org_id=contact.org_id)
+    signal = make_signal(type="webhook", contact_id=contact.id, org_id=contact.org_id)
+
+    output = evaluate(signal=signal, contact=contact, contact_state=contact_state, consent=None, now=now)
+
+    assert output.tasks == []
+    assert output.contact_state_patch == {}
+    assert output.guardrail_denials == []

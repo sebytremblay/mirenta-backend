@@ -1,13 +1,10 @@
-"""LangGraph tools for enhanced language model capabilities.
+"""LangGraph tools for the channel subagents.
 
-This package contains custom tools that can be used with LangGraph to extend
-the capabilities of language models. Currently includes tools for web search
-and other external integrations.
+Currently empty — the old template's demo tools (`ask_human`,
+`duckduckgo_search`) were removed. Add real per-channel tools here as they're
+built.
 """
 
 from langchain_core.tools.base import BaseTool
 
-from .ask_human import ask_human
-from .duckduckgo_search import duckduckgo_search_tool
-
-tools: list[BaseTool] = [duckduckgo_search_tool, ask_human]
+tools: list[BaseTool] = []

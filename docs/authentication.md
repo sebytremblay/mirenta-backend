@@ -47,7 +47,9 @@ Both return `access_token`/`refresh_token`. Use `access_token` as the Bearer tok
 
 ## Product-domain endpoints
 
-`Organization`/`Knowledge`/`Contact`/`Conversation`/`Appointment` endpoints (see `app/api/v1/organizations.py`, `knowledge.py`, `contacts.py`, `conversations.py`, `appointments.py`) all require a Supabase access token, forwarded to Supabase's PostgREST layer so Row Level Security enforces org-membership authorization — see [Database](database.md#row-level-security) for the policy details.
+`Organization`/`Contact` endpoints (see `app/api/routers/organizations.py`, `contacts.py`) all require a Supabase access token, forwarded to Supabase's PostgREST layer so Row Level Security enforces org-membership authorization — see [Database](database.md#row-level-security) for the policy details.
+
+The agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`, `contact_state`, `consent`) are locked to the Supabase service role and aren't reachable through a user-scoped Supabase access token at all — the agent runtime accesses them via `get_service_role_client()`, not the caller's forwarded JWT. See [Database](database.md#row-level-security).
 
 ---
 

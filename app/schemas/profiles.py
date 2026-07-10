@@ -9,7 +9,7 @@ from app.schemas.base import BaseResponse
 
 
 class Profile(BaseResponse):
-    """A clinic-staff profile, 1:1 with the Supabase `auth.users` table.
+    """A profile, 1:1 with the Supabase `auth.users` table.
 
     Attributes:
         id: Profile ID, 1:1 with auth.users.id.

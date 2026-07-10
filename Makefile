@@ -32,6 +32,18 @@ _serve:
 	@$(call run_with_env,./.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --loop uvloop)
 
 # ---------------------------------------------------------------------------
+# Temporal
+# ---------------------------------------------------------------------------
+temporal-up:
+	docker compose up -d temporal temporal-ui
+
+temporal-down:
+	docker compose down
+
+worker:
+	@$(call run_with_env,uv run python -m worker.main)
+
+# ---------------------------------------------------------------------------
 # Code quality
 # ---------------------------------------------------------------------------
 lint:
@@ -72,6 +84,11 @@ help:
 	@echo "  staging              Staging server"
 	@echo "  prod                 Production server"
 	@echo ""
+	@echo "Temporal:"
+	@echo "  temporal-up          Start local Temporal server + UI (docker-compose)"
+	@echo "  temporal-down        Stop the local Temporal stack"
+	@echo "  worker               Run the Temporal worker (registers workflows + activities)"
+	@echo ""
 	@echo "Code quality:"
 	@echo "  lint                 Ruff lint check"
 	@echo "  format               Ruff format"
@@ -84,5 +101,6 @@ help:
 	@echo "  clean                Remove .venv, __pycache__, .pytest_cache"
 
 .PHONY: install dev staging prod _serve \
+        temporal-up temporal-down worker \
         lint format typecheck check pre-commit pre-commit-update \
         clean help
