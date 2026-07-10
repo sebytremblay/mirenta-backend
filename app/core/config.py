@@ -130,6 +130,7 @@ class Settings:
         )
         self.API_V1_STR = os.getenv("API_V1_STR", "/api/v1")
         self.DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "t", "yes")
+        self.DEFAULT_PERSONA_NAME = os.getenv("DEFAULT_PERSONA_NAME", "Alex")
 
         # CORS Settings
         self.ALLOWED_ORIGINS = parse_list_from_env("ALLOWED_ORIGINS", ["*"])
@@ -149,9 +150,24 @@ class Settings:
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
         self.DEFAULT_LLM_MODEL = os.getenv("DEFAULT_LLM_MODEL", "gpt-5-mini")
         self.DEFAULT_LLM_TEMPERATURE = float(os.getenv("DEFAULT_LLM_TEMPERATURE", "0.2"))
-        self.MAX_TOKENS = int(os.getenv("MAX_TOKENS", "2000"))
+        self.MAX_TOKENS = int(os.getenv("MAX_TOKENS", "4000"))
         self.MAX_LLM_CALL_RETRIES = int(os.getenv("MAX_LLM_CALL_RETRIES", "3"))
         self.LLM_TOTAL_TIMEOUT = int(os.getenv("LLM_TOTAL_TIMEOUT", "60"))
+
+        # Twilio Configuration
+        self.TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
+        self.TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+
+        # Temporal Configuration — durable workflow/task scheduling.
+        # Local dev defaults point at the docker-compose Temporal server
+        # (plaintext, no API key). Temporal Cloud sets TEMPORAL_ADDRESS to
+        # <namespace>.<account>.tmprl.cloud:7233 and TEMPORAL_TLS=true; the
+        # API key is read from TEMPORAL_KEY (existing env var name kept as-is).
+        self.TEMPORAL_ADDRESS = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
+        self.TEMPORAL_NAMESPACE = os.getenv("TEMPORAL_NAMESPACE", "default")
+        self.TEMPORAL_API_KEY = os.getenv("TEMPORAL_KEY", "")
+        self.TEMPORAL_TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "mirenta-takeoff")
+        self.TEMPORAL_TLS = os.getenv("TEMPORAL_TLS", "false").lower() in ("true", "1", "t", "yes")
 
         # Supabase Configuration
         self.SUPABASE_URL = os.getenv("SUPABASE_URL", "")
@@ -185,10 +201,10 @@ class Settings:
             "root": ["10 per minute"],
             "health": ["20 per minute"],
             "organizations": ["60 per minute"],
-            "knowledge": ["60 per minute"],
             "contacts": ["60 per minute"],
-            "conversations": ["60 per minute"],
-            "appointments": ["60 per minute"],
+            "signals": ["60 per minute"],
+            "sms_webhook": ["120 per minute"],
+            "agent_chat": ["30 per minute"],
         }
 
         # Update rate limit endpoints from environment variables

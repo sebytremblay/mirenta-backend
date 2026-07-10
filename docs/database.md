@@ -1,37 +1,44 @@
 # Database
 
-Everything lives in **one Supabase Postgres project**, entirely as hand-written SQL run through the Supabase SQL editor — this repo has no ORM models and no migration tooling. That covers the Mirenta product domain (clinics, contacts, outreach conversations, SMS/voice logs, and appointments).
+Everything lives in **one Supabase Postgres project**, managed as hand-written, numbered SQL migrations in `supabase/migrations/` (no ORM). That covers org/staff identity glue, the contact domain, and the Takeoff Runtime agent-loop tables (signals, tasks, interactions, memory) — see [Architecture](architecture.md) for how those tables map onto the loop.
 
 User identity (`auth.users`) is owned entirely by Supabase Auth — this repo never creates or migrates a users table. See [Authentication](authentication.md).
 
-The LangGraph agent code (`app/core/langgraph/graph.py`) is kept as infra for future outreach message generation but isn't wired to an endpoint yet. Once it is, its checkpointer will create its own tables (`checkpoints`, `checkpoint_blobs`, `checkpoint_writes`) in this same Postgres project — managed by LangGraph itself, not by this repo.
+The LangGraph agent code (`app/core/langgraph/graph.py`) is kept as infra for the interaction layer but isn't wired to an endpoint yet. Once it is, its checkpointer will create its own tables (`checkpoints`, `checkpoint_blobs`, `checkpoint_writes`) in this same Postgres project — managed by LangGraph itself, not by this repo. Temporal (once added) will similarly manage its own workflow-history tables.
 
-## Product data model (Supabase)
+## Migrations
 
-The Mirenta product itself (clinic dashboard + outreach agent runtime) is backed by hand-written SQL run through the Supabase SQL editor.
+| File | Adds |
+|---|---|
+| `0001_organizations.sql` | `organizations`, `organization_members`, shared `set_updated_at()` trigger helper |
+| `0002_profiles.sql` | `profiles`, auto-provisioning trigger on `auth.users` insert |
+| `0003_contacts.sql` | `contacts`, `contact_state`, `consent`, `current_consent` view, shared `channel` enum |
+| `0004_signals.sql` | `signals` — everything that kicks off (or re-enters) the agent loop |
+| `0005_tasks.sql` | `tasks` — scheduled executable events emitted by the decision engine |
+| `0006_interactions.sql` | `interactions`, `contact_timeline` view |
+| `0007_memory.sql` | `contact_memory` (pgvector), `match_contact_memory` RPC |
 
-### Schema
+## Schema
 
 ```mermaid
 erDiagram
     organizations ||--o{ organization_members : "has"
-    organizations ||--o{ knowledge : "has"
     organizations ||--o{ contacts : "has"
-    organizations ||--o{ conversations : "has"
-    organizations ||--o{ appointments : "has"
-    contacts ||--o{ conversations : "is subject of"
-    contacts ||--o{ appointments : "books"
-    conversations ||--o{ messages : "logs"
-    conversations ||--o{ call_sessions : "logs"
-    conversations |o--o| appointments : "resulted in"
-    call_sessions ||--o{ call_transcripts : "has turns"
+    contacts ||--|| contact_state : "has"
+    contacts ||--o{ consent : "has"
+    contacts ||--o{ signals : "receives"
+    contacts ||--o{ tasks : "targets"
+    contacts ||--o{ interactions : "has"
+    contacts ||--o{ contact_memory : "has"
+    signals ||--o{ tasks : "causes"
+    tasks ||--o{ interactions : "triggers"
+    interactions ||--o| signals : "re-emits as interaction_result"
+    interactions ||--o{ contact_memory : "extracted into"
 
     organizations {
         uuid id PK
         text name
         text slug UK
-        text website_url
-        text phone
         text timezone
     }
 
@@ -44,117 +51,129 @@ erDiagram
     profiles {
         uuid id PK "auth.users.id"
         text full_name
-        text avatar_url
         boolean onboarding_completed
-    }
-
-    knowledge {
-        uuid id PK
-        uuid org_id FK
-        text name
-        text content "hours, pricing, policies, FAQ"
     }
 
     contacts {
         uuid id PK
         uuid org_id FK
-        text first_name
-        text last_name
-        text email
+        text external_id "id from source system (CRM, PMS, import, etc.), unique per org"
         text phone UK "E.164, unique per org"
-        timestamptz first_seen_at "from PMS export"
-        timestamptz last_seen_at
-        timestamptz opted_out_at "TCPA: set once, agent goes silent"
+        citext email
+        text timezone "IANA, drives quiet hours"
+        text status "active|paused|archived|dnc"
+        jsonb attributes
     }
 
-    conversations {
+    contact_state {
+        uuid contact_id PK_FK
+        text current_state "decision-engine node"
+        text goal "org-defined, e.g. book_appointment"
+        text temporal_workflow_id "running ContactLoopWorkflow"
+        int contact_attempts "frequency-cap counter"
+        timestamptz next_task_at
+        text memory_summary "rolling summary"
+    }
+
+    consent {
+        uuid id PK
+        uuid contact_id FK
+        text channel
+        boolean granted
+        text source "web_form|sms_reply|agent_call|import"
+        timestamptz occurred_at "append-only: revoke = new row"
+    }
+
+    signals {
+        uuid id PK
+        uuid org_id FK
+        uuid contact_id FK "nullable until resolved"
+        text type "webhook|inbound_sms|interaction_result|manual|..."
+        text dedup_key UK "rejects webhook replays"
+        jsonb payload
+        text status "received|delivered|processed|ignored|failed"
+    }
+
+    tasks {
         uuid id PK
         uuid org_id FK
         uuid contact_id FK
-        text goal "e.g. annual_exam_recall"
-        text status "active|paused|booked|opted_out|handed_off|stale"
-        text last_channel "sms|voice"
-        timestamptz next_scheduled_action_at "follow-up timer"
+        uuid caused_by_signal_id FK
+        text type "call|sms|email|webhook|api_call"
+        text status "scheduled|running|completed|failed|canceled|skipped_guardrail"
+        text idempotency_key UK
+        timestamptz scheduled_for
+        text temporal_workflow_id
     }
 
-    messages {
-        uuid id PK
-        uuid conversation_id FK
-        text sender_type "agent|contact"
-        text body
-        text status "sent|delivered|failed"
-        text provider_id "Twilio SID"
-    }
-
-    call_sessions {
-        uuid id PK
-        uuid conversation_id FK
-        text direction "inbound|outbound"
-        int duration_seconds
-        text recording_url
-        text provider_id
-    }
-
-    call_transcripts {
-        uuid id PK
-        uuid call_session_id FK
-        text speaker "agent|contact"
-        text utterance
-        int turn_index "explicit ordering"
-    }
-
-    appointments {
+    interactions {
         uuid id PK
         uuid org_id FK
-        uuid conversation_id FK "nullable"
         uuid contact_id FK
-        timestamptz starts_at
-        text status "booked|kept|no_show|cancelled|rescheduled"
+        uuid task_id FK
+        text channel
+        text direction "outbound|inbound"
+        jsonb transcript
+        text outcome "goal_achieved|progressed|opt_out|..."
+        uuid result_signal_id FK "closes the loop"
+        numeric cost_usd
+    }
+
+    contact_memory {
+        uuid id PK
+        uuid contact_id FK
+        uuid interaction_id FK
+        text kind "summary|fact|transcript_chunk|preference"
+        text content
+        vector embedding "1536 dims, HNSW cosine"
+        uuid superseded_by FK "soft-invalidation"
     }
 ```
 
-**`profiles`** — one row per clinic-staff user, 1:1 with `auth.users`, auto-created by the `handle_new_user` trigger on sign-up (copies `full_name` / `avatar_url` from OAuth metadata).
+## Tables
 
-**`organizations`** — a clinic or clinic group. `slug` is unique and used for routing/branding.
+**`profiles`** — one row per org-staff user, 1:1 with `auth.users`, auto-created by the `handle_new_user` trigger on sign-up (copies `full_name` / `avatar_url` from OAuth metadata).
+
+**`organizations`** — any organization running outreach through Mirenta (a clinic, a dealership, a sales team, an agency, etc.). `slug` is unique and used for routing/branding.
 
 **`organization_members`** — join table between `auth.users` and `organizations`, carrying `role` (`owner` / `admin` / `member`). Enforced today: exactly one `owner` per org at creation time (see RLS below).
 
-**`knowledge`** — free-form clinic knowledge (hours, parking, pricing, policies, FAQ answers) the agent draws on when talking to contacts.
+**`contacts`** — identity + reachability for someone on an org's outreach list, sourced from an external import (CRM export, spreadsheet, PMS, etc.). `(org_id, external_id)` and `(org_id, phone)` are each unique. `status = 'dnc'` is a hard stop the decision engine checks before emitting any task.
 
-**`contacts`** — a pet owner on a clinic's recall list, sourced from the clinic's PMS export. `(org_id, phone)` is unique. `opted_out_at` is a one-way TCPA compliance flag — once set, the agent must go permanently silent for that contact.
+**`contact_state`** — 1:1 mutable workflow state per contact; this is what the decision engine reads on every signal. `current_state` is the decision-engine's state-machine node, `contact_attempts`/`attempts_window_start` back the frequency-cap guardrail, and `temporal_workflow_id` points at the contact's long-running `ContactLoopWorkflow`. `memory_summary` is a cheap denormalized mirror of the latest rolled-up `contact_memory` summary, so building agent context doesn't always require a vector query.
 
-**`conversations`** — the session parent: one outreach campaign / logical window of interaction with a contact (e.g. one annual-exam recall attempt). If a contact reactivates and lapses again later, a **new** conversation is opened rather than reusing the old one. A partial unique index enforces at most one `active` conversation per contact at a time.
+**`consent`** — per-channel consent decisions, **append-only**: a revocation is a new row with `granted = false`, never an update to the prior row. This keeps the compliance trail auditable. `current_consent` is a view returning only the latest decision per `(contact_id, channel)` — what guardrail checks actually query.
 
-**`messages`** — the SMS log for a conversation. `provider_id` is the Twilio SID, used to reconcile delivery-status webhooks.
+**`signals`** — everything that kicks off or re-enters the agent loop: inbound webhooks (`webhook`, `inbound_call`, `inbound_sms`, `inbound_email`), portal events, operator-injected signals (`manual`), and completed interactions re-entering as `interaction_result`. `dedup_key` is unique and rejects provider webhook replays at the edge. `contact_id` is nullable because a signal (e.g. an inbound SMS from an unrecognized number) may arrive before the contact is resolved.
 
-**`call_sessions`** — call-level metadata (direction, duration, recording URL) for voice interactions.
+**`tasks`** — scheduled executable events emitted by the deterministic decision engine. `idempotency_key` is unique and derived deterministically by the decision engine, so a retried decision can never double-emit the same task. `caused_by_signal_id` gives provenance back to the triggering signal. `temporal_workflow_id`/`temporal_run_id` link the row to its Temporal child workflow once Temporal is wired up; until then this table is the durable record with no executor behind it yet. `status = 'skipped_guardrail'` records a task that was blocked at execution time (quiet hours, DNC, consent, frequency cap) rather than emission time — both checks exist so a guardrail change takes effect on already-scheduled tasks too.
 
-**`call_transcripts`** — per-turn utterances within a call session, explicitly ordered by `turn_index` (not just timestamp) so the dialogue can be replayed deterministically. Unique on `(call_session_id, turn_index)`.
+**`interactions`** — a single subagent conversation across voice/SMS/email. `transcript` is the turn-by-turn log; `summary` and `outcome`/`outcome_data` are what the summarize step of the subagent produces and what feeds back into `contact_memory`. `result_signal_id` points at the `interaction_result` signal re-emitted from this interaction, closing the loop. `outcome = 'opt_out'` must be paired with a new `consent` row (`granted = false`).
 
-**`appointments`** — the billable outcome. `status = 'kept'` is the event that gets invoiced. `conversation_id` is nullable and `on delete set null` — an appointment survives even if its originating conversation is later removed.
+**`contact_memory`** — embedded chunks (`kind`: `summary` / `fact` / `transcript_chunk` / `preference`) for semantic recall via the `match_contact_memory` RPC. `embedding` is a 1536-dim `vector` (matches `text-embedding-3-small`; adjust the column and index if you change embedding models) indexed with HNSW cosine distance, which — unlike `ivfflat` — needs no training step and works from an empty table. `superseded_by` soft-invalidates a stale fact/summary by pointing at its replacement rather than deleting it.
 
-### Unified timeline view
+### Views and RPCs
 
-`conversation_timeline` merges `messages` and `call_transcripts` into one chronological feed per conversation, so assembling LLM context on agent wake-up doesn't require querying both tables separately:
+**`current_consent`** — `distinct on (contact_id, channel)`, latest `consent` row per pair. This is what compliance guardrails check, not the raw `consent` table.
+
+**`contact_timeline`** — unions `signals`, `tasks`, and `interactions` into one chronological feed per contact (`GET /contacts/{id}/timeline`), so assembling "everything that's happened with this contact" doesn't require querying three tables separately:
 
 ```sql
-select * from conversation_timeline
-where conversation_id = $1
+select * from contact_timeline
+where contact_id = $1
 order by occurred_at;
 ```
 
-It's defined with `security_invoker = true`, so it respects the caller's RLS rather than the view owner's.
+**`match_contact_memory(p_contact_id, p_query_embedding, p_match_count, p_min_similarity)`** — cosine-similarity search over `contact_memory`, scoped to one contact, excluding superseded rows and rows below `p_min_similarity` (default `0.3`). Call via `supabase.rpc("match_contact_memory", {...})`.
 
 ### Auto-provisioning & bookkeeping triggers
 
 - **`handle_new_user`** — `security definer` trigger on `auth.users` insert; creates the matching `profiles` row.
-- **`set_updated_at`** — generic trigger applied to every table with an `updated_at` column (`profiles`, `organizations`, `organization_members`, `knowledge`, `contacts`, `conversations`, `appointments`); stamps `updated_at = now()` on every update.
+- **`set_updated_at`** — generic trigger applied to every table with an `updated_at` column (`profiles`, `organizations`, `organization_members`, `contacts`, `contact_state`, `tasks`); stamps `updated_at = now()` on every update.
 
 ### Row Level Security
 
-RLS is enabled on every table. The **agent runtime writes via the Supabase service role key**, which bypasses RLS entirely — so there are no insert/update policies for `conversations`, `messages`, `call_sessions`, or `call_transcripts`. RLS here only governs what the **clinic dashboard** (authenticated end users) can read and manage.
-
-Two `security definer` helper functions back most policies:
+RLS is enabled on every table. Two `security definer` helper functions back most dashboard-facing policies:
 
 - `is_org_member(org)` — is the current user (`auth.uid()`) a member of `org`?
 - `is_org_admin(org)` — is the current user an `owner` or `admin` of `org`?
@@ -166,22 +185,25 @@ Policy shape by table:
 | `profiles` | own row only | own row only (update) |
 | `organizations` | org members | any authenticated user can create; admins update; owners delete |
 | `organization_members` | org members | first member self-inserts as `owner`; admins add/remove thereafter |
-| `knowledge` | org members | admins only |
-| `contacts` | org members | admins only |
-| `conversations` | org members | dashboard is read-only (writes via service role) |
-| `messages` | org members (via parent conversation) | read-only |
-| `call_sessions` | org members (via parent conversation) | read-only |
-| `call_transcripts` | org members (via parent call session → conversation) | read-only |
-| `appointments` | org members | read-only |
+| `contacts` | service role only | service role only |
+| `contact_state` | service role only | service role only |
+| `consent` | service role only | service role only |
+| `signals` | service role only | service role only |
+| `tasks` | service role only | service role only |
+| `interactions` | service role only | service role only |
+| `contact_memory` | service role only | service role only |
+
+RLS is enabled with **no policies** on `contacts`, `contact_state`, `consent`, `signals`, `tasks`, `interactions`, and `contact_memory` — that locks them to the Supabase service role (which bypasses RLS entirely) and denies the anon/authenticated keys by default. The org-facing dashboard doesn't talk to these tables directly today; only the agent runtime, via `get_service_role_client()`. If/when a dashboard needs read access to, say, the contact timeline, add explicit `select` policies scoped by `is_org_member(org_id)` rather than relaxing RLS wholesale.
 
 ### Indexes
 
-- `messages (conversation_id, created_at)`, `call_sessions (conversation_id, created_at)`, `call_transcripts (call_session_id, turn_index)` — timeline reconstruction.
-- `conversations (next_scheduled_action_at) where status = 'active'` — the timer loop's "what's due for follow-up" query.
-- `contacts (phone)` — inbound SMS/call routing: look up the contact by phone number.
-- `contacts (org_id)`, `knowledge (org_id)`, `conversations (org_id, status)`, `conversations (contact_id)`, `appointments (org_id, starts_at)`, `appointments (conversation_id)` — dashboard list views.
-- `conversations (contact_id) where status = 'active'` (unique) — enforces one active conversation per contact; drop this if overlapping campaigns are ever needed.
+- `signals (contact_id, received_at desc)`, `signals (status) where status in ('received', 'failed')`, `signals (type)`, GIN on `signals (payload)` — event-bus-style lookups and reprocessing queues.
+- `tasks (scheduled_for) where status = 'scheduled'` — the "what's due to run" query Temporal (or a fallback poller) uses.
+- `tasks (contact_id, created_at desc)`, `tasks (caused_by_signal_id)` — provenance and per-contact history.
+- `interactions (contact_id, started_at desc)`, `interactions (task_id)`, `interactions (outcome)`, `interactions (channel)` — timeline and reporting queries.
+- `contact_memory (contact_id, created_at desc)`, `contact_memory (contact_id, kind)`, HNSW on `contact_memory (embedding)` — semantic recall scoped to one contact.
+- `contacts (org_id)`, `contacts (org_id, email)`, `contacts (org_id, status)` — dashboard list views and DNC/status filtering.
 
 ### API access
 
-This backend exposes the product domain via `app/api/v1/organizations.py`, `knowledge.py`, `contacts.py`, `conversations.py`, and `appointments.py`. Every route builds a Supabase client scoped to the caller's forwarded access token (`get_user_client` in `app/services/supabase_client.py`), so RLS — not application code — decides what each request can see or change. See [Authentication](authentication.md#product-domain-endpoints).
+This backend exposes the domain via `app/api/routers/organizations.py`, `contacts.py`, `auth.py`, and (once implemented) `signals.py`. Dashboard-facing routes build a Supabase client scoped to the caller's forwarded access token (`get_user_client` in `app/services/supabase_client.py`), so RLS decides what each request can see or change; agent-runtime code uses `get_service_role_client()` to read/write the loop tables above. See [Authentication](authentication.md).

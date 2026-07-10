@@ -19,7 +19,7 @@ from fastapi import (
 from postgrest.exceptions import APIError
 from pydantic import BaseModel, Field
 
-from app.api.v1.auth import get_current_user
+from app.api.routers.auth import get_current_user
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import logger
@@ -104,9 +104,7 @@ async def get_organization(request: Request, org_id: UUID, user: SupabaseUser = 
     """
     client = await get_user_client(user.access_token)
     try:
-        response = await execute_query(
-            client.table("organizations").select("*").eq("id", str(org_id)).single()
-        )
+        response = await execute_query(client.table("organizations").select("*").eq("id", str(org_id)).single())
         return Organization(**response.data)
     except APIError as e:
         logger.warning("organization_not_found", org_id=str(org_id), error=e.message)
@@ -159,9 +157,7 @@ async def list_organization_members(request: Request, org_id: UUID, user: Supaba
     """
     client = await get_user_client(user.access_token)
     try:
-        response = await execute_query(
-            client.table("organization_members").select("*").eq("org_id", str(org_id))
-        )
+        response = await execute_query(client.table("organization_members").select("*").eq("org_id", str(org_id)))
         return [OrganizationMember(**row) for row in response.data]
     except APIError as e:
         logger.exception("list_organization_members_failed", org_id=str(org_id), error=e.message)

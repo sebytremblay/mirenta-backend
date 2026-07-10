@@ -17,7 +17,7 @@ class LoggingContextMiddleware(BaseHTTPMiddleware):
 
     Per-request identifiers (e.g. user_id) are bound directly by the auth
     dependency that establishes them (see `get_current_user` in
-    `app/api/v1/auth.py`); this middleware only guarantees that context never
+    `app/api/routers/auth.py`); this middleware only guarantees that context never
     leaks from one request into the next.
     """
 

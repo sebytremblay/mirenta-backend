@@ -1,52 +1,59 @@
 """This file contains the schemas for the application."""
 
-from app.schemas.appointments import Appointment, AppointmentStatus
 from app.schemas.auth import SupabaseUser
 from app.schemas.base import BaseResponse
-from app.schemas.chat import Message
-from app.schemas.contacts import Contact
-from app.schemas.conversations import (
-    CallDirection,
-    CallSession,
-    CallTranscript,
+from app.schemas.contacts import (
     Channel,
-    Conversation,
-    ConversationStatus,
-    MessageDeliveryStatus,
-    SmsMessage,
-    SpeakerType,
-    TimelineEntry,
+    Consent,
+    Contact,
+    ContactState,
+    ContactStatus,
+    CurrentConsent,
 )
 from app.schemas.graph import GraphState
-from app.schemas.knowledge import Knowledge
+from app.schemas.interactions import (
+    Interaction,
+    InteractionDirection,
+    InteractionOutcome,
+    TimelineEntry,
+    TimelineEntryKind,
+)
+from app.schemas.memory import ContactMemory, ContactMemoryMatch, MemoryKind
 from app.schemas.organizations import (
     MemberRole,
     Organization,
     OrganizationMember,
 )
 from app.schemas.profiles import Profile
+from app.schemas.signals import Signal, SignalStatus, SignalType
+from app.schemas.tasks import Task, TaskStatus, TaskType
 
 __all__ = [
     "SupabaseUser",
     "BaseResponse",
-    "Message",
     "GraphState",
     "Profile",
     "MemberRole",
     "Organization",
     "OrganizationMember",
-    "Knowledge",
-    "Contact",
-    "ConversationStatus",
     "Channel",
-    "SpeakerType",
-    "MessageDeliveryStatus",
-    "CallDirection",
-    "Conversation",
-    "SmsMessage",
-    "CallSession",
-    "CallTranscript",
+    "ContactStatus",
+    "Contact",
+    "ContactState",
+    "Consent",
+    "CurrentConsent",
+    "SignalType",
+    "SignalStatus",
+    "Signal",
+    "TaskType",
+    "TaskStatus",
+    "Task",
+    "InteractionDirection",
+    "InteractionOutcome",
+    "Interaction",
+    "TimelineEntryKind",
     "TimelineEntry",
-    "AppointmentStatus",
-    "Appointment",
+    "MemoryKind",
+    "ContactMemory",
+    "ContactMemoryMatch",
 ]

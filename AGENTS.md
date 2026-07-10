@@ -19,7 +19,8 @@ make check                # lint + typecheck
 
 ```
 app/
-  api/v1/          # Route handlers (auth.py, organizations.py, contacts.py, ...)
+  api/
+    routers/       # Route handlers (auth.py, organizations.py, contacts.py, signals.py [planned], ...)
   core/
     config.py      # Pydantic Settings config
     langgraph/     # LangGraph agent graph + tools (not yet wired to a route)
@@ -27,19 +28,26 @@ app/
     limiter.py     # Rate limiting (slowapi, in-memory)
     middleware.py  # ASGI middleware
     prompts/       # System prompts
-  schemas/         # Pydantic request/response schemas + graph state
-  services/        # LLM service, Supabase client
+  schemas/         # Pydantic request/response schemas: contacts, signals,
+                   # tasks, interactions, memory, organizations, graph state
+  services/        # LLM service, Supabase client, Temporal client [planned]
   utils/           # Shared utilities
 scripts/           # Environment setup scripts
+supabase/
+  migrations/      # Numbered hand-written SQL (no ORM)
 ```
 
 ## Project Overview
 
-This is a production-ready outreach-agent backend built with:
-- **LangGraph** for stateful, multi-step AI agent workflows (kept as infra for outreach message generation, not yet wired to an endpoint)
-- **FastAPI** for high-performance async REST API endpoints
+This is a production-ready outreach-agent backend for Mirenta, built with:
+- **The Takeoff Runtime** — an event-driven, durable-workflow architecture for agent work spanning days to weeks across voice, SMS, and email. A deterministic decision engine (plain Python, zero LLM calls) decides *when, whether, and on what channel* to act; LLMs only run the conversation itself. See `docs/architecture.md` for the full design and current implementation status.
+- **LangGraph** for the stateful, multi-step interaction-layer subagents (kept as infra today; the generic graph isn't yet split into per-channel subagents or wired to an endpoint)
+- **FastAPI** for high-performance async REST API endpoints and signal ingestion (webhook routers)
+- **Temporal** (planned) for durable task scheduling — one long-running workflow per contact, timers firing minutes to weeks out
 - **Langfuse** for LLM observability and tracing
-- **Supabase (Postgres + Auth)** for the product domain and user identity
+- **Supabase (Postgres + Auth)** for the product domain, user identity, and the agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`)
+
+When working on the decision engine specifically: it must stay free of LLM calls and free of imports from `app/core/langgraph/` — that separation (deterministic core, generative edge) is the architecture's central invariant. Compliance guardrails (quiet hours, contact-frequency caps, DNC, consent) are preconditions that block task *emission*, and are re-checked at task *execution* time — never bolt them on as a post-hoc filter.
 
 ## Quick Reference: Critical Rules
 
@@ -100,15 +108,19 @@ This is a production-ready outreach-agent backend built with:
 ## Authentication & Security
 
 - User identity is Supabase Auth — clients sign up/log in directly against Supabase; this backend only verifies the resulting JWT (`verify_supabase_token`)
-- Use `get_current_user` for every authenticated endpoint (see `app/api/v1/auth.py`) — there is no separate backend-issued token type
+- Use `get_current_user` for every authenticated endpoint (see `app/api/routers/auth.py`) — there is no separate backend-issued token type
 - Store sensitive data (including Supabase keys) in environment variables
 - Validate all user inputs with Pydantic models
 
 ## Database Operations
 
-- Everything lives in one Supabase Postgres project: `auth.users` (Supabase-managed) and the hand-written RLS product domain (`organizations`, `contacts`, `conversations`, etc.) — see `docs/database.md`
+- Everything lives in one Supabase Postgres project: `auth.users` (Supabase-managed), the hand-written RLS product domain (`organizations`, `contacts`), and the agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`) — see `docs/database.md`
 - Use the Supabase client (`app/services/supabase_client.py`, `get_user_client`/`get_service_role_client`/`execute_query`) for all table access — there is no ORM
+- Agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`, `contacts`, `contact_state`, `consent`) have RLS enabled with no policies — they're reachable only via `get_service_role_client()`, never the user-scoped client
+- `consent` is append-only — write a new row to revoke or re-grant, never update an existing row in place; guardrails read the latest row via the `current_consent` view
+- `tasks.idempotency_key` must be derived deterministically by the decision engine so retries can't double-emit a task; never generate it from a random value or wall-clock time
 - Use LangGraph's AsyncPostgresSaver for agent checkpointing once the agent is wired to an endpoint (same Supabase Postgres connection, its own tables)
+- Use Temporal's own persistence for workflow/task scheduling state once wired up (`app/services/temporal_client.py`) — don't reimplement a poller/scheduler in application code
 
 ## Performance Guidelines
 

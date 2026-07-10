@@ -17,7 +17,7 @@ from slowapi.errors import RateLimitExceeded
 
 from asgi_correlation_id import CorrelationIdMiddleware
 
-from app.api.v1.api import api_router
+from app.api.main import api_router
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import logger
