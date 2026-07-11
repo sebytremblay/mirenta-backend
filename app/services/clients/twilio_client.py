@@ -2,6 +2,7 @@
 
 from twilio.base import values
 from twilio.base.exceptions import TwilioRestException
+from twilio.http.async_http_client import AsyncTwilioHttpClient
 from twilio.rest import Client
 from twilio.twiml.voice_response import Connect, Stream, VoiceResponse
 from tenacity import (
@@ -20,13 +21,20 @@ _client: Client | None = None
 def get_twilio_client() -> Client:
     """Get the cached Twilio REST client, authenticated with the account credentials.
 
+    Uses `AsyncTwilioHttpClient` so callers can safely use `*_async` methods
+    (`create_async`, `list_async`, etc.) from FastAPI/Temporal async paths.
+
     Returns:
         Client: A cached Twilio client authenticated with `TWILIO_ACCOUNT_SID` /
             `TWILIO_AUTH_TOKEN`.
     """
     global _client
     if _client is None:
-        _client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
+        _client = Client(
+            settings.TWILIO_ACCOUNT_SID,
+            settings.TWILIO_AUTH_TOKEN,
+            http_client=AsyncTwilioHttpClient(),
+        )
     return _client
 
 
