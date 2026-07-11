@@ -12,7 +12,7 @@ from pydantic import Field
 
 from app.schemas.base import BaseResponse
 
-TaskType = Literal["call", "sms", "email", "webhook", "api_call"]
+TaskType = Literal["call", "sms", "webhook", "api_call"]
 TaskStatus = Literal["scheduled", "running", "completed", "failed", "canceled", "skipped_guardrail"]
 
 

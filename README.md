@@ -1,6 +1,6 @@
 # Mirenta Backend
 
-The API backend for Mirenta — a general-purpose outreach runtime. Any organization (a clinic, a dealership, a sales team, an agency — whatever) imports a contact list, and an AI agent runs outreach across SMS, voice, and email over days-to-weeks-long campaigns, working each contact toward a goal the org defines — booking an appointment, scheduling a call, closing a deal, or anything else.
+The API backend for Mirenta — a general-purpose outreach runtime. Any organization (a clinic, a dealership, a sales team, an agency — whatever) imports a contact list, and an AI agent runs outreach across SMS and voice over days-to-weeks-long campaigns, working each contact toward a goal the org defines — booking an appointment, scheduling a call, closing a deal, or anything else.
 
 Built with **FastAPI** on top of **Supabase** (Postgres + Auth, RLS-enforced). Outreach itself runs on the **Takeoff Runtime** — an event-driven, durable-workflow agent-loop architecture: deterministic code decides *when, whether, and on what channel* to reach a contact; LLMs (LangGraph subagents) only handle the conversation itself. See [docs/architecture.md](docs/architecture.md).
 
@@ -20,7 +20,7 @@ Built with **FastAPI** on top of **Supabase** (Postgres + Auth, RLS-enforced). O
 - **Structured logging** (structlog) with request/user context on every line
 - **Rate limiting** via slowapi on every route
 
-> **Status.** The loop runs end-to-end for **SMS only** — inbound text in, LLM-drafted reply out, multi-turn, guardrailed, logged. Voice and email have schema support (signal/task types) but no ingestion route, execution path, or subagent yet. There's also no proactive/first-touch outreach, no auto-follow-up after silence, and no cancellation of a scheduled task that a newer signal makes stale. See [docs/architecture.md](docs/architecture.md#component-status) for the full breakdown.
+> **Status.** The loop runs end-to-end for **SMS only** — inbound text in, LLM-drafted reply out, multi-turn, guardrailed, logged. Voice has schema support (signal/task types) but no ingestion route, execution path, or subagent yet. There's also no proactive/first-touch outreach, no auto-follow-up after silence, and no cancellation of a scheduled task that a newer signal makes stale. See [docs/architecture.md](docs/architecture.md#component-status) for the full breakdown.
 
 ## Quickstart
 
@@ -87,7 +87,7 @@ Everything lives in one Supabase Postgres project, as numbered SQL migrations in
 - `contacts` — the people an org is reaching out to, sourced from an external import (CRM export, spreadsheet, PMS, etc.), with 1:1 `contact_state` (decision-engine workflow state) and append-only `consent` records
 - `signals` — everything that kicks off or re-enters the agent loop: inbound webhooks, replies, and completed interactions
 - `tasks` — scheduled outreach emitted by the deterministic decision engine, with idempotency keys and provenance back to the triggering signal
-- `interactions` — logged subagent conversations (voice/SMS/email), summarized back into `contact_memory`
+- `interactions` — logged subagent conversations (voice/SMS), summarized back into `contact_memory`
 - `contact_memory` — embedded summaries/facts for semantic recall (pgvector)
 
 See [docs/database.md](docs/database.md) for the full schema, indexes, and RLS policy table, and [docs/architecture.md](docs/architecture.md) for how these tables implement the agent loop.
@@ -107,13 +107,13 @@ See [LICENSE](LICENSE).
 ### General
 
 **What is this?**
-The backend API for Mirenta, a general-purpose outreach runtime — not tied to any one vertical. It exposes the product domain (organizations, contacts) over a Supabase-authenticated REST API, and runs the Takeoff Runtime agent loop that drives outreach for any kind of organization — live for SMS today, with voice/email still to come.
+The backend API for Mirenta, a general-purpose outreach runtime — not tied to any one vertical. It exposes the product domain (organizations, contacts) over a Supabase-authenticated REST API, and runs the Takeoff Runtime agent loop that drives outreach for any kind of organization — live for SMS today, with voice still to come.
 
 **What's the Takeoff Runtime?**
 An event-driven architecture where a deterministic decision engine (not an LLM) decides when/whether/how to contact someone, Temporal schedules the resulting tasks durably, and LangGraph subagents handle only the actual conversation on each channel. See [docs/architecture.md](docs/architecture.md) for the full design.
 
 **Is the outreach agent live?**
-Yes, for SMS: text a configured Twilio number and you'll get a real, context-aware, guardrailed LLM reply — inbound webhook → Temporal event bus → decision engine → durable task → LangGraph SMS subagent → logged interaction that re-enters the loop. Voice and email aren't wired up yet (schema exists, no ingestion route or subagent), and the decision engine doesn't yet do proactive outreach or auto-follow-up — see [docs/architecture.md](docs/architecture.md#component-status) for the full breakdown.
+Yes, for SMS: text a configured Twilio number and you'll get a real, context-aware, guardrailed LLM reply — inbound webhook → Temporal event bus → decision engine → durable task → LangGraph SMS subagent → logged interaction that re-enters the loop. Voice isn't wired up yet (schema exists, no ingestion route or subagent), and the decision engine doesn't yet do proactive outreach or auto-follow-up — see [docs/architecture.md](docs/architecture.md#component-status) for the full breakdown.
 
 ### Setup & Configuration
 

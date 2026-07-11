@@ -33,6 +33,7 @@ from twilio.request_validator import RequestValidator
 
 from app.api.deps import assert_org_member
 from app.api.routers.auth import get_current_user
+from app.api.twilio_utils import mark_signal_status, public_request_url
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import logger
@@ -62,27 +63,6 @@ class CreateSignalRequest(BaseModel):
     channel: Channel | None = None
     source: str = "operator"
     payload: dict[str, Any] = Field(default_factory=dict)
-
-
-def _public_request_url(request: Request) -> str:
-    """Reconstruct the externally-visible URL Twilio signed the request against.
-
-    Behind a TLS-terminating proxy, `request.url` reflects the proxy-to-app
-    hop (often plain `http`), which would make every signature check fail —
-    so prefer `X-Forwarded-Proto`/`X-Forwarded-Host` when present.
-    """
-    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
-    host = request.headers.get("x-forwarded-host", request.url.netloc)
-    query = f"?{request.url.query}" if request.url.query else ""
-    return f"{proto}://{host}{request.url.path}{query}"
-
-
-async def _mark_signal_status(client: Any, signal_id: str, status: str) -> None:
-    await execute_query(
-        client.table("signals")
-        .update({"status": status, "processed_at": datetime.now(timezone.utc).isoformat()})
-        .eq("id", signal_id)
-    )
 
 
 @router.post("/webhooks/twilio/sms", response_model=Signal)
@@ -115,7 +95,7 @@ async def receive_twilio_sms(request: Request):
 
     signature = request.headers.get("X-Twilio-Signature", "")
     validator = RequestValidator(settings.TWILIO_AUTH_TOKEN)
-    if not validator.validate(_public_request_url(request), params, signature):
+    if not validator.validate(public_request_url(request), params, signature):
         logger.warning("twilio_sms_signature_invalid", url=str(request.url))
         raise HTTPException(status_code=403, detail="Invalid Twilio signature")
 
@@ -167,7 +147,7 @@ async def receive_twilio_sms(request: Request):
             message_sid=message_sid,
         )
         if handled:
-            await _mark_signal_status(client, str(signal.id), "processed")
+            await mark_signal_status(client, str(signal.id), "processed")
         else:
             temporal_client = await get_temporal_client()
             await temporal_client.start_workflow(
@@ -190,7 +170,7 @@ async def receive_twilio_sms(request: Request):
             )
     except Exception:
         logger.exception("twilio_sms_signal_dispatch_failed", contact_id=contact["id"], message_sid=message_sid)
-        await _mark_signal_status(client, str(signal.id), "failed")
+        await mark_signal_status(client, str(signal.id), "failed")
 
     return signal
 

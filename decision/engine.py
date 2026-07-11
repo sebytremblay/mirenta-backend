@@ -36,7 +36,7 @@ def evaluate(
 ) -> DecisionOutput:
     """Given (signal, contact_state) emit the same tasks every time — pure function.
 
-    Unhandled signal types (voice/email rules, future work) are a no-op:
+    Unhandled signal types (voice rules, future work) are a no-op:
     an empty `DecisionOutput`.
     """
     handler = SIGNAL_HANDLERS.get(signal.type)

@@ -158,8 +158,19 @@ class Settings:
         self.TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
         self.TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
         # Externally-reachable base URL for this API, used to point a newly
-        # purchased Twilio number's SMS webhook back at receive_twilio_sms.
+        # purchased Twilio number's SMS/voice webhooks back at this app.
         self.APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
+
+        # Deepgram Configuration — streaming STT + Aura TTS for the voice channel.
+        self.DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY", "")
+        self.DEEPGRAM_STT_MODEL = os.getenv("DEEPGRAM_STT_MODEL", "nova-2-conversationalai")
+        self.DEEPGRAM_TTS_MODEL = os.getenv("DEEPGRAM_TTS_MODEL", "aura-2-asteria-en")
+        self.DEEPGRAM_ENDPOINTING_MS = int(os.getenv("DEEPGRAM_ENDPOINTING_MS", "500"))
+        self.DEEPGRAM_UTTERANCE_END_MS = int(os.getenv("DEEPGRAM_UTTERANCE_END_MS", "1000"))
+
+        # Voice runtime — inbound calls only this pass (see docs/architecture.md).
+        self.VOICE_LLM_MODEL = os.getenv("VOICE_LLM_MODEL", "gpt-5-mini")
+        self.VOICE_MAX_CALL_SECONDS = int(os.getenv("VOICE_MAX_CALL_SECONDS", "600"))
 
         # Temporal Configuration — durable workflow/task scheduling.
         # Local dev defaults point at the docker-compose Temporal server
@@ -207,6 +218,7 @@ class Settings:
             "contacts": ["60 per minute"],
             "signals": ["60 per minute"],
             "sms_webhook": ["120 per minute"],
+            "voice_webhook": ["60 per minute"],
             "agent_chat": ["30 per minute"],
         }
 

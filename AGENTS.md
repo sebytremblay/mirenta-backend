@@ -23,17 +23,18 @@ uv run --group test pytest  # run the test suite (pytest isn't in the default sy
 ```
 app/
   api/
-    routers/       # Route handlers (auth.py, organizations.py, contacts.py, signals.py [Twilio SMS webhook + manual signals])
+    routers/       # Route handlers (auth.py, organizations.py, contacts.py, signals.py [Twilio SMS webhook + manual signals], voice.py [Twilio voice webhook + Media Stream WS])
   core/
     config.py      # Settings (env-var based, no pydantic-settings)
-    langgraph/     # Per-channel LLM subagents: base.py (shared plumbing), sms_graph.py (live), voice_graph.py (stub, not wired), nodes/, tools/
+    langgraph/     # Per-channel LLM subagents: base.py (shared plumbing), sms_graph.py (live), voice_graph.py (live, inbound calls only), nodes/, tools/
     logging.py     # structlog setup
     limiter.py     # Rate limiting (slowapi, in-memory)
     middleware.py  # ASGI middleware
     prompts/       # System prompts
   schemas/         # Pydantic request/response schemas: contacts, signals,
                    # tasks, interactions, memory, organizations, graph state
-  services/        # LLM service, Supabase client, Temporal client, Twilio client (send + number provisioning)
+  services/        # LLM service, Supabase client, Temporal client, Twilio client (send + number provisioning),
+                   # Deepgram client (streaming STT/TTS), voice_runtime.py (live call session, outside Temporal)
   utils/           # Shared utilities
 decision/          # Deterministic decision engine — rules.py, guardrails.py, idempotency.py, engine.py
 workflows/         # Temporal workflows — ContactLoopWorkflow (per-contact event loop), TaskExecutionWorkflow (per-task)
@@ -51,17 +52,18 @@ tests/
 ## Project Overview
 
 This is an outreach-agent backend for Mirenta, built with:
-- **The Takeoff Runtime** — an event-driven, durable-workflow architecture for agent work spanning days to weeks across voice, SMS, and email. A deterministic decision engine (plain Python, zero LLM calls) decides *when, whether, and on what channel* to act; LLMs only run the conversation itself. **Live end-to-end for SMS today** — Twilio webhook → Temporal event bus → decision engine → durable task → LangGraph subagent → logged interaction that closes the loop. Voice/email and proactive/follow-up rules are not implemented yet. See `docs/architecture.md` for the full design and current implementation status.
-- **LangGraph** for the stateful, multi-step interaction-layer subagents. `app/core/langgraph/sms_graph.py` (a `compose -> output_guardrails` loop) is wired to the interaction layer and runs on every SMS task; `voice_graph.py` exists but isn't call-capable yet; there's no email subagent.
+- **The Takeoff Runtime** — an event-driven, durable-workflow architecture for agent work spanning days to weeks across voice and SMS. A deterministic decision engine (plain Python, zero LLM calls) decides *when, whether, and on what channel* to act; LLMs only run the conversation itself. **Live end-to-end for SMS** (Twilio webhook → Temporal event bus → decision engine → durable task → LangGraph subagent → logged interaction that closes the loop) **and for inbound voice calls** (Twilio Media Streams + Deepgram STT/TTS bridged to a LangGraph subagent by `app/services/voice_runtime.py`, running outside Temporal since a live call is a long-lived duplex session — only the closing "log + re-enter the loop" step rejoins `ContactLoopWorkflow`). Outbound calling and proactive/follow-up rules are not implemented yet. See `docs/architecture.md` for the full design and current implementation status.
+- **LangGraph** for the stateful, multi-step interaction-layer subagents. `app/core/langgraph/sms_graph.py` and `voice_graph.py` (both a `compose -> output_guardrails` loop) are wired to the interaction layer — SMS runs on every SMS task via a Temporal activity, voice runs one turn at a time from `voice_runtime.py` during a live call.
 - **FastAPI** for high-performance async REST API endpoints and signal ingestion (webhook routers)
 - **Temporal** for durable task scheduling — one long-running `ContactLoopWorkflow` per contact, child `TaskExecutionWorkflow`s per task, timers firing minutes to weeks out. Run `make temporal-up` (local server) and `make worker` (registers workflows/activities) alongside `make dev` to exercise the loop.
 - **Langfuse** for LLM observability and tracing
 - **Supabase (Postgres + Auth)** for the product domain, user identity, and the agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`)
-- **Twilio** for SMS send/receive and automatic phone-number provisioning on new-org creation (`app/services/twilio_client.py`)
+- **Twilio** for SMS send/receive, voice call answering (Media Streams), and automatic phone-number provisioning on new-org creation (`app/services/twilio_client.py`)
+- **Deepgram** for streaming speech-to-text and text-to-speech (Aura) on live inbound calls (`app/services/deepgram_client.py`)
 
-When working on the decision engine specifically: it must stay free of LLM calls and free of imports from `app/core/langgraph/` — that separation (deterministic core, generative edge) is the architecture's central invariant. Compliance guardrails (quiet hours, contact-frequency caps, DNC, consent) are preconditions that block task *emission*, and are re-checked at task *execution* time — never bolt them on as a post-hoc filter.
+When working on the decision engine specifically: it must stay free of LLM calls and free of imports from `app/core/langgraph/` — that separation (deterministic core, generative edge) is the architecture's central invariant. Compliance guardrails (quiet hours, contact-frequency caps, DNC, consent) are preconditions that block task *emission*, and are re-checked at task *execution* time — never bolt them on as a post-hoc filter. Live inbound calls are the one path that resolves DNC/consent synchronously in the webhook rather than through the decision engine — see `docs/architecture.md`'s voice-webhook section for why.
 
-Known gaps if you're picking up related work (see `docs/architecture.md#component-status` for details): no proactive/first-touch outreach, no auto-follow-up after silence, and no cancellation of a scheduled task when a newer signal makes it stale.
+Known gaps if you're picking up related work (see `docs/architecture.md#component-status` for details): no outbound calling, no proactive/first-touch outreach, no auto-follow-up after silence, no cancellation of a scheduled task when a newer signal makes it stale, and no voice equivalent of SMS's STOP/START opt-out handling.
 
 ## Quick Reference: Critical Rules
 

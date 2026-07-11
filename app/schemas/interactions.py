@@ -29,7 +29,7 @@ TimelineEntryKind = Literal["signal", "task", "interaction"]
 
 
 class Interaction(BaseResponse):
-    """A single subagent conversation across voice/SMS/email.
+    """A single subagent conversation across voice/SMS.
 
     Every completed interaction is logged here, then re-emitted as an
     'interaction_result' signal (`result_signal_id`) — closing the loop.
@@ -47,7 +47,7 @@ class Interaction(BaseResponse):
         outcome: The interaction's outcome.
         outcome_data: Structured extraction (booked slot, callback time...).
         guardrail_flags: Output-guardrail hits during the conversation.
-        provider_ref: Twilio call SID / SendGrid message ID.
+        provider_ref: Twilio call SID.
         recording_url: Voice recording URL, voice only.
         input_tokens: LLM input tokens used.
         output_tokens: LLM output tokens used.
@@ -72,7 +72,7 @@ class Interaction(BaseResponse):
     guardrail_flags: list[dict[str, Any]] = Field(
         default_factory=list, description="Output-guardrail hits during the conversation"
     )
-    provider_ref: str | None = Field(default=None, description="Twilio call SID / SendGrid message ID")
+    provider_ref: str | None = Field(default=None, description="Twilio call SID")
     recording_url: str | None = Field(default=None, description="Voice recording URL, voice only")
     input_tokens: int | None = Field(default=None, description="LLM input tokens used")
     output_tokens: int | None = Field(default=None, description="LLM output tokens used")

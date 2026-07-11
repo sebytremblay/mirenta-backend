@@ -1,4 +1,4 @@
-"""Raw channel sends: sms today; email/voice/webhook are future work."""
+"""Raw channel sends: sms today; voice/webhook are future work."""
 
 from pydantic import BaseModel
 from temporalio import activity

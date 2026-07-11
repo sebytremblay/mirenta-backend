@@ -34,9 +34,14 @@ async def find_org_by_phone(client: Any, phone: str) -> dict[str, Any] | None:
 
 
 async def _find_contact_by_phone(client: Any, org_id: str, phone: str) -> dict[str, Any] | None:
-    """Resolve the contact a message came from, scoped to the resolved org."""
+    """Resolve the contact a message came from, scoped to the resolved org.
+
+    Selects the full row (not just `id`): the voice webhook needs the full
+    `Contact` to run `decision.guardrails.check_dnc` synchronously before
+    answering a call, and this lookup is shared with SMS.
+    """
     response = await execute_query(
-        client.table("contacts").select("id").eq("org_id", org_id).eq("phone", phone).limit(1)
+        client.table("contacts").select("*").eq("org_id", org_id).eq("phone", phone).limit(1)
     )
     return response.data[0] if response.data else None
 
