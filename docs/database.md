@@ -195,6 +195,10 @@ RLS is enabled on every table. Two `security definer` helper functions back most
 - `is_org_member(org)` — is the current user (`auth.uid()`) a member of `org`?
 - `is_org_admin(org)` — is the current user an `owner` or `admin` of `org`?
 
+Those helpers need an explicit `EXECUTE` grant for `authenticated` and `service_role` (see `0011_grant_org_helpers_execute.sql`). Without it, RLS policies that call them fail with `permission denied for function is_org_member` before membership is checked. `anon` / `PUBLIC` should not have execute.
+
+Org create (`POST /organizations`) must insert with `return=minimal`, then insert the caller as owner, then `SELECT` the org. A default PostgREST `INSERT ... RETURNING` hits SELECT RLS (`is_org_member`) before membership exists and fails with `new row violates row-level security policy for table "organizations"`.
+
 Policy shape by table:
 
 | Table | Select | Insert / Update / Delete |

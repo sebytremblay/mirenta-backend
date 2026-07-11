@@ -8,7 +8,7 @@ editable.
 """
 
 from typing import List
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import (
     APIRouter,
@@ -17,6 +17,7 @@ from fastapi import (
     Request,
 )
 from postgrest.exceptions import APIError
+from postgrest.types import ReturnMethod
 from pydantic import BaseModel, Field
 
 from app.api.routers.auth import get_current_user
@@ -98,15 +99,25 @@ async def create_organization(
         Organization: The created organization.
     """
     client = await get_user_client(user.access_token)
+    org_id = uuid4()
     try:
-        response = await execute_query(client.table("organizations").insert(body.model_dump(exclude_none=True)))
-        organization = Organization(**response.data[0])
-
+        # Insert with return=minimal so PostgREST does not re-SELECT the row
+        # under is_org_member before the owner membership exists. Assign id
+        # client-side so we can join membership without a RETURNING payload.
         await execute_query(
-            client.table("organization_members").insert(
-                {"org_id": str(organization.id), "user_id": str(user.id), "role": "owner"}
+            client.table("organizations").insert(
+                {**body.model_dump(exclude_none=True), "id": str(org_id)},
+                returning=ReturnMethod.minimal,
             )
         )
+        await execute_query(
+            client.table("organization_members").insert(
+                {"org_id": str(org_id), "user_id": str(user.id), "role": "owner"},
+                returning=ReturnMethod.minimal,
+            )
+        )
+        response = await execute_query(client.table("organizations").select("*").eq("id", str(org_id)).single())
+        organization = Organization(**response.data)
 
         logger.info("organization_created", org_id=str(organization.id), user_id=str(user.id))
     except APIError as e:
