@@ -20,11 +20,8 @@ from app.services.clients.twilio_client import (
 )
 
 
-def _make_fake_sub_client(*, available: list[str], purchased_phone_number: str | None) -> MagicMock:
+def _make_fake_sub_client(*, purchased_phone_number: str | None) -> MagicMock:
     client = MagicMock()
-    local = MagicMock()
-    local.list_async = AsyncMock(return_value=[SimpleNamespace(phone_number=number) for number in available])
-    client.available_phone_numbers.return_value.local = local
     client.incoming_phone_numbers.create_async = AsyncMock(
         return_value=SimpleNamespace(phone_number=purchased_phone_number, sid="PN123")
     )
@@ -36,19 +33,30 @@ def _make_fake_sub_client(*, available: list[str], purchased_phone_number: str |
     return client
 
 
-def test_provision_org_twilio_creates_subaccount_number_and_messaging_service() -> None:
+def _make_fake_parent(*, available: list[str]) -> MagicMock:
     parent = MagicMock()
     parent.api.accounts.create_async = AsyncMock(
         return_value=SimpleNamespace(sid="ACsub123", auth_token="sub-auth-token")
     )
-    sub = _make_fake_sub_client(available=["+15551234567"], purchased_phone_number="+15551234567")
+    local = MagicMock()
+    local.list_async = AsyncMock(return_value=[SimpleNamespace(phone_number=number) for number in available])
+    parent.available_phone_numbers.return_value.local = local
+    return parent
+
+
+def test_provision_org_twilio_creates_subaccount_number_and_messaging_service() -> None:
+    parent = _make_fake_parent(available=["+15551234567"])
+    sub = _make_fake_sub_client(purchased_phone_number="+15551234567")
 
     def _client(*, account_sid: str | None = None, auth_token: str | None = None) -> MagicMock:
         if account_sid == "ACsub123" and auth_token == "sub-auth-token":
             return sub
         return parent
 
-    with patch("app.services.clients.twilio_client.get_twilio_client", side_effect=_client) as get_client:
+    with (
+        patch("app.services.clients.twilio_client.get_twilio_client", side_effect=_client) as get_client,
+        patch("app.services.clients.twilio_client._require_parent_account_credentials"),
+    ):
         result = asyncio.run(provision_org_twilio(org_id="11111111-2222-3333-4444-555555555555", friendly_name="Acme"))
 
     assert result.phone_number == "+15551234567"
@@ -57,6 +65,7 @@ def test_provision_org_twilio_creates_subaccount_number_and_messaging_service() 
     assert result.phone_sid == "PN123"
     assert result.messaging_service_sid == "MG123"
     parent.api.accounts.create_async.assert_awaited_once()
+    parent.available_phone_numbers.assert_called_with("US")
     assert get_client.call_args_list[-1].kwargs == {
         "account_sid": "ACsub123",
         "auth_token": "sub-auth-token",
@@ -74,30 +83,39 @@ def test_provision_org_twilio_creates_subaccount_number_and_messaging_service() 
 
 
 def test_provision_org_twilio_raises_when_none_available() -> None:
-    parent = MagicMock()
-    parent.api.accounts.create_async = AsyncMock(
-        return_value=SimpleNamespace(sid="ACsub123", auth_token="sub-auth-token")
-    )
-    sub = _make_fake_sub_client(available=[], purchased_phone_number=None)
+    parent = _make_fake_parent(available=[])
+    sub = _make_fake_sub_client(purchased_phone_number=None)
 
     def _client(*, account_sid: str | None = None, auth_token: str | None = None) -> MagicMock:
         if account_sid == "ACsub123":
             return sub
         return parent
 
-    with patch("app.services.clients.twilio_client.get_twilio_client", side_effect=_client):
+    with (
+        patch("app.services.clients.twilio_client.get_twilio_client", side_effect=_client),
+        patch("app.services.clients.twilio_client._require_parent_account_credentials"),
+    ):
         with pytest.raises(RuntimeError, match="no available twilio numbers"):
             asyncio.run(provision_org_twilio(org_id="11111111-2222-3333-4444-555555555555", friendly_name="Acme"))
 
     sub.incoming_phone_numbers.create_async.assert_not_awaited()
 
 
+def test_provision_org_twilio_raises_when_auth_token_missing() -> None:
+    parent = _make_fake_parent(available=["+15551234567"])
+    parent.api.accounts.create_async = AsyncMock(return_value=SimpleNamespace(sid="ACsub123", auth_token=""))
+
+    with (
+        patch("app.services.clients.twilio_client.get_twilio_client", return_value=parent),
+        patch("app.services.clients.twilio_client._require_parent_account_credentials"),
+    ):
+        with pytest.raises(RuntimeError, match="returned no auth_token"):
+            asyncio.run(provision_org_twilio(org_id="11111111-2222-3333-4444-555555555555", friendly_name="Acme"))
+
+
 def test_provision_org_twilio_raises_on_purchase_failure() -> None:
-    parent = MagicMock()
-    parent.api.accounts.create_async = AsyncMock(
-        return_value=SimpleNamespace(sid="ACsub123", auth_token="sub-auth-token")
-    )
-    sub = _make_fake_sub_client(available=["+15551234567"], purchased_phone_number="+15551234567")
+    parent = _make_fake_parent(available=["+15551234567"])
+    sub = _make_fake_sub_client(purchased_phone_number="+15551234567")
     sub.incoming_phone_numbers.create_async = AsyncMock(
         side_effect=TwilioRestException(status=400, uri="/IncomingPhoneNumbers", msg="number no longer available")
     )
@@ -107,7 +125,10 @@ def test_provision_org_twilio_raises_on_purchase_failure() -> None:
             return sub
         return parent
 
-    with patch("app.services.clients.twilio_client.get_twilio_client", side_effect=_client):
+    with (
+        patch("app.services.clients.twilio_client.get_twilio_client", side_effect=_client),
+        patch("app.services.clients.twilio_client._require_parent_account_credentials"),
+    ):
         with pytest.raises(TwilioRestException):
             asyncio.run(provision_org_twilio(org_id="11111111-2222-3333-4444-555555555555", friendly_name="Acme"))
 
@@ -134,9 +155,16 @@ def test_send_sms_prefers_messaging_service_sid() -> None:
     assert kwargs == {"to": "+15557654321", "messaging_service_sid": "MG123", "body": "hello"}
 
 
+def test_get_twilio_client_requires_auth_token_for_subaccount() -> None:
+    with patch.object(settings, "TWILIO_ACCOUNT_SID", "ACparent"):
+        with patch.object(settings, "TWILIO_AUTH_TOKEN", "parent-token"):
+            with pytest.raises(ValueError, match="requires auth_token"):
+                get_twilio_client(account_sid="ACsub123")
+
+
 def test_get_twilio_client_uses_subaccount_credentials_when_provided() -> None:
     with patch("app.services.clients.twilio_client.Client") as client_cls:
-        with patch("app.services.clients.twilio_client._async_http_client", return_value=MagicMock()):
+        with patch("app.services.clients.twilio_client.AsyncTwilioHttpClient", return_value=MagicMock()):
             get_twilio_client(account_sid="ACsub123", auth_token="sub-auth-token")
 
     client_cls.assert_called_once()

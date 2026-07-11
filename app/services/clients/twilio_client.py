@@ -50,9 +50,9 @@ def get_twilio_client(*, account_sid: str | None = None, auth_token: str | None 
     from FastAPI/Temporal async paths.
 
     When both `account_sid` and `auth_token` are provided, authenticates as
-    that account directly (required for subaccounts). Parent SID + parent
-    token with only an `account_sid` override is not used for subaccounts —
-    it can return Twilio 20003/401 on resources like AvailablePhoneNumbers.
+    that account directly (required for subaccounts). A subaccount SID without
+    its matching Auth Token raises — parent SID+token with an `account_sid`
+    override returns Twilio 20003/401 on several resources.
 
     Args:
         account_sid: Optional account/subaccount SID.
@@ -63,23 +63,30 @@ def get_twilio_client(*, account_sid: str | None = None, auth_token: str | None 
         Client: Authenticated Twilio client.
     """
     global _parent_client
-    parent_sid = settings.TWILIO_ACCOUNT_SID
-    parent_token = settings.TWILIO_AUTH_TOKEN
-    http = _async_http_client()
+    parent_sid = settings.TWILIO_ACCOUNT_SID.strip()
+    parent_token = settings.TWILIO_AUTH_TOKEN.strip()
 
     if account_sid and auth_token:
-        return Client(account_sid, auth_token, http_client=http)
+        # Dedicated HTTP client per credential set — sharing the parent's
+        # AsyncTwilioHttpClient across SIDs has caused auth confusion.
+        return Client(account_sid, auth_token, http_client=AsyncTwilioHttpClient())
 
     if account_sid is None or account_sid == parent_sid:
         if _parent_client is None:
-            _parent_client = Client(parent_sid, parent_token, http_client=http)
+            _parent_client = Client(parent_sid, parent_token, http_client=_async_http_client())
         return _parent_client
 
-    # Subaccount SID without its own token: still prefer authenticating as
-    # the subaccount is impossible — fall back to parent-scoped client and
-    # log so misconfigured orgs are visible.
-    logger.warning("twilio_subaccount_client_missing_auth_token", account_sid=account_sid)
-    return Client(parent_sid, parent_token, account_sid, http_client=http)
+    raise ValueError(f"twilio subaccount client requires auth_token (account_sid={account_sid!r})")
+
+
+def _require_parent_account_credentials() -> None:
+    """Fail fast if env is using an API Key SID instead of Account SID."""
+    sid = settings.TWILIO_ACCOUNT_SID.strip()
+    token = settings.TWILIO_AUTH_TOKEN.strip()
+    if not sid or not token:
+        raise RuntimeError("TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN are required for provisioning")
+    if not sid.startswith("AC"):
+        raise RuntimeError("TWILIO_ACCOUNT_SID must be the parent Account SID (AC…), not an API Key (SK…)")
 
 
 def _fernet() -> Fernet:
@@ -252,6 +259,7 @@ async def provision_org_twilio(
         ProvisionedOrgTwilio: Phone + SIDs + plaintext Auth Token (caller
         must encrypt before persisting).
     """
+    _require_parent_account_credentials()
     parent = get_twilio_client()
     label = f"mirenta:{org_id[:8]}:{friendly_name}"[:64]
     try:
@@ -259,14 +267,17 @@ async def provision_org_twilio(
     except TwilioRestException as e:
         logger.exception("twilio_subaccount_create_failed", org_id=org_id, status=e.status, error=e.msg)
         raise
-    if account.sid is None or account.auth_token is None:
-        raise RuntimeError("twilio subaccount create succeeded but returned no sid/auth_token")
 
-    sub = get_twilio_client(account_sid=account.sid, auth_token=account.auth_token)
+    sub_sid = (account.sid or "").strip()
+    sub_auth_token = (account.auth_token or "").strip()
+    if not sub_sid or not sub_auth_token:
+        raise RuntimeError("twilio subaccount create succeeded but returned no auth_token")
+
+    phone_number = await _find_available_local_number(parent, area_code)
+    sub = get_twilio_client(account_sid=sub_sid, auth_token=sub_auth_token)
     sms_url = f"{settings.APP_BASE_URL}{settings.API_PREFIX}/webhooks/twilio/sms"
     voice_url = f"{settings.APP_BASE_URL}{settings.API_PREFIX}/webhooks/twilio/voice"
 
-    phone_number = await _find_available_local_number(sub, area_code)
     try:
         purchased = await sub.incoming_phone_numbers.create_async(
             phone_number=phone_number,
@@ -280,7 +291,7 @@ async def provision_org_twilio(
         logger.exception(
             "twilio_number_purchase_failed",
             org_id=org_id,
-            subaccount_sid=account.sid,
+            subaccount_sid=sub_sid,
             phone_number=phone_number,
             status=e.status,
             error=e.msg,
@@ -300,7 +311,7 @@ async def provision_org_twilio(
         logger.exception(
             "twilio_messaging_service_create_failed",
             org_id=org_id,
-            subaccount_sid=account.sid,
+            subaccount_sid=sub_sid,
             status=e.status,
             error=e.msg,
         )
@@ -325,16 +336,13 @@ async def provision_org_twilio(
         "twilio_org_provisioned",
         org_id=org_id,
         phone_number=purchased.phone_number,
-        subaccount_sid=account.sid,
-        phone_sid=purchased.sid,
+        subaccount_sid=sub_sid,
         messaging_service_sid=service.sid,
-        sms_url=sms_url,
-        voice_url=voice_url,
     )
     return ProvisionedOrgTwilio(
         phone_number=purchased.phone_number,
-        subaccount_sid=account.sid,
-        auth_token=account.auth_token,
+        subaccount_sid=sub_sid,
+        auth_token=sub_auth_token,
         phone_sid=purchased.sid,
         messaging_service_sid=service.sid,
     )
