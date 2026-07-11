@@ -157,6 +157,9 @@ class Settings:
         # Twilio Configuration
         self.TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
         self.TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+        # Externally-reachable base URL for this API, used to point a newly
+        # purchased Twilio number's SMS webhook back at receive_twilio_sms.
+        self.APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
 
         # Temporal Configuration — durable workflow/task scheduling.
         # Local dev defaults point at the docker-compose Temporal server

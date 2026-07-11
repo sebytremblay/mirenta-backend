@@ -5,12 +5,15 @@ This document provides essential guidelines for AI agents working on this LangGr
 ## Quick Commands
 
 ```bash
-make install              # Install deps (uv sync) + pre-commit hooks
-make dev                  # Dev server with hot reload (port 8000)
-make lint                 # ruff check .
-make format               # ruff format .
-make typecheck            # uv run pyright (static type check)
-make check                # lint + typecheck
+make install                # Install deps (uv sync) + pre-commit hooks
+make dev                    # Dev server with hot reload (port 8000)
+make temporal-up            # Local Temporal server + UI (docker-compose) — needed to run the agent loop
+make worker                 # Temporal worker: registers ContactLoopWorkflow/TaskExecutionWorkflow + activities
+make lint                   # ruff check .
+make format                 # ruff format .
+make typecheck              # uv run pyright (static type check)
+make check                  # lint + typecheck
+uv run --group test pytest  # run the test suite (pytest isn't in the default sync group)
 ```
 
 > Run `make help` for the full list of targets.
@@ -20,34 +23,45 @@ make check                # lint + typecheck
 ```
 app/
   api/
-    routers/       # Route handlers (auth.py, organizations.py, contacts.py, signals.py [planned], ...)
+    routers/       # Route handlers (auth.py, organizations.py, contacts.py, signals.py [Twilio SMS webhook + manual signals])
   core/
-    config.py      # Pydantic Settings config
-    langgraph/     # LangGraph agent graph + tools (not yet wired to a route)
+    config.py      # Settings (env-var based, no pydantic-settings)
+    langgraph/     # Per-channel LLM subagents: base.py (shared plumbing), sms_graph.py (live), voice_graph.py (stub, not wired), nodes/, tools/
     logging.py     # structlog setup
     limiter.py     # Rate limiting (slowapi, in-memory)
     middleware.py  # ASGI middleware
     prompts/       # System prompts
   schemas/         # Pydantic request/response schemas: contacts, signals,
                    # tasks, interactions, memory, organizations, graph state
-  services/        # LLM service, Supabase client, Temporal client [planned]
+  services/        # LLM service, Supabase client, Temporal client, Twilio client (send + number provisioning)
   utils/           # Shared utilities
+decision/          # Deterministic decision engine — rules.py, guardrails.py, idempotency.py, engine.py
+workflows/         # Temporal workflows — ContactLoopWorkflow (per-contact event loop), TaskExecutionWorkflow (per-task)
+activities/        # Temporal activities — contact_store.py, channels.py (Twilio send), interactions.py (LangGraph invocation), logging.py
+worker/            # Temporal worker entrypoint (`make worker`)
 scripts/           # Environment setup scripts
 supabase/
   migrations/      # Numbered hand-written SQL (no ORM)
+tests/
+  decision/        # Pure unit tests for the decision engine (no I/O, no clock)
+  langgraph/       # Unit tests for graph nodes (e.g. output guardrails)
+  services/        # Unit tests for services with mocked external clients (e.g. Twilio)
 ```
 
 ## Project Overview
 
-This is a production-ready outreach-agent backend for Mirenta, built with:
-- **The Takeoff Runtime** — an event-driven, durable-workflow architecture for agent work spanning days to weeks across voice, SMS, and email. A deterministic decision engine (plain Python, zero LLM calls) decides *when, whether, and on what channel* to act; LLMs only run the conversation itself. See `docs/architecture.md` for the full design and current implementation status.
-- **LangGraph** for the stateful, multi-step interaction-layer subagents (kept as infra today; the generic graph isn't yet split into per-channel subagents or wired to an endpoint)
+This is an outreach-agent backend for Mirenta, built with:
+- **The Takeoff Runtime** — an event-driven, durable-workflow architecture for agent work spanning days to weeks across voice, SMS, and email. A deterministic decision engine (plain Python, zero LLM calls) decides *when, whether, and on what channel* to act; LLMs only run the conversation itself. **Live end-to-end for SMS today** — Twilio webhook → Temporal event bus → decision engine → durable task → LangGraph subagent → logged interaction that closes the loop. Voice/email and proactive/follow-up rules are not implemented yet. See `docs/architecture.md` for the full design and current implementation status.
+- **LangGraph** for the stateful, multi-step interaction-layer subagents. `app/core/langgraph/sms_graph.py` (a `compose -> output_guardrails` loop) is wired to the interaction layer and runs on every SMS task; `voice_graph.py` exists but isn't call-capable yet; there's no email subagent.
 - **FastAPI** for high-performance async REST API endpoints and signal ingestion (webhook routers)
-- **Temporal** (planned) for durable task scheduling — one long-running workflow per contact, timers firing minutes to weeks out
+- **Temporal** for durable task scheduling — one long-running `ContactLoopWorkflow` per contact, child `TaskExecutionWorkflow`s per task, timers firing minutes to weeks out. Run `make temporal-up` (local server) and `make worker` (registers workflows/activities) alongside `make dev` to exercise the loop.
 - **Langfuse** for LLM observability and tracing
 - **Supabase (Postgres + Auth)** for the product domain, user identity, and the agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`)
+- **Twilio** for SMS send/receive and automatic phone-number provisioning on new-org creation (`app/services/twilio_client.py`)
 
 When working on the decision engine specifically: it must stay free of LLM calls and free of imports from `app/core/langgraph/` — that separation (deterministic core, generative edge) is the architecture's central invariant. Compliance guardrails (quiet hours, contact-frequency caps, DNC, consent) are preconditions that block task *emission*, and are re-checked at task *execution* time — never bolt them on as a post-hoc filter.
+
+Known gaps if you're picking up related work (see `docs/architecture.md#component-status` for details): no proactive/first-touch outreach, no auto-follow-up after silence, and no cancellation of a scheduled task when a newer signal makes it stale.
 
 ## Quick Reference: Critical Rules
 
@@ -119,8 +133,8 @@ When working on the decision engine specifically: it must stay free of LLM calls
 - Agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`, `contacts`, `contact_state`, `consent`) have RLS enabled with no policies — they're reachable only via `get_service_role_client()`, never the user-scoped client
 - `consent` is append-only — write a new row to revoke or re-grant, never update an existing row in place; guardrails read the latest row via the `current_consent` view
 - `tasks.idempotency_key` must be derived deterministically by the decision engine so retries can't double-emit a task; never generate it from a random value or wall-clock time
-- Use LangGraph's AsyncPostgresSaver for agent checkpointing once the agent is wired to an endpoint (same Supabase Postgres connection, its own tables)
-- Use Temporal's own persistence for workflow/task scheduling state once wired up (`app/services/temporal_client.py`) — don't reimplement a poller/scheduler in application code
+- LangGraph's `AsyncPostgresSaver` checkpoints the SMS subagent already (same Supabase Postgres connection, its own `checkpoint*` tables) — extend this pattern for any new channel subagent rather than inventing new state storage
+- Temporal owns its own persistence for workflow/task scheduling state (`app/services/temporal_client.py`, `workflows/`) — don't reimplement a poller/scheduler in application code
 
 ## Performance Guidelines
 
