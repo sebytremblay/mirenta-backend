@@ -10,8 +10,10 @@ class SendSmsInput(BaseModel):
     """Arguments to `send_sms_message`."""
 
     to: str
-    from_: str
     body: str
+    from_: str | None = None
+    messaging_service_sid: str | None = None
+    subaccount_sid: str | None = None
 
 
 class SendSmsResult(BaseModel):
@@ -23,5 +25,11 @@ class SendSmsResult(BaseModel):
 @activity.defn
 async def send_sms_message(input: SendSmsInput) -> SendSmsResult:
     """Send one SMS via Twilio and return its message SID."""
-    message_sid = await send_sms(to=input.to, from_=input.from_, body=input.body)
+    message_sid = await send_sms(
+        to=input.to,
+        from_=input.from_,
+        body=input.body,
+        messaging_service_sid=input.messaging_service_sid,
+        subaccount_sid=input.subaccount_sid,
+    )
     return SendSmsResult(message_sid=message_sid)

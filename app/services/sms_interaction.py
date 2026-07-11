@@ -23,13 +23,17 @@ SMS_START_KEYWORDS = {"start", "unstop", "yes"}
 
 
 async def find_org_by_phone(client: Any, phone: str) -> dict[str, Any] | None:
-    """Resolve the organization whose main line (`organizations.phone`) received the message.
+    """Resolve the organization whose Twilio number (`organizations.phone`) received the message.
 
-    Best-effort: `organizations.phone` has no uniqueness constraint, so this
-    takes the first match. A dedicated number-to-org mapping table is the
-    correct long-term fix once clinics have more than one inbound number.
+    `organizations.phone` is unique when set (see migration 0012). Returns
+    Twilio SIDs needed for outbound replies and webhook signature checks.
     """
-    response = await execute_query(client.table("organizations").select("id").eq("phone", phone).limit(1))
+    response = await execute_query(
+        client.table("organizations")
+        .select("id, phone, twilio_subaccount_sid, twilio_messaging_service_sid")
+        .eq("phone", phone)
+        .limit(1)
+    )
     return response.data[0] if response.data else None
 
 
@@ -118,6 +122,8 @@ async def handle_sms_keyword_fastpath(
     from_number: str,
     to_number: str,
     message_sid: str | None,
+    messaging_service_sid: str | None = None,
+    subaccount_sid: str | None = None,
 ) -> bool:
     """Handle an inbound SMS if it's a STOP/START compliance keyword.
 
@@ -136,7 +142,13 @@ async def handle_sms_keyword_fastpath(
     if normalized in SMS_STOP_KEYWORDS:
         await _record_sms_consent(client, org_id, contact_id, granted=False)
         reply = "You've been unsubscribed and won't receive further messages. Reply START to resubscribe."
-        await send_sms(to=from_number, from_=to_number, body=reply)
+        await send_sms(
+            to=from_number,
+            from_=to_number,
+            body=reply,
+            messaging_service_sid=messaging_service_sid,
+            subaccount_sid=subaccount_sid,
+        )
         await _log_interaction(
             client,
             org_id=org_id,
@@ -151,7 +163,13 @@ async def handle_sms_keyword_fastpath(
     if normalized in SMS_START_KEYWORDS:
         await _record_sms_consent(client, org_id, contact_id, granted=True)
         reply = "You're resubscribed. Reply STOP at any time to opt out."
-        await send_sms(to=from_number, from_=to_number, body=reply)
+        await send_sms(
+            to=from_number,
+            from_=to_number,
+            body=reply,
+            messaging_service_sid=messaging_service_sid,
+            subaccount_sid=subaccount_sid,
+        )
         await _log_interaction(
             client,
             org_id=org_id,

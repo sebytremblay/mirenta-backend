@@ -121,10 +121,16 @@ class TaskExecutionWorkflow:
             retry_policy=RetryPolicy(maximum_attempts=task.max_attempts),
         )
 
-        if result.reply and contact.phone and org.phone:
+        if result.reply and contact.phone and (org.twilio_messaging_service_sid or org.phone):
             await workflow.execute_activity(
                 channels.send_sms_message,
-                channels.SendSmsInput(to=contact.phone, from_=org.phone, body=result.reply),
+                channels.SendSmsInput(
+                    to=contact.phone,
+                    from_=org.phone,
+                    body=result.reply,
+                    messaging_service_sid=org.twilio_messaging_service_sid,
+                    subaccount_sid=org.twilio_subaccount_sid,
+                ),
                 start_to_close_timeout=ACTIVITY_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=3),
             )

@@ -29,11 +29,10 @@ from fastapi import (
 )
 from postgrest.exceptions import APIError
 from pydantic import BaseModel, Field
-from twilio.request_validator import RequestValidator
 
 from app.api.deps import assert_org_member
 from app.api.routers.auth import get_current_user
-from app.api.twilio_utils import mark_signal_status, public_request_url
+from app.api.twilio_utils import mark_signal_status, validate_twilio_signature
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import logger
@@ -70,10 +69,10 @@ class CreateSignalRequest(BaseModel):
 async def receive_twilio_sms(request: Request):
     """Receive an inbound SMS from Twilio, record it as a `Signal`, and route it.
 
-    Verifies Twilio's request signature (`X-Twilio-Signature`) against
-    `TWILIO_AUTH_TOKEN` before trusting the payload — see
-    https://www.twilio.com/docs/usage/security#validating-requests. STOP/START
-    keywords are handled synchronously (see
+    Verifies Twilio's request signature (`X-Twilio-Signature`) against the
+    org's subaccount Auth Token (or the parent token for legacy numbers) —
+    see https://www.twilio.com/docs/usage/security#validating-requests.
+    STOP/START keywords are handled synchronously (see
     `app.services.sms_interaction.handle_sms_keyword_fastpath`); everything
     else is handed to the contact's `ContactLoopWorkflow` via a Temporal
     signal-with-start, which runs the decision engine and, from there, the
@@ -93,12 +92,6 @@ async def receive_twilio_sms(request: Request):
     form = await request.form()
     params = {key: str(value) for key, value in form.items()}
 
-    signature = request.headers.get("X-Twilio-Signature", "")
-    validator = RequestValidator(settings.TWILIO_AUTH_TOKEN)
-    if not validator.validate(public_request_url(request), params, signature):
-        logger.warning("twilio_sms_signature_invalid", url=str(request.url))
-        raise HTTPException(status_code=403, detail="Invalid Twilio signature")
-
     from_number = params.get("From", "")
     to_number = params.get("To", "")
     message_sid = params.get("MessageSid") or None
@@ -107,6 +100,9 @@ async def receive_twilio_sms(request: Request):
     client = await get_service_role_client()
 
     org = await find_org_by_phone(client, to_number)
+    if not await validate_twilio_signature(request, params, client, org_id=org["id"] if org else None):
+        logger.warning("twilio_sms_signature_invalid", url=str(request.url), to_number=to_number)
+        raise HTTPException(status_code=403, detail="Invalid Twilio signature")
     if org is None:
         logger.warning("twilio_sms_org_not_found", to_number=to_number)
         raise HTTPException(status_code=404, detail="No organization is configured for this number")
@@ -145,6 +141,8 @@ async def receive_twilio_sms(request: Request):
             from_number=from_number,
             to_number=to_number,
             message_sid=message_sid,
+            messaging_service_sid=org.get("twilio_messaging_service_sid"),
+            subaccount_sid=org.get("twilio_subaccount_sid"),
         )
         if handled:
             await mark_signal_status(client, str(signal.id), "processed")

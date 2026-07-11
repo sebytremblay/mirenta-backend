@@ -41,11 +41,12 @@ cp .env.example .env.development
 
 | Variable | Default | Required | Description |
 | --- | --- | --- | --- |
-| `TWILIO_ACCOUNT_SID` | — | Yes, for the SMS/voice agent loop | Twilio Account SID (Console → Account Info) |
-| `TWILIO_AUTH_TOKEN` | — | Yes, for the SMS/voice agent loop | Twilio Auth Token — also used to verify inbound webhook signatures |
-| `APP_BASE_URL` | `http://localhost:8000` | Yes, for the SMS/voice agent loop | Externally-reachable base URL for this API; a newly-purchased Twilio number's SMS webhook is set to `$APP_BASE_URL$API_PREFIX/webhooks/twilio/sms` and its voice webhook to `$APP_BASE_URL$API_PREFIX/webhooks/twilio/voice` (default `/api/v1/...`). Use an ngrok tunnel (or similar) in local dev — Twilio can't reach `localhost` |
+| `TWILIO_ACCOUNT_SID` | — | Yes, for the SMS/voice agent loop | Parent Twilio Account SID (Console → Account Info). Org numbers are bought into per-org subaccounts under this parent. |
+| `TWILIO_AUTH_TOKEN` | — | Yes, for the SMS/voice agent loop | Parent Twilio Auth Token — used for API calls and as a fallback for webhook signature checks on legacy numbers |
+| `TWILIO_TOKEN_ENCRYPTION_KEY` | derived from auth token | Recommended in production | Fernet key (`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`) used to encrypt per-org subaccount Auth Tokens in `organization_twilio_secrets` |
+| `APP_BASE_URL` | `http://localhost:8000` | Yes, for the SMS/voice agent loop | Externally-reachable base URL for this API; a newly-purchased Twilio number's SMS webhook is set to `$APP_BASE_URL$API_PREFIX/webhooks/twilio/sms` (also on the Messaging Service inbound URL) and its voice webhook to `$APP_BASE_URL$API_PREFIX/webhooks/twilio/voice`. Use an ngrok tunnel (or similar) in local dev — Twilio can't reach `localhost` |
 
-If `TWILIO_ACCOUNT_SID` is unset, `POST /api/v1/organizations` skips automatic phone-number provisioning (org creation still succeeds; `phone` stays null unless supplied explicitly).
+If `TWILIO_ACCOUNT_SID` is unset, `POST /api/v1/organizations` skips automatic phone-number provisioning (org creation still succeeds; `phone` stays null unless supplied explicitly). Provisioning creates a Twilio subaccount + Messaging Service + local number per org (ISV architecture type #1). A2P 10DLC Brand/Campaign registration is not automated yet — US outbound SMS may be filtered until each org is registered.
 
 ---
 

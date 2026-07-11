@@ -20,12 +20,15 @@ The SMS and voice interaction-layer subagents (`app/core/langgraph/sms_graph.py`
 | `0008_seed_demo_org.sql` | Demo `organizations` row for the shared Twilio number |
 | `0009_knowledge.sql` | `knowledge` — per-org facts that ground SMS replies (booking, hours, FAQ, …) |
 | `0010_secure_agent_views.sql` | `security_invoker` + revoke Data API grants on `current_consent` / `contact_timeline` |
+| `0011_grant_org_helpers_execute.sql` | Grant `EXECUTE` on `is_org_member` / `is_org_admin` to authenticated |
+| `0012_organization_twilio.sql` | Per-org Twilio SIDs on `organizations` + `organization_twilio_secrets` |
 
 ## Schema
 
 ```mermaid
 erDiagram
     organizations ||--o{ organization_members : "has"
+    organizations ||--o| organization_twilio_secrets : "has"
     organizations ||--o{ contacts : "has"
     organizations ||--o{ knowledge : "grounds"
     contacts ||--|| contact_state : "has"
@@ -44,7 +47,15 @@ erDiagram
         text name
         text slug UK
         text phone "Twilio number; auto-provisioned on create if omitted"
+        text twilio_subaccount_sid
+        text twilio_phone_sid
+        text twilio_messaging_service_sid
         text timezone
+    }
+
+    organization_twilio_secrets {
+        uuid org_id PK_FK
+        text auth_token_encrypted "Fernet; service-role only"
     }
 
     knowledge {
@@ -149,7 +160,9 @@ erDiagram
 
 **`profiles`** — one row per org-staff user, 1:1 with `auth.users`, auto-created by the `handle_new_user` trigger on sign-up (copies `full_name` / `avatar_url` from OAuth metadata). Dashboard access is via `GET`/`PATCH /api/v1/profiles/me` (own-row RLS); use this for display name and `onboarding_completed`, not auth `user_metadata`.
 
-**`organizations`** — any organization running outreach through Mirenta (a clinic, a dealership, a sales team, an agency, etc.). `slug` is unique and used for routing/branding. `phone` is the Twilio number both SMS and voice webhooks route against; auto-provisioned on create when Twilio credentials are set. `GET /api/v1/organizations` lists orgs the caller belongs to (RLS via `is_org_member`) so returning users can discover `org_id` without storing it in the JWT.
+**`organizations`** — any organization running outreach through Mirenta (a clinic, a dealership, a sales team, an agency, etc.). `slug` is unique and used for routing/branding. `phone` is the Twilio number both SMS and voice webhooks route against; auto-provisioned on create when Twilio credentials are set into a **per-org Twilio subaccount** with a Messaging Service (`twilio_subaccount_sid` / `twilio_phone_sid` / `twilio_messaging_service_sid`). The subaccount Auth Token is stored encrypted in `organization_twilio_secrets` (service-role only) for webhook signature validation. `GET /api/v1/organizations` lists orgs the caller belongs to (RLS via `is_org_member`) so returning users can discover `org_id` without storing it in the JWT.
+
+**`organization_twilio_secrets`** — Fernet-encrypted Twilio subaccount Auth Token, 1:1 with `organizations`. RLS enabled with no policies — reachable only via `get_service_role_client()`, never the user-scoped client or org API responses.
 
 **`organization_members`** — join table between `auth.users` and `organizations`, carrying `role` (`owner` / `admin` / `member`). Enforced today: exactly one `owner` per org at creation time (see RLS below).
 
@@ -214,6 +227,7 @@ Policy shape by table:
 | `tasks` | service role only | service role only |
 | `interactions` | service role only | service role only |
 | `contact_memory` | service role only | service role only |
+| `organization_twilio_secrets` | service role only | service role only |
 
 RLS is enabled with **no policies** on `contacts`, `contact_state`, `consent`, `signals`, `tasks`, `interactions`, and `contact_memory` — that locks them to the Supabase service role (which bypasses RLS entirely) and denies the anon/authenticated keys by default. The org-facing dashboard doesn't talk to these tables directly today; only the agent runtime, via `get_service_role_client()`. `knowledge` is the exception among outreach-adjacent tables: it has member-read / admin-write policies so the dashboard can manage grounding facts through `GET/POST/PATCH/DELETE /organizations/{org_id}/knowledge`. If/when a dashboard needs read access to, say, the contact timeline, add explicit `select` policies scoped by `is_org_member(org_id)` rather than relaxing RLS wholesale.
 

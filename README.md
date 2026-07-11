@@ -8,7 +8,7 @@ Built with **FastAPI** on top of **Supabase** (Postgres + Auth, RLS-enforced). O
 
 ## What's included
 
-- **Product-domain API** — profiles (`GET`/`PATCH /profiles/me`), organizations (list mine, create with automatic Twilio number provisioning), contacts, contact timeline, and a per-org **knowledge base** (hours, booking, FAQ, …) that grounds SMS replies
+- **Product-domain API** — profiles (`GET`/`PATCH /profiles/me`), organizations (list mine, create with automatic per-org Twilio subaccount + number provisioning), contacts, contact timeline, and a per-org **knowledge base** (hours, booking, FAQ, …) that grounds SMS replies
 - **The Mirenta Runtime agent loop, live for SMS** — Twilio SMS webhook → Temporal event bus → deterministic decision engine → durable task scheduling → LangGraph SMS subagent (knowledge-grounded) → logged interaction that closes the loop, including a 3-day silence follow-up that cancels on inbound
 - **Inbound voice calls** — Twilio Media Streams + Deepgram STT/TTS bridged to a LangGraph voice subagent by `app/services/runtimes/voice_runtime.py` (outside Temporal for the live duplex session; hangup logs the interaction and re-enters `ContactLoopWorkflow`)
 - **Agent-loop data model** — `signals` (inbound events), `tasks` (scheduled outreach), `interactions` (subagent conversations), `contact_memory` (semantic recall) — the durable backbone of the Mirenta Runtime loop

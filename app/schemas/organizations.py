@@ -22,7 +22,10 @@ class Organization(BaseResponse):
         name: The clinic's display name.
         slug: Unique URL-safe identifier for the org.
         website_url: The clinic's public website.
-        phone: The clinic's main line.
+        phone: The clinic's Twilio number (E.164); inbound SMS/voice route on this.
+        twilio_subaccount_sid: Per-org Twilio subaccount (ISV isolation).
+        twilio_phone_sid: IncomingPhoneNumber SID for `phone`.
+        twilio_messaging_service_sid: Messaging Service used for outbound SMS.
         timezone: IANA timezone used to schedule outreach.
         created_at: When the org was created.
         updated_at: When the org was last updated.
@@ -32,7 +35,12 @@ class Organization(BaseResponse):
     name: str = Field(..., description="The clinic's display name")
     slug: str = Field(..., description="Unique URL-safe identifier for the org")
     website_url: str | None = Field(default=None, description="The clinic's public website")
-    phone: str | None = Field(default=None, description="The clinic's main line")
+    phone: str | None = Field(default=None, description="The clinic's Twilio number, E.164")
+    twilio_subaccount_sid: str | None = Field(default=None, description="Per-org Twilio subaccount SID")
+    twilio_phone_sid: str | None = Field(default=None, description="Twilio IncomingPhoneNumber SID")
+    twilio_messaging_service_sid: str | None = Field(
+        default=None, description="Twilio Messaging Service SID for outbound SMS"
+    )
     timezone: str = Field(default="America/Los_Angeles", description="IANA timezone used to schedule outreach")
     created_at: datetime = Field(..., description="When the org was created")
     updated_at: datetime = Field(..., description="When the org was last updated")

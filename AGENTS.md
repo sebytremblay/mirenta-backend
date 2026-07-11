@@ -65,7 +65,7 @@ This is an outreach-agent backend for Mirenta, built with:
 - **Temporal** for durable task scheduling — one long-running `ContactLoopWorkflow` per contact, child `TaskExecutionWorkflow`s per task, timers firing minutes to weeks out. Run `make temporal-up` (local server) and `make worker` (registers workflows/activities) alongside `make dev` to exercise the loop.
 - **Langfuse** for LLM observability and tracing
 - **Supabase (Postgres + Auth)** for the product domain (`profiles`, `organizations`, `contacts`, `knowledge`), user identity, and the agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`)
-- **Twilio** for SMS send/receive, voice call answering (Media Streams), and automatic phone-number provisioning on new-org creation (`app/services/clients/twilio_client.py`)
+- **Twilio** for SMS send/receive, voice call answering (Media Streams), and automatic per-org Twilio subaccount + number + Messaging Service provisioning on new-org creation (`app/services/clients/twilio_client.py`)
 - **Deepgram** for streaming speech-to-text and text-to-speech (Aura) on live inbound calls (`app/services/clients/deepgram_client.py`)
 
 When working on the decision engine specifically: it must stay free of LLM calls and free of imports from `app/core/langgraph/` — that separation (deterministic core, generative edge) is the architecture's central invariant. Compliance guardrails (contact-frequency caps, DNC, consent) are preconditions that block task *emission*, and are re-checked at task *execution* time — never bolt them on as a post-hoc filter. Quiet-hours deferral helpers exist for future proactive/outbound outreach but do not apply to inbound replies. Live inbound calls are the one path that resolves DNC/consent synchronously in the webhook rather than through the decision engine — see `docs/architecture.md`'s voice-webhook section for why.
@@ -139,7 +139,7 @@ Known gaps if you're picking up related work (see `docs/architecture.md#componen
 
 - Everything lives in one Supabase Postgres project: `auth.users` (Supabase-managed), the hand-written RLS product domain (`profiles`, `organizations`, `contacts`, `knowledge`), and the agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`) — see `docs/database.md`
 - Use the Supabase client (`app/services/clients/supabase_client.py`, `get_user_client`/`get_service_role_client`/`execute_query`) for all table access — there is no ORM
-- Agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`, `contacts`, `contact_state`, `consent`) have RLS enabled with no policies — they're reachable only via `get_service_role_client()`, never the user-scoped client
+- Agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`, `contacts`, `contact_state`, `consent`, `organization_twilio_secrets`) have RLS enabled with no policies — they're reachable only via `get_service_role_client()`, never the user-scoped client
 - Dashboard bootstrap after login: `GET /organizations` lists the caller's orgs (do not stash `org_id` in the JWT); `GET`/`PATCH /profiles/me` owns display name + `onboarding_completed`
 - `profiles` is own-row only (RLS); `knowledge` is member-readable / admin-writable (`is_org_member` / `is_org_admin`); the SMS interaction activity loads active knowledge via the service-role client and injects it into compose
 - `consent` is append-only — write a new row to revoke or re-grant, never update an existing row in place; guardrails read the latest row via the `current_consent` view

@@ -1,5 +1,19 @@
-"""This file contains the Twilio client factory and outbound-messaging/provisioning helpers."""
+"""This file contains the Twilio client factory and outbound-messaging/provisioning helpers.
 
+ISV pattern (Twilio architecture type #1): each Mirenta org gets its own
+Twilio subaccount, a US local number purchased in that subaccount, and a
+Messaging Service that owns inbound SMS webhook routing. Parent-account
+credentials act on the subaccount via the Client `account_sid` override;
+the subaccount Auth Token is stored encrypted for webhook signature checks.
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+from dataclasses import dataclass
+
+from cryptography.fernet import Fernet, InvalidToken
 from twilio.base import values
 from twilio.base.exceptions import TwilioRestException
 from twilio.http.async_http_client import AsyncTwilioHttpClient
@@ -15,27 +29,62 @@ from tenacity import (
 from app.core.config import settings
 from app.core.logging import logger
 
-_client: Client | None = None
+_parent_client: Client | None = None
 
 
-def get_twilio_client() -> Client:
-    """Get the cached Twilio REST client, authenticated with the account credentials.
+def get_twilio_client(*, account_sid: str | None = None) -> Client:
+    """Twilio REST client for the parent account, or a specific subaccount.
 
     Uses `AsyncTwilioHttpClient` so callers can safely use `*_async` methods
-    (`create_async`, `list_async`, etc.) from FastAPI/Temporal async paths.
+    from FastAPI/Temporal async paths. Parent credentials always authenticate;
+    when `account_sid` is a subaccount, API calls are scoped to that account.
+
+    Args:
+        account_sid: Optional subaccount SID. Omit (or pass the parent SID)
+            to operate on the parent account.
 
     Returns:
-        Client: A cached Twilio client authenticated with `TWILIO_ACCOUNT_SID` /
-            `TWILIO_AUTH_TOKEN`.
+        Client: Authenticated Twilio client.
     """
-    global _client
-    if _client is None:
-        _client = Client(
-            settings.TWILIO_ACCOUNT_SID,
-            settings.TWILIO_AUTH_TOKEN,
-            http_client=AsyncTwilioHttpClient(),
-        )
-    return _client
+    global _parent_client
+    parent_sid = settings.TWILIO_ACCOUNT_SID
+    parent_token = settings.TWILIO_AUTH_TOKEN
+
+    if account_sid is None or account_sid == parent_sid:
+        if _parent_client is None:
+            _parent_client = Client(parent_sid, parent_token, http_client=AsyncTwilioHttpClient())
+        return _parent_client
+
+    return Client(parent_sid, parent_token, account_sid, http_client=AsyncTwilioHttpClient())
+
+
+def _fernet() -> Fernet:
+    """Fernet helper for subaccount Auth Token encryption at rest.
+
+    Prefer `TWILIO_TOKEN_ENCRYPTION_KEY` (url-safe base64-encoded 32 bytes).
+    When unset, derive a stable key from the parent Auth Token so local dev
+    works without an extra env var — rotate the explicit key in production.
+    """
+    raw = settings.TWILIO_TOKEN_ENCRYPTION_KEY.strip()
+    if raw:
+        return Fernet(raw.encode("utf-8"))
+    if not settings.TWILIO_AUTH_TOKEN:
+        raise RuntimeError("TWILIO_TOKEN_ENCRYPTION_KEY or TWILIO_AUTH_TOKEN is required to encrypt subaccount tokens")
+    digest = hashlib.sha256(f"mirenta-twilio-token:{settings.TWILIO_AUTH_TOKEN}".encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
+def encrypt_twilio_auth_token(auth_token: str) -> str:
+    """Encrypt a Twilio Auth Token for storage in `organization_twilio_secrets`."""
+    return _fernet().encrypt(auth_token.encode("utf-8")).decode("utf-8")
+
+
+def decrypt_twilio_auth_token(encrypted: str) -> str:
+    """Decrypt a token previously stored by `encrypt_twilio_auth_token`."""
+    try:
+        return _fernet().decrypt(encrypted.encode("utf-8")).decode("utf-8")
+    except InvalidToken as e:
+        raise RuntimeError("failed to decrypt twilio auth token — check TWILIO_TOKEN_ENCRYPTION_KEY") from e
 
 
 def _is_transient_twilio_error(exc: BaseException) -> bool:
@@ -49,29 +98,64 @@ def _is_transient_twilio_error(exc: BaseException) -> bool:
     retry=retry_if_exception(_is_transient_twilio_error),
     reraise=True,
 )
-async def send_sms(*, to: str, from_: str, body: str) -> str:
+async def send_sms(
+    *,
+    to: str,
+    body: str,
+    from_: str | None = None,
+    messaging_service_sid: str | None = None,
+    subaccount_sid: str | None = None,
+) -> str:
     """Send an outbound SMS via Twilio, retrying on transient (5xx) failures.
 
-    Does not retry on 4xx errors (invalid number, unverified sender, etc.) —
-    those are application-level rejections, not transient failures.
+    Prefer `messaging_service_sid` (ISV Messaging Service). Fall back to
+    `from_` for legacy orgs that only have a phone number on the parent
+    account. Does not retry on 4xx errors.
 
     Args:
         to: Destination phone number, E.164 format.
-        from_: Sending organization's Twilio number, E.164 format.
         body: Message text.
+        from_: Sending organization's Twilio number (legacy path).
+        messaging_service_sid: Org Messaging Service SID (preferred).
+        subaccount_sid: Org Twilio subaccount SID; scopes the send.
 
     Returns:
         str: The Twilio message SID.
     """
-    client = get_twilio_client()
+    if not messaging_service_sid and not from_:
+        raise ValueError("send_sms requires messaging_service_sid or from_")
+
+    client = get_twilio_client(account_sid=subaccount_sid)
     try:
-        message = await client.messages.create_async(to=to, from_=from_, body=body)
+        if messaging_service_sid:
+            message = await client.messages.create_async(
+                to=to,
+                messaging_service_sid=messaging_service_sid,
+                body=body,
+            )
+        else:
+            message = await client.messages.create_async(to=to, from_=from_, body=body)
     except TwilioRestException as e:
-        logger.exception("twilio_sms_send_failed", to=to, from_=from_, status=e.status, error=e.msg)
+        logger.exception(
+            "twilio_sms_send_failed",
+            to=to,
+            from_=from_,
+            messaging_service_sid=messaging_service_sid,
+            subaccount_sid=subaccount_sid,
+            status=e.status,
+            error=e.msg,
+        )
         raise
     if message.sid is None:
         raise RuntimeError("twilio message create succeeded but returned no sid")
-    logger.info("twilio_sms_sent", to=to, from_=from_, message_sid=message.sid)
+    logger.info(
+        "twilio_sms_sent",
+        to=to,
+        from_=from_,
+        messaging_service_sid=messaging_service_sid,
+        subaccount_sid=subaccount_sid,
+        message_sid=message.sid,
+    )
     return message.sid
 
 
@@ -81,12 +165,13 @@ async def send_sms(*, to: str, from_: str, body: str) -> str:
     retry=retry_if_exception(_is_transient_twilio_error),
     reraise=True,
 )
-async def _find_available_local_number(area_code: str | None) -> str:
+async def _find_available_local_number(client: Client, area_code: str | None) -> str:
     """Search Twilio's US local-number inventory for one purchasable number.
 
     Read-only, so retrying on transient (5xx) failures is safe.
 
     Args:
+        client: Twilio client scoped to the account that will buy the number.
         area_code: Optional 3-digit US area code to restrict the search to.
 
     Returns:
@@ -95,7 +180,6 @@ async def _find_available_local_number(area_code: str | None) -> str:
     Raises:
         RuntimeError: No number matched the search.
     """
-    client = get_twilio_client()
     available = await client.available_phone_numbers("US").local.list_async(
         area_code=area_code or values.unset,
         sms_enabled=True,
@@ -107,38 +191,124 @@ async def _find_available_local_number(area_code: str | None) -> str:
     return available[0].phone_number
 
 
-async def provision_phone_number(*, area_code: str | None = None) -> str:
-    """Buy a new US local Twilio number and point its SMS + voice webhooks at this app.
+@dataclass(frozen=True)
+class ProvisionedOrgTwilio:
+    """Twilio resources created for one Mirenta organization."""
 
-    Not retried at the purchase step itself: a timed-out request that
-    actually succeeded server-side would buy a second number on retry, so
-    only the read-only search is safe to retry automatically.
+    phone_number: str
+    subaccount_sid: str
+    auth_token: str
+    phone_sid: str
+    messaging_service_sid: str
+
+
+async def provision_org_twilio(
+    *,
+    org_id: str,
+    friendly_name: str,
+    area_code: str | None = None,
+) -> ProvisionedOrgTwilio:
+    """Create a subaccount, buy a US local number, and attach a Messaging Service.
+
+    Not retried at create/purchase steps: a timed-out request that actually
+    succeeded server-side would leak orphaned Twilio resources on retry.
+    Only the read-only number search is safe to retry automatically.
 
     Args:
+        org_id: Mirenta organization UUID (used in Twilio friendly names).
+        friendly_name: Human-readable label (usually the org name).
         area_code: Optional 3-digit US area code to search within.
 
     Returns:
-        str: The purchased number, E.164 format.
+        ProvisionedOrgTwilio: Phone + SIDs + plaintext Auth Token (caller
+        must encrypt before persisting).
     """
-    client = get_twilio_client()
-    phone_number = await _find_available_local_number(area_code)
+    parent = get_twilio_client()
+    label = f"mirenta:{org_id[:8]}:{friendly_name}"[:64]
+    try:
+        account = await parent.api.accounts.create_async(friendly_name=label)
+    except TwilioRestException as e:
+        logger.exception("twilio_subaccount_create_failed", org_id=org_id, status=e.status, error=e.msg)
+        raise
+    if account.sid is None or account.auth_token is None:
+        raise RuntimeError("twilio subaccount create succeeded but returned no sid/auth_token")
+
+    sub = get_twilio_client(account_sid=account.sid)
     sms_url = f"{settings.APP_BASE_URL}{settings.API_PREFIX}/webhooks/twilio/sms"
     voice_url = f"{settings.APP_BASE_URL}{settings.API_PREFIX}/webhooks/twilio/voice"
+
+    phone_number = await _find_available_local_number(sub, area_code)
     try:
-        purchased = await client.incoming_phone_numbers.create_async(
+        purchased = await sub.incoming_phone_numbers.create_async(
             phone_number=phone_number,
             sms_url=sms_url,
             sms_method="POST",
             voice_url=voice_url,
             voice_method="POST",
+            friendly_name=label,
         )
     except TwilioRestException as e:
-        logger.exception("twilio_number_purchase_failed", phone_number=phone_number, status=e.status, error=e.msg)
+        logger.exception(
+            "twilio_number_purchase_failed",
+            org_id=org_id,
+            subaccount_sid=account.sid,
+            phone_number=phone_number,
+            status=e.status,
+            error=e.msg,
+        )
         raise
-    if purchased.phone_number is None:
-        raise RuntimeError("twilio number purchase succeeded but returned no phone_number")
-    logger.info("twilio_number_purchased", phone_number=purchased.phone_number, sms_url=sms_url, voice_url=voice_url)
-    return purchased.phone_number
+    if purchased.phone_number is None or purchased.sid is None:
+        raise RuntimeError("twilio number purchase succeeded but returned no phone_number/sid")
+
+    try:
+        service = await sub.messaging.v1.services.create_async(
+            friendly_name=label,
+            inbound_request_url=sms_url,
+            inbound_method="POST",
+            usecase="customer_care",
+        )
+    except TwilioRestException as e:
+        logger.exception(
+            "twilio_messaging_service_create_failed",
+            org_id=org_id,
+            subaccount_sid=account.sid,
+            status=e.status,
+            error=e.msg,
+        )
+        raise
+    if service.sid is None:
+        raise RuntimeError("twilio messaging service create succeeded but returned no sid")
+
+    try:
+        await sub.messaging.v1.services(service.sid).phone_numbers.create_async(phone_number_sid=purchased.sid)
+    except TwilioRestException as e:
+        logger.exception(
+            "twilio_messaging_service_attach_number_failed",
+            org_id=org_id,
+            messaging_service_sid=service.sid,
+            phone_sid=purchased.sid,
+            status=e.status,
+            error=e.msg,
+        )
+        raise
+
+    logger.info(
+        "twilio_org_provisioned",
+        org_id=org_id,
+        phone_number=purchased.phone_number,
+        subaccount_sid=account.sid,
+        phone_sid=purchased.sid,
+        messaging_service_sid=service.sid,
+        sms_url=sms_url,
+        voice_url=voice_url,
+    )
+    return ProvisionedOrgTwilio(
+        phone_number=purchased.phone_number,
+        subaccount_sid=account.sid,
+        auth_token=account.auth_token,
+        phone_sid=purchased.sid,
+        messaging_service_sid=service.sid,
+    )
 
 
 def generate_voice_answer_twiml(*, stream_url: str, org_id: str, contact_id: str, signal_id: str) -> str:

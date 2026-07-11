@@ -26,8 +26,8 @@ from app.core.limiter import limiter
 from app.core.logging import logger
 from app.schemas.auth import SupabaseUser
 from app.schemas.organizations import MemberRole, Organization, OrganizationMember
-from app.services.clients.supabase_client import execute_query, get_user_client
-from app.services.clients.twilio_client import provision_phone_number
+from app.services.clients.supabase_client import execute_query, get_service_role_client, get_user_client
+from app.services.clients.twilio_client import encrypt_twilio_auth_token, provision_org_twilio
 
 router = APIRouter()
 
@@ -126,15 +126,42 @@ async def create_organization(
 
     if organization.phone is None and settings.TWILIO_ACCOUNT_SID:
         # Best-effort: the org row already exists, so a Twilio hiccup here
-        # must not fail the request. Admins can retry via PATCH, or a
-        # dedicated re-provision endpoint, if this doesn't land.
+        # must not fail the request. Admins can retry via a dedicated
+        # re-provision endpoint later if this doesn't land.
         try:
-            phone_number = await provision_phone_number()
+            provisioned = await provision_org_twilio(
+                org_id=str(organization.id),
+                friendly_name=organization.name,
+            )
             update_response = await execute_query(
-                client.table("organizations").update({"phone": phone_number}).eq("id", str(organization.id))
+                client.table("organizations")
+                .update(
+                    {
+                        "phone": provisioned.phone_number,
+                        "twilio_subaccount_sid": provisioned.subaccount_sid,
+                        "twilio_phone_sid": provisioned.phone_sid,
+                        "twilio_messaging_service_sid": provisioned.messaging_service_sid,
+                    }
+                )
+                .eq("id", str(organization.id))
+            )
+            service = await get_service_role_client()
+            await execute_query(
+                service.table("organization_twilio_secrets").upsert(
+                    {
+                        "org_id": str(organization.id),
+                        "auth_token_encrypted": encrypt_twilio_auth_token(provisioned.auth_token),
+                    }
+                )
             )
             organization = Organization(**update_response.data[0])
-            logger.info("organization_phone_provisioned", org_id=str(organization.id), phone=phone_number)
+            logger.info(
+                "organization_twilio_provisioned",
+                org_id=str(organization.id),
+                phone=provisioned.phone_number,
+                subaccount_sid=provisioned.subaccount_sid,
+                messaging_service_sid=provisioned.messaging_service_sid,
+            )
         except Exception:
             logger.exception("organization_phone_provisioning_failed", org_id=str(organization.id))
 

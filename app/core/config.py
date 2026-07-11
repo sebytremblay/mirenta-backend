@@ -157,6 +157,10 @@ class Settings:
         # Twilio Configuration
         self.TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
         self.TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "")
+        # Fernet key (url-safe base64, 32 bytes) for encrypting per-org
+        # subaccount Auth Tokens. When empty, a key is derived from
+        # TWILIO_AUTH_TOKEN (fine for local; set explicitly in production).
+        self.TWILIO_TOKEN_ENCRYPTION_KEY = os.getenv("TWILIO_TOKEN_ENCRYPTION_KEY", "")
         # Externally-reachable base URL for this API, used to point a newly
         # purchased Twilio number's SMS/voice webhooks back at this app.
         self.APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")

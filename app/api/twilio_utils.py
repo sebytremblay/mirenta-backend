@@ -10,8 +10,12 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import Request
+from twilio.request_validator import RequestValidator
 
+from app.core.config import settings
+from app.core.logging import logger
 from app.services.clients.supabase_client import execute_query
+from app.services.clients.twilio_client import decrypt_twilio_auth_token
 
 
 def public_request_url(request: Request) -> str:
@@ -46,3 +50,35 @@ async def mark_signal_status(client: Any, signal_id: str, status: str) -> None:
         .update({"status": status, "processed_at": datetime.now(timezone.utc).isoformat()})
         .eq("id", signal_id)
     )
+
+
+async def resolve_twilio_auth_token(client: Any, org_id: str | None) -> str:
+    """Auth token used to validate `X-Twilio-Signature` for this org's webhooks.
+
+    Subaccount-owned numbers are signed with the subaccount token (stored
+    encrypted in `organization_twilio_secrets`). Legacy numbers still on the
+    parent account fall back to `TWILIO_AUTH_TOKEN`.
+    """
+    if org_id:
+        response = await execute_query(
+            client.table("organization_twilio_secrets").select("auth_token_encrypted").eq("org_id", org_id).limit(1)
+        )
+        if response.data:
+            try:
+                return decrypt_twilio_auth_token(response.data[0]["auth_token_encrypted"])
+            except Exception:
+                logger.exception("twilio_auth_token_decrypt_failed", org_id=org_id)
+    return settings.TWILIO_AUTH_TOKEN
+
+
+async def validate_twilio_signature(
+    request: Request,
+    params: dict[str, str],
+    client: Any,
+    *,
+    org_id: str | None,
+) -> bool:
+    """Validate Twilio's request signature with the org or parent Auth Token."""
+    auth_token = await resolve_twilio_auth_token(client, org_id)
+    validator = RequestValidator(auth_token)
+    return validator.validate(public_request_url(request), params, request.headers.get("X-Twilio-Signature", ""))

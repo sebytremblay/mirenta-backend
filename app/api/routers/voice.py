@@ -19,10 +19,9 @@ from typing import Any
 
 from fastapi import APIRouter, Request, Response, WebSocket
 from postgrest.exceptions import APIError
-from twilio.request_validator import RequestValidator
 
 from activities.contact_store import GetConsentInput, get_current_consent
-from app.api.twilio_utils import mark_signal_status, public_request_url
+from app.api.twilio_utils import mark_signal_status, validate_twilio_signature
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import logger
@@ -72,16 +71,6 @@ async def receive_twilio_call(request: Request):
     form = await request.form()
     params = {key: str(value) for key, value in form.items()}
 
-    signature = request.headers.get("X-Twilio-Signature", "")
-    validator = RequestValidator(settings.TWILIO_AUTH_TOKEN)
-    if not validator.validate(public_request_url(request), params, signature):
-        logger.warning("twilio_voice_signature_invalid", url=str(request.url))
-        return Response(
-            content=generate_voice_reject_twiml(message="We are unable to take your call."),
-            media_type="application/xml",
-            status_code=403,
-        )
-
     from_number = params.get("From", "")
     to_number = params.get("To", "")
     call_sid = params.get("CallSid") or ""
@@ -89,6 +78,13 @@ async def receive_twilio_call(request: Request):
     client = await get_service_role_client()
 
     org = await find_org_by_phone(client, to_number)
+    if not await validate_twilio_signature(request, params, client, org_id=org["id"] if org else None):
+        logger.warning("twilio_voice_signature_invalid", url=str(request.url), to_number=to_number)
+        return Response(
+            content=generate_voice_reject_twiml(message="We are unable to take your call."),
+            media_type="application/xml",
+            status_code=403,
+        )
     if org is None:
         logger.warning("twilio_voice_org_not_found", to_number=to_number)
         return Response(
