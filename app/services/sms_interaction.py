@@ -13,8 +13,8 @@ from typing import Any
 from uuid import UUID
 
 from app.core.logging import logger
-from app.services.supabase_client import execute_query
-from app.services.twilio_client import send_sms
+from app.services.clients.supabase_client import execute_query
+from app.services.clients.twilio_client import send_sms
 
 # TCPA opt-out/opt-in keywords (case-insensitive, exact match on the whole
 # body) — handled deterministically, never routed through the LLM.

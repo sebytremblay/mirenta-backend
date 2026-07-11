@@ -3,7 +3,7 @@
 Overrides `create_graph()` with a compose -> output_guardrails loop, mirroring
 `sms_graph.py`'s shape (see `docs/architecture.md` §5 and `base.py`'s
 docstring on per-channel divergence via override). Invoked one turn at a
-time from `app/services/voice_runtime.py`'s `VoiceCallSession`, not from a
+time from `app/services/runtimes/voice_runtime.py`'s `VoiceCallSession`, not from a
 Temporal activity -- see `docs/architecture.md`'s voice-runtime section for
 why a live call can't be a Temporal activity the way an SMS task is.
 """

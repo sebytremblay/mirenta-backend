@@ -82,8 +82,11 @@ create index consent_org_id_idx on consent (org_id);
 create index consent_contact_channel_idx
   on consent (contact_id, channel, occurred_at desc);
 
--- Latest consent decision per contact/channel (what guardrails.py queries)
-create view current_consent as
+-- Latest consent decision per contact/channel (what guardrails.py queries).
+-- security_invoker so the view respects the caller's RLS on `consent`
+-- (service-role only; no policies for anon/authenticated).
+create view current_consent
+with (security_invoker = true) as
 select distinct on (contact_id, channel)
   contact_id,
   channel,
@@ -92,6 +95,9 @@ select distinct on (contact_id, channel)
   occurred_at
 from consent
 order by contact_id, channel, occurred_at desc;
+
+revoke all on current_consent from anon, authenticated, public;
+grant select on current_consent to service_role;
 
 -- ---------------------------------------------------------------------------
 -- RLS: lock tables to the service role (backend uses the service key,

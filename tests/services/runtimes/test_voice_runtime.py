@@ -1,4 +1,4 @@
-"""Unit tests for app/services/voice_runtime.py's VoiceCallSession turn-taking state machine.
+"""Unit tests for app/services/runtimes/voice_runtime.py's VoiceCallSession turn-taking state machine.
 
 Exercises transcript accumulation, turn triggering, barge-in cancellation,
 and outcome inference with fakes/mocks -- no real Twilio/Deepgram network
@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi import WebSocket
 from langchain_core.messages import AIMessage
 
-from app.services.voice_runtime import VoiceCallSession
+from app.services.runtimes.voice_runtime import VoiceCallSession
 
 
 class _FakeWebSocket:
@@ -67,8 +67,8 @@ def test_handle_turn_composes_reply_and_starts_playback() -> None:
 
     async def _run() -> None:
         with (
-            patch("app.services.voice_runtime.voice_agent") as fake_agent,
-            patch("app.services.voice_runtime.DeepgramTTSSession") as fake_tts_cls,
+            patch("app.services.runtimes.voice_runtime.voice_agent") as fake_agent,
+            patch("app.services.runtimes.voice_runtime.DeepgramTTSSession") as fake_tts_cls,
         ):
             fake_agent.get_response = AsyncMock(return_value=[reply])
             fake_agent.agent_name = "voice_agent"
@@ -90,8 +90,8 @@ def test_handle_turn_marks_escalation() -> None:
 
     async def _run() -> None:
         with (
-            patch("app.services.voice_runtime.voice_agent") as fake_agent,
-            patch("app.services.voice_runtime.DeepgramTTSSession") as fake_tts_cls,
+            patch("app.services.runtimes.voice_runtime.voice_agent") as fake_agent,
+            patch("app.services.runtimes.voice_runtime.DeepgramTTSSession") as fake_tts_cls,
         ):
             fake_agent.get_response = AsyncMock(return_value=[reply])
             fake_tts_cls.return_value.synthesize_stream = _empty_stream

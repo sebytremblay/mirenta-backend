@@ -1,6 +1,6 @@
 """Signal-ingestion endpoints for the API.
 
-Signals are the single entry point for the Takeoff Runtime agent loop — see
+Signals are the single entry point for the Mirenta Runtime agent loop — see
 `docs/architecture.md`. Every inbound webhook, dashboard-triggered manual
 signal, and `interaction_result` re-entry lands in the `signals` table via
 this router. `signals` is locked to the service role (no RLS policies —
@@ -45,8 +45,8 @@ from app.services.sms_interaction import (
     get_or_create_contact_by_phone,
     handle_sms_keyword_fastpath,
 )
-from app.services.supabase_client import execute_query, get_service_role_client
-from app.services.temporal_client import get_temporal_client
+from app.services.clients.supabase_client import execute_query, get_service_role_client
+from app.services.clients.temporal_client import get_temporal_client
 from workflows.contact_loop import ContactLoopWorkflow
 from workflows.models import ContactLoopInput, SignalEnvelope
 

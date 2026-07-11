@@ -14,8 +14,13 @@ from app.core.langgraph.sms_graph import sms_agent
 from app.core.logging import logger
 from app.schemas.contacts import Contact, ContactState
 from app.schemas.tasks import Task
+from app.services.knowledge import fetch_active_knowledge, format_knowledge_for_prompt
 
 DEFAULT_SMS_CHANNEL_CONSTRAINTS = {"max_length": 320}
+
+FOLLOW_UP_HUMAN_PROMPT = (
+    "[System note: no new inbound message. Draft the scheduled no-response follow-up based on the prior conversation.]"
+)
 
 
 class RunInteractionInput(BaseModel):
@@ -34,6 +39,7 @@ class RunInteractionResult(BaseModel):
     transcript_turn: list[dict[str, str]]
     guardrail_escalated: bool = False
     guardrail_violations: list[str] = []
+    task_goal: str | None = None
 
 
 @activity.defn
@@ -44,7 +50,14 @@ async def run_interaction(input: RunInteractionInput) -> RunInteractionResult:
     `app/services/sms_interaction.py` already used, so existing checkpointed
     threads keep working after the cutover to Temporal.
     """
+    goal = input.task.payload.get("goal") or "reply_to_inbound_sms"
     body = input.task.payload.get("inbound_body", "")
+    if not body and goal == "follow_up_no_response":
+        body = FOLLOW_UP_HUMAN_PROMPT
+
+    knowledge_entries = await fetch_active_knowledge(input.task.org_id)
+    knowledge = format_knowledge_for_prompt(knowledge_entries)
+
     thread_id = f"sms:{input.task.org_id}:{input.task.contact_id}"
     response_messages = await sms_agent.get_response(
         [HumanMessage(content=body)],
@@ -52,8 +65,10 @@ async def run_interaction(input: RunInteractionInput) -> RunInteractionResult:
         metadata={
             "contact_id": str(input.task.contact_id),
             "task_id": str(input.task.id),
-            "task_goal": input.task.payload.get("goal"),
+            "task_goal": goal,
             "channel_constraints": DEFAULT_SMS_CHANNEL_CONSTRAINTS,
+            "knowledge": knowledge,
+            "memory_summary": input.contact_state.memory_summary or "",
         },
     )
     reply_message = next(
@@ -82,6 +97,7 @@ async def run_interaction(input: RunInteractionInput) -> RunInteractionResult:
         agent_graph=sms_agent.agent_name,
         has_reply=reply is not None,
         guardrail_escalated=guardrail_escalated,
+        knowledge_entries=len(knowledge_entries),
     )
     return RunInteractionResult(
         reply=reply,
@@ -89,4 +105,5 @@ async def run_interaction(input: RunInteractionInput) -> RunInteractionResult:
         transcript_turn=transcript_turn,
         guardrail_escalated=guardrail_escalated,
         guardrail_violations=guardrail_violations,
+        task_goal=goal,
     )

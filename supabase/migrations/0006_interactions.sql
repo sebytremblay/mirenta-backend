@@ -48,8 +48,11 @@ create index interactions_channel_idx  on interactions (channel);
 
 alter table interactions enable row level security;
 
--- Contact timeline convenience view (GET /contacts/{id}/timeline)
-create view contact_timeline as
+-- Contact timeline convenience view (GET /contacts/{id}/timeline).
+-- security_invoker so the view respects the caller's RLS on the source
+-- tables (service-role only; no policies for anon/authenticated).
+create view contact_timeline
+with (security_invoker = true) as
 select contact_id, 'signal' as kind, id, received_at as occurred_at,
        type::text as label, payload as data
 from signals
@@ -63,3 +66,6 @@ select contact_id, 'interaction', id, started_at,
        channel::text || ':' || coalesce(outcome::text, 'in_progress'),
        jsonb_build_object('summary', summary, 'outcome_data', outcome_data)
 from interactions;
+
+revoke all on contact_timeline from anon, authenticated, public;
+grant select on contact_timeline to service_role;

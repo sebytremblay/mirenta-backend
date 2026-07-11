@@ -7,7 +7,7 @@ from postgrest.exceptions import APIError
 
 from app.core.logging import logger
 from app.schemas.auth import SupabaseUser
-from app.services.supabase_client import execute_query, get_user_client
+from app.services.clients.supabase_client import execute_query, get_user_client
 
 
 async def assert_org_member(user: SupabaseUser, org_id: UUID) -> None:

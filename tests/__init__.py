@@ -1,1 +1,1 @@
-"""Unit tests for the Takeoff Runtime's deterministic core and pure LangGraph nodes."""
+"""Unit tests for the Mirenta Runtime's deterministic core and pure LangGraph nodes."""

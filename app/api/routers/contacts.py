@@ -30,7 +30,7 @@ from app.core.logging import logger
 from app.schemas.auth import SupabaseUser
 from app.schemas.contacts import Contact, ContactStatus
 from app.schemas.interactions import TimelineEntry
-from app.services.supabase_client import execute_query, get_service_role_client
+from app.services.clients.supabase_client import execute_query, get_service_role_client
 
 router = APIRouter()
 

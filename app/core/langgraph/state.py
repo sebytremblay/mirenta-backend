@@ -15,6 +15,7 @@ class SMSState(GraphState):
 
     goal: str = Field(default="", description="Task goal, e.g. 'reply_to_inbound_sms'")
     channel_constraints: dict = Field(default_factory=dict, description="e.g. {'max_length': 320}")
+    knowledge: str = Field(default="", description="Formatted knowledge injected into compose")
     draft: str | None = Field(default=None, description="Latest composed draft awaiting guardrail check")
     guardrail_attempts: int = Field(default=0, description="How many compose -> guardrail loops have run")
     guardrail_feedback: str | None = Field(default=None, description="Why the last draft failed, fed back to compose")

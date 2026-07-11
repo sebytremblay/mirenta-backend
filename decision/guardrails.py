@@ -1,4 +1,9 @@
-"""Compliance guardrails — quiet hours, frequency caps, DNC, consent.
+"""Compliance guardrails — frequency caps, DNC, consent, plus quiet-hours helpers.
+
+Hard blocks (`run_hard_guardrails`): DNC, consent, frequency cap.
+Quiet-hours helpers (`is_quiet_hours`, `next_allowed_send_time`) defer
+proactive/outbound outreach (including the 3-day silence follow-up).
+Inbound replies still schedule immediately.
 
 Pure functions: no I/O, no `datetime.now()` calls (callers always pass `now`
 explicitly) — this is what keeps the module both unit-testable without a
@@ -40,11 +45,12 @@ def is_quiet_hours(contact: Contact, now: datetime) -> bool:
 def next_allowed_send_time(contact: Contact, now: datetime) -> datetime:
     """The next time (in UTC) it's safe to send, honoring quiet hours.
 
-    Quiet hours is a scheduling deferral, not a hard emission-block: an
-    inbound SMS reply must still go out eventually, just not overnight —
-    dropping it outright would leave the contact unanswered. DNC, consent,
-    and the frequency cap (see `run_hard_guardrails`) are the true hard
-    blocks that skip task emission entirely.
+    For *proactive/outbound-initiated* outreach only. Inbound replies
+    schedule immediately — the contact is already awake. Quiet hours is a
+    scheduling deferral, not a hard emission-block; DNC, consent, and the
+    frequency cap (see `run_hard_guardrails`) are the true hard blocks.
+    Unused by inbound-reply rules; used by the 3-day silence follow-up
+    (and future proactive outreach) so delayed sends don't fire at 1am.
     """
     if not is_quiet_hours(contact, now):
         return now

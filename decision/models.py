@@ -28,3 +28,6 @@ class DecisionOutput(BaseModel):
     tasks: list[ProposedTask] = Field(default_factory=list)
     contact_state_patch: dict[str, Any] = Field(default_factory=dict)
     guardrail_denials: list[GuardrailDenial] = Field(default_factory=list)
+    # When True, ContactLoopWorkflow cancels any still-scheduled follow-up
+    # SMS tasks for this contact (e.g. contact replied before the nudge fired).
+    cancel_scheduled_follow_ups: bool = False

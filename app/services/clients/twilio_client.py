@@ -114,8 +114,8 @@ async def provision_phone_number(*, area_code: str | None = None) -> str:
     """
     client = get_twilio_client()
     phone_number = await _find_available_local_number(area_code)
-    sms_url = f"{settings.APP_BASE_URL}{settings.API_V1_STR}/webhooks/twilio/sms"
-    voice_url = f"{settings.APP_BASE_URL}{settings.API_V1_STR}/webhooks/twilio/voice"
+    sms_url = f"{settings.APP_BASE_URL}{settings.API_PREFIX}/webhooks/twilio/sms"
+    voice_url = f"{settings.APP_BASE_URL}{settings.API_PREFIX}/webhooks/twilio/voice"
     try:
         purchased = await client.incoming_phone_numbers.create_async(
             phone_number=phone_number,

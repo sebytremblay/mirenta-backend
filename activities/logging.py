@@ -9,8 +9,8 @@ from temporalio import activity
 from app.core.config import settings
 from app.core.logging import logger
 from app.schemas.signals import Signal
-from app.services.supabase_client import execute_query, get_service_role_client
-from app.services.temporal_client import get_temporal_client
+from app.services.clients.supabase_client import execute_query, get_service_role_client
+from app.services.clients.temporal_client import get_temporal_client
 from workflows.contact_loop import ContactLoopWorkflow
 from workflows.models import ContactLoopInput, SignalEnvelope
 
@@ -64,6 +64,7 @@ class EmitInteractionResultSignalInput(BaseModel):
     channel: str
     outcome: str | None = None
     summary: str | None = None
+    task_goal: str | None = None
 
 
 @activity.defn
@@ -88,7 +89,12 @@ async def emit_interaction_result_signal(input: EmitInteractionResultSignalInput
         "contact_id": input.contact_id,
         "type": "interaction_result",
         "source": "system",
-        "payload": {"interaction_id": input.interaction_id, "outcome": input.outcome, "summary": input.summary},
+        "payload": {
+            "interaction_id": input.interaction_id,
+            "outcome": input.outcome,
+            "summary": input.summary,
+            "task_goal": input.task_goal,
+        },
         "received_at": now,
         "delivered_at": now,
     }

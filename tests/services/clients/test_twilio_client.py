@@ -1,4 +1,4 @@
-"""Unit tests for app/services/twilio_client.py's number-provisioning helpers."""
+"""Unit tests for app/services/clients/twilio_client.py's number-provisioning helpers."""
 
 import asyncio
 from types import SimpleNamespace
@@ -8,7 +8,7 @@ import pytest
 from twilio.base.exceptions import TwilioRestException
 
 from app.core.config import settings
-from app.services.twilio_client import (
+from app.services.clients.twilio_client import (
     generate_voice_answer_twiml,
     generate_voice_reject_twiml,
     provision_phone_number,
@@ -29,23 +29,23 @@ def _make_fake_client(*, available: list[str], purchased_phone_number: str | Non
 def test_provision_phone_number_purchases_first_available_number() -> None:
     client = _make_fake_client(available=["+15551234567"], purchased_phone_number="+15551234567")
 
-    with patch("app.services.twilio_client.get_twilio_client", return_value=client):
+    with patch("app.services.clients.twilio_client.get_twilio_client", return_value=client):
         phone_number = asyncio.run(provision_phone_number())
 
     assert phone_number == "+15551234567"
     client.incoming_phone_numbers.create_async.assert_awaited_once()
     _, kwargs = client.incoming_phone_numbers.create_async.call_args
     assert kwargs["phone_number"] == "+15551234567"
-    assert kwargs["sms_url"].endswith(f"{settings.API_V1_STR}/webhooks/twilio/sms")
+    assert kwargs["sms_url"].endswith(f"{settings.API_PREFIX}/webhooks/twilio/sms")
     assert kwargs["sms_method"] == "POST"
-    assert kwargs["voice_url"].endswith(f"{settings.API_V1_STR}/webhooks/twilio/voice")
+    assert kwargs["voice_url"].endswith(f"{settings.API_PREFIX}/webhooks/twilio/voice")
     assert kwargs["voice_method"] == "POST"
 
 
 def test_provision_phone_number_raises_when_none_available() -> None:
     client = _make_fake_client(available=[], purchased_phone_number=None)
 
-    with patch("app.services.twilio_client.get_twilio_client", return_value=client):
+    with patch("app.services.clients.twilio_client.get_twilio_client", return_value=client):
         with pytest.raises(RuntimeError, match="no available twilio numbers"):
             asyncio.run(provision_phone_number())
 
@@ -58,7 +58,7 @@ def test_provision_phone_number_raises_on_purchase_failure() -> None:
         side_effect=TwilioRestException(status=400, uri="/IncomingPhoneNumbers", msg="number no longer available")
     )
 
-    with patch("app.services.twilio_client.get_twilio_client", return_value=client):
+    with patch("app.services.clients.twilio_client.get_twilio_client", return_value=client):
         with pytest.raises(TwilioRestException):
             asyncio.run(provision_phone_number())
 

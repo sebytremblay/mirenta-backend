@@ -18,6 +18,7 @@ from app.schemas.interactions import (
     TimelineEntry,
     TimelineEntryKind,
 )
+from app.schemas.knowledge import Knowledge, KnowledgeKind
 from app.schemas.memory import ContactMemory, ContactMemoryMatch, MemoryKind
 from app.schemas.organizations import (
     MemberRole,
@@ -53,6 +54,8 @@ __all__ = [
     "Interaction",
     "TimelineEntryKind",
     "TimelineEntry",
+    "KnowledgeKind",
+    "Knowledge",
     "MemoryKind",
     "ContactMemory",
     "ContactMemoryMatch",

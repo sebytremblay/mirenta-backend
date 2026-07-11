@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import Request
 
-from app.services.supabase_client import execute_query
+from app.services.clients.supabase_client import execute_query
 
 
 def public_request_url(request: Request) -> str:

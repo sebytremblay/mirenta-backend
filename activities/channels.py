@@ -3,7 +3,7 @@
 from pydantic import BaseModel
 from temporalio import activity
 
-from app.services.twilio_client import send_sms
+from app.services.clients.twilio_client import send_sms
 
 
 class SendSmsInput(BaseModel):

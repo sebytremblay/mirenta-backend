@@ -29,9 +29,9 @@ from app.core.logging import logger
 from app.schemas.contacts import Contact
 from app.schemas.signals import Signal
 from app.services.sms_interaction import find_org_by_phone, get_or_create_contact_by_phone
-from app.services.supabase_client import execute_query, get_service_role_client
-from app.services.twilio_client import generate_voice_answer_twiml, generate_voice_reject_twiml
-from app.services.voice_runtime import VoiceCallSession
+from app.services.clients.supabase_client import execute_query, get_service_role_client
+from app.services.clients.twilio_client import generate_voice_answer_twiml, generate_voice_reject_twiml
+from app.services.runtimes.voice_runtime import VoiceCallSession
 from decision.guardrails import check_consent, check_dnc
 
 router = APIRouter()

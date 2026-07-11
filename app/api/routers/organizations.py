@@ -25,8 +25,8 @@ from app.core.limiter import limiter
 from app.core.logging import logger
 from app.schemas.auth import SupabaseUser
 from app.schemas.organizations import MemberRole, Organization, OrganizationMember
-from app.services.supabase_client import execute_query, get_user_client
-from app.services.twilio_client import provision_phone_number
+from app.services.clients.supabase_client import execute_query, get_user_client
+from app.services.clients.twilio_client import provision_phone_number
 
 router = APIRouter()
 
@@ -55,6 +55,31 @@ class AddMemberRequest(BaseModel):
 
     user_id: UUID
     role: MemberRole = "member"
+
+
+@router.get("/organizations", response_model=List[Organization])
+@limiter.limit(settings.RATE_LIMIT_ENDPOINTS["organizations"][0])
+async def list_organizations(request: Request, user: SupabaseUser = Depends(get_current_user)):
+    """List organizations the caller belongs to.
+
+    RLS on `organizations` (`is_org_member`) scopes the result — returning
+    users use this to discover `org_id` after login without stashing it in
+    the JWT.
+
+    Args:
+        request: The FastAPI request object for rate limiting.
+        user: The authenticated Supabase user.
+
+    Returns:
+        List[Organization]: Organizations the caller is a member of.
+    """
+    client = await get_user_client(user.access_token)
+    try:
+        response = await execute_query(client.table("organizations").select("*").order("created_at"))
+        return [Organization(**row) for row in response.data]
+    except APIError as e:
+        logger.exception("list_organizations_failed", user_id=str(user.id), error=e.message)
+        raise HTTPException(status_code=400, detail=e.message)
 
 
 @router.post("/organizations", response_model=Organization)

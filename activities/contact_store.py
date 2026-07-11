@@ -11,7 +11,7 @@ from app.core.logging import logger
 from app.schemas.contacts import Contact, ContactState, CurrentConsent
 from app.schemas.organizations import Organization
 from app.schemas.tasks import Task
-from app.services.supabase_client import execute_query, get_service_role_client
+from app.services.clients.supabase_client import execute_query, get_service_role_client
 from decision.models import ProposedTask
 
 UNIQUE_VIOLATION = "23505"
@@ -209,3 +209,38 @@ async def mark_signal_processed(signal_id: str) -> None:
         .update({"status": "processed", "processed_at": datetime.now(timezone.utc).isoformat()})
         .eq("id", signal_id)
     )
+
+
+class CancelScheduledFollowUpsInput(BaseModel):
+    """Arguments to `cancel_scheduled_follow_ups`."""
+
+    contact_id: str
+    goal: str = "follow_up_no_response"
+
+
+@activity.defn
+async def cancel_scheduled_follow_ups(input: CancelScheduledFollowUpsInput) -> int:
+    """Mark still-scheduled follow-up SMS tasks for a contact as canceled.
+
+    The matching `TaskExecutionWorkflow` re-reads status after its sleep and
+    exits without sending — see `workflows/task_execution.py`.
+    """
+    client = await get_service_role_client()
+    response = await execute_query(
+        client.table("tasks")
+        .update({"status": "canceled"})
+        .eq("contact_id", input.contact_id)
+        .eq("status", "scheduled")
+        .eq("type", "sms")
+        .contains("payload", {"goal": input.goal})
+        .select("id")
+    )
+    canceled = len(response.data or [])
+    if canceled:
+        logger.info(
+            "scheduled_follow_ups_canceled",
+            contact_id=input.contact_id,
+            canceled_count=canceled,
+            goal=input.goal,
+        )
+    return canceled

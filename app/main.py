@@ -23,7 +23,7 @@ from app.core.limiter import limiter
 from app.core.logging import logger
 from app.core.middleware import LoggingContextMiddleware
 from app.core.observability import langfuse_init
-from app.services.supabase_client import execute_query, get_service_role_client
+from app.services.clients.supabase_client import execute_query, get_service_role_client
 
 # Load environment variables
 load_dotenv()
@@ -37,7 +37,7 @@ async def lifespan(app: FastAPI):
         "application_startup",
         project_name=settings.PROJECT_NAME,
         version=settings.VERSION,
-        api_prefix=settings.API_V1_STR,
+        api_prefix=settings.API_PREFIX,
     )
 
     yield
@@ -49,7 +49,7 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     description=settings.DESCRIPTION,
-    openapi_url=f"{settings.API_V1_STR}/openapi.json",
+    openapi_url=f"{settings.API_PREFIX}/openapi.json",
     lifespan=lifespan,
 )
 
@@ -106,7 +106,7 @@ app.add_middleware(
 )
 
 # Include API router
-app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(api_router, prefix=settings.API_PREFIX)
 
 
 @app.get("/")

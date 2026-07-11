@@ -1,4 +1,4 @@
-"""Long-running per-contact workflow — the durable heart of the Takeoff loop."""
+"""Long-running per-contact workflow — the durable heart of the Mirenta Runtime loop."""
 
 from datetime import timedelta
 
@@ -88,6 +88,14 @@ class ContactLoopWorkflow:
             await workflow.execute_activity(
                 contact_store.update_contact_state,
                 contact_store.UpdateContactStateInput(contact_id=input.contact_id, patch=decision.contact_state_patch),
+                start_to_close_timeout=ACTIVITY_TIMEOUT,
+                retry_policy=DEFAULT_RETRY_POLICY,
+            )
+
+        if decision.cancel_scheduled_follow_ups:
+            await workflow.execute_activity(
+                contact_store.cancel_scheduled_follow_ups,
+                contact_store.CancelScheduledFollowUpsInput(contact_id=input.contact_id),
                 start_to_close_timeout=ACTIVITY_TIMEOUT,
                 retry_policy=DEFAULT_RETRY_POLICY,
             )

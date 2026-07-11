@@ -41,9 +41,17 @@ class TaskExecutionWorkflow:
             # The actual durable timer -- survives worker restarts/deploys.
             await workflow.sleep(delay_seconds)
 
-        # Re-fetch state post-sleep: guardrails must reflect reality at
-        # execution time, not at decision time (a consent revoke or DNC
-        # flag set while this task was sleeping must still block the send).
+        # Re-fetch after sleep: a newer inbound may have canceled this task,
+        # and guardrails must reflect reality at execution time.
+        task = await workflow.execute_activity(
+            contact_store.get_task,
+            input.task_id,
+            start_to_close_timeout=ACTIVITY_TIMEOUT,
+            retry_policy=DEFAULT_RETRY_POLICY,
+        )
+        if task.status == "canceled":
+            return
+
         contact = await workflow.execute_activity(
             contact_store.get_contact,
             str(task.contact_id),
@@ -151,6 +159,7 @@ class TaskExecutionWorkflow:
                 channel="sms",
                 outcome=outcome,
                 summary=None,
+                task_goal=result.task_goal,
             ),
             start_to_close_timeout=ACTIVITY_TIMEOUT,
             retry_policy=DEFAULT_RETRY_POLICY,

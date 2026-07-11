@@ -1,4 +1,4 @@
-"""Unit tests for app/services/deepgram_client.py.
+"""Unit tests for app/services/clients/deepgram_client.py.
 
 Mocks the Deepgram client's `listen`/`speak` websocket connect calls the
 same way `test_twilio_client.py` mocks `get_twilio_client` -- no real
@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from deepgram.speak.v1 import SpeakV1Flushed
 
-from app.services.deepgram_client import (
+from app.services.clients.deepgram_client import (
     STT_CHANNELS,
     STT_ENCODING,
     STT_SAMPLE_RATE,
@@ -78,7 +78,7 @@ def test_stt_session_connects_with_telephony_params_and_closes_cleanly() -> None
     fake_client.listen.v1.connect = connect_mock
 
     async def _run() -> None:
-        with patch("app.services.deepgram_client.get_deepgram_client", return_value=fake_client):
+        with patch("app.services.clients.deepgram_client.get_deepgram_client", return_value=fake_client):
             session = DeepgramSTTSession()
             await session.start(on_transcript=_noop, on_utterance_end=_noop, on_speech_started=_noop, on_error=_noop)
             await session.finish()
@@ -100,7 +100,7 @@ def test_stt_session_start_retries_transient_connect_failure() -> None:
     fake_client.listen.v1.connect = connect_mock
 
     async def _run() -> None:
-        with patch("app.services.deepgram_client.get_deepgram_client", return_value=fake_client):
+        with patch("app.services.clients.deepgram_client.get_deepgram_client", return_value=fake_client):
             session = DeepgramSTTSession()
             await session.start(on_transcript=_noop, on_utterance_end=_noop, on_speech_started=_noop, on_error=_noop)
             await session.finish()
@@ -119,7 +119,7 @@ def test_tts_session_synthesizes_stream_until_flushed() -> None:
 
     async def _collect() -> list[bytes]:
         chunks: list[bytes] = []
-        with patch("app.services.deepgram_client.get_deepgram_client", return_value=fake_client):
+        with patch("app.services.clients.deepgram_client.get_deepgram_client", return_value=fake_client):
             async for chunk in DeepgramTTSSession().synthesize_stream("hello"):
                 chunks.append(chunk)
         return chunks

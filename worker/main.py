@@ -11,7 +11,7 @@ from activities import channels, contact_store, interactions
 from activities import logging as logging_activities
 from app.core.config import settings
 from app.core.logging import logger
-from app.services.temporal_client import get_temporal_client
+from app.services.clients.temporal_client import get_temporal_client
 from workflows.contact_loop import ContactLoopWorkflow
 from workflows.task_execution import TaskExecutionWorkflow
 
@@ -26,6 +26,7 @@ ACTIVITIES = [
     contact_store.get_task,
     contact_store.update_task_status,
     contact_store.mark_signal_processed,
+    contact_store.cancel_scheduled_follow_ups,
     interactions.run_interaction,
     channels.send_sms_message,
     logging_activities.log_interaction,

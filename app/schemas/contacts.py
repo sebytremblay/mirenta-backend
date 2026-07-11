@@ -27,7 +27,7 @@ class Contact(BaseResponse):
         last_name: The contact's last name.
         phone: The contact's phone number, E.164 format.
         email: The contact's email address.
-        timezone: IANA timezone, drives quiet-hours scheduling.
+        timezone: IANA timezone for the contact (used by quiet-hours helpers for future outbound outreach).
         status: The contact's lifecycle status.
         attributes: Arbitrary CRM fields carried over from the source system.
         created_at: When the contact was created.
@@ -41,7 +41,10 @@ class Contact(BaseResponse):
     last_name: str | None = Field(default=None, description="The contact's last name")
     phone: str | None = Field(default=None, description="The contact's phone number, E.164 format")
     email: str | None = Field(default=None, description="The contact's email address")
-    timezone: str = Field(default="America/Los_Angeles", description="IANA timezone, drives quiet-hours scheduling")
+    timezone: str = Field(
+        default="America/Los_Angeles",
+        description="IANA timezone for the contact (used by quiet-hours helpers for future outbound outreach)",
+    )
     status: ContactStatus = Field(default="active", description="The contact's lifecycle status")
     attributes: dict[str, Any] = Field(default_factory=dict, description="Arbitrary CRM fields")
     created_at: datetime = Field(..., description="When the contact was created")

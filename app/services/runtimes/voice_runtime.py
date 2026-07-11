@@ -28,7 +28,7 @@ from activities.logging import (
 )
 from app.core.langgraph.voice_graph import voice_agent
 from app.core.logging import logger
-from app.services.deepgram_client import DeepgramSTTSession, DeepgramTTSSession
+from app.services.clients.deepgram_client import DeepgramSTTSession, DeepgramTTSSession
 
 VOICE_CHANNEL_CONSTRAINTS = {"max_length": 600}
 TTS_FRAME_BYTES = 160  # 20ms of 8kHz mulaw

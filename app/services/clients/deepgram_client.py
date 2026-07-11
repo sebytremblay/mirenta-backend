@@ -2,7 +2,7 @@
 
 Wraps `deepgram-sdk`'s async `listen`/`speak` websocket clients with a cached
 client factory, connect-time retries, and structlog logging, following
-`app/services/twilio_client.py`'s conventions.
+`app/services/clients/twilio_client.py`'s conventions.
 """
 
 import asyncio

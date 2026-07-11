@@ -128,7 +128,7 @@ class Settings:
         self.DESCRIPTION = os.getenv(
             "DESCRIPTION", "A production-ready FastAPI template with LangGraph and Langfuse integration"
         )
-        self.API_V1_STR = os.getenv("API_V1_STR", "/api/v1")
+        self.API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
         self.DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "t", "yes")
         self.DEFAULT_PERSONA_NAME = os.getenv("DEFAULT_PERSONA_NAME", "Alex")
 
@@ -180,7 +180,7 @@ class Settings:
         self.TEMPORAL_ADDRESS = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
         self.TEMPORAL_NAMESPACE = os.getenv("TEMPORAL_NAMESPACE", "default")
         self.TEMPORAL_API_KEY = os.getenv("TEMPORAL_KEY", "")
-        self.TEMPORAL_TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "mirenta-takeoff")
+        self.TEMPORAL_TASK_QUEUE = os.getenv("TEMPORAL_TASK_QUEUE", "mirenta-runtime")
         self.TEMPORAL_TLS = os.getenv("TEMPORAL_TLS", "false").lower() in ("true", "1", "t", "yes")
 
         # Supabase Configuration
@@ -214,8 +214,10 @@ class Settings:
         default_endpoints = {
             "root": ["10 per minute"],
             "health": ["20 per minute"],
+            "profiles": ["60 per minute"],
             "organizations": ["60 per minute"],
             "contacts": ["60 per minute"],
+            "knowledge": ["60 per minute"],
             "signals": ["60 per minute"],
             "sms_webhook": ["120 per minute"],
             "voice_webhook": ["60 per minute"],
