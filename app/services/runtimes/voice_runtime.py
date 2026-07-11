@@ -29,6 +29,7 @@ from activities.logging import (
 from app.core.langgraph.voice_graph import voice_agent
 from app.core.logging import logger
 from app.services.clients.deepgram_client import DeepgramSTTSession, DeepgramTTSSession
+from app.services.knowledge import fetch_active_knowledge, format_knowledge_for_prompt
 
 VOICE_CHANNEL_CONSTRAINTS = {"max_length": 600}
 TTS_FRAME_BYTES = 160  # 20ms of 8kHz mulaw
@@ -51,6 +52,8 @@ class VoiceCallSession:
         self._current_playback: asyncio.Task[None] | None = None
         self._any_turn_completed = False
         self._any_turn_escalated = False
+        self._knowledge = ""
+        self._knowledge_entry_count = 0
 
     async def run(self) -> None:
         """Accept the call, bridge audio for its duration, then close the loop."""
@@ -103,7 +106,16 @@ class VoiceCallSession:
             logger.warning("voice_ws_missing_correlation_params", call_sid=self._call_sid)
             return False
 
-        logger.info("voice_ws_connected", call_sid=self._call_sid, org_id=self._org_id, contact_id=self._contact_id)
+        knowledge_entries = await fetch_active_knowledge(self._org_id)
+        self._knowledge = format_knowledge_for_prompt(knowledge_entries)
+        self._knowledge_entry_count = len(knowledge_entries)
+        logger.info(
+            "voice_ws_connected",
+            call_sid=self._call_sid,
+            org_id=self._org_id,
+            contact_id=self._contact_id,
+            knowledge_entries=self._knowledge_entry_count,
+        )
         return True
 
     async def _read_media_loop(self) -> None:
@@ -165,6 +177,7 @@ class VoiceCallSession:
                     "contact_id": self._contact_id,
                     "task_goal": "converse_inbound_call",
                     "channel_constraints": VOICE_CHANNEL_CONSTRAINTS,
+                    "knowledge": self._knowledge,
                 },
             )
         except Exception:
@@ -188,7 +201,12 @@ class VoiceCallSession:
 
         self._any_turn_completed = True
         self._transcript.append({"role": "ai", "content": reply_text})
-        logger.info("voice_turn_composed", call_sid=self._call_sid, reply_length=len(reply_text))
+        logger.info(
+            "voice_turn_composed",
+            call_sid=self._call_sid,
+            reply_length=len(reply_text),
+            knowledge_entries=self._knowledge_entry_count,
+        )
 
         await self._cancel_playback()
         self._current_playback = asyncio.create_task(self._play_reply(reply_text))

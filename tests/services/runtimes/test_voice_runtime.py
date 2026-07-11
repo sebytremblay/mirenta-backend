@@ -18,6 +18,7 @@ from app.services.runtimes.voice_runtime import VoiceCallSession
 class _FakeWebSocket:
     def __init__(self) -> None:
         self.send_json = AsyncMock()
+        self.receive_json = AsyncMock()
 
 
 async def _empty_stream(_text: str):
@@ -63,6 +64,7 @@ def test_utterance_end_is_noop_with_no_pending_transcript() -> None:
 
 def test_handle_turn_composes_reply_and_starts_playback() -> None:
     session, _ = _make_session()
+    session._knowledge = "Organization knowledge:\n- [hours] Hours: Mon-Fri 9-5"
     reply = AIMessage(content="See you soon.")
 
     async def _run() -> None:
@@ -78,6 +80,10 @@ def test_handle_turn_composes_reply_and_starts_playback() -> None:
             playback = session._current_playback
             assert playback is not None
             await playback
+
+            fake_agent.get_response.assert_awaited_once()
+            call_kwargs = fake_agent.get_response.await_args.kwargs
+            assert call_kwargs["metadata"]["knowledge"] == session._knowledge
 
     asyncio.run(_run())
     assert session._any_turn_completed is True
@@ -130,6 +136,41 @@ def test_handle_barge_in_cancels_playback_and_sends_clear() -> None:
     asyncio.run(_run())
     assert session._current_playback is None
     fake_ws.send_json.assert_awaited_once_with({"event": "clear", "streamSid": "MZ123"})
+
+
+def test_handshake_loads_knowledge_for_org() -> None:
+    fake_ws = _FakeWebSocket()
+    session = VoiceCallSession(websocket=cast(WebSocket, fake_ws), call_sid="CA123")
+
+    async def _run() -> None:
+        with (
+            patch(
+                "app.services.runtimes.voice_runtime.fetch_active_knowledge",
+                new=AsyncMock(return_value=[]),
+            ) as fetch_knowledge,
+            patch(
+                "app.services.runtimes.voice_runtime.format_knowledge_for_prompt",
+                return_value="",
+            ),
+        ):
+            fake_ws.receive_json.side_effect = [
+                {"event": "connected"},
+                {
+                    "event": "start",
+                    "start": {
+                        "streamSid": "MZ123",
+                        "callSid": "CA123",
+                        "customParameters": {"org_id": "org-1", "contact_id": "contact-1"},
+                    },
+                },
+            ]
+            ok = await session._handshake()
+            assert ok is True
+            fetch_knowledge.assert_awaited_once_with("org-1")
+            assert session._knowledge == ""
+            assert session._knowledge_entry_count == 0
+
+    asyncio.run(_run())
 
 
 def test_handle_barge_in_is_noop_without_active_playback() -> None:
