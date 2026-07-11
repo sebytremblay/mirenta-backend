@@ -305,7 +305,7 @@ async def provision_org_twilio(
             friendly_name=label,
             inbound_request_url=sms_url,
             inbound_method="POST",
-            usecase="customer_care",
+            usecase="discussion",
         )
     except TwilioRestException as e:
         logger.exception(
