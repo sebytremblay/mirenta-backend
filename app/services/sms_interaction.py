@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from app.api.twilio_utils import load_org_twilio_auth_token
 from app.core.logging import logger
 from app.services.clients.supabase_client import execute_query
 from app.services.clients.twilio_client import send_sms
@@ -139,6 +140,10 @@ async def handle_sms_keyword_fastpath(
     """
     normalized = body.strip().lower()
 
+    auth_token: str | None = None
+    if subaccount_sid:
+        auth_token = await load_org_twilio_auth_token(client, org_id)
+
     if normalized in SMS_STOP_KEYWORDS:
         await _record_sms_consent(client, org_id, contact_id, granted=False)
         reply = "You've been unsubscribed and won't receive further messages. Reply START to resubscribe."
@@ -148,6 +153,7 @@ async def handle_sms_keyword_fastpath(
             body=reply,
             messaging_service_sid=messaging_service_sid,
             subaccount_sid=subaccount_sid,
+            auth_token=auth_token,
         )
         await _log_interaction(
             client,
@@ -169,6 +175,7 @@ async def handle_sms_keyword_fastpath(
             body=reply,
             messaging_service_sid=messaging_service_sid,
             subaccount_sid=subaccount_sid,
+            auth_token=auth_token,
         )
         await _log_interaction(
             client,

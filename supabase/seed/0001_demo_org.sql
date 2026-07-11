@@ -1,4 +1,4 @@
--- 0008_seed_demo_org.sql
+-- 0001_demo_org.sql
 -- Seed the org that owns the static Twilio SMS number while it's shared
 -- across all inbound traffic. `receive_twilio_sms` (app/api/routers/signals.py)
 -- resolves the receiving org by `organizations.phone`, so this row is what

@@ -84,7 +84,7 @@ as $$
 $$;
 
 -- Authenticated callers (and service_role) must be able to EXECUTE these
--- helpers when RLS policies invoke them. See also 0011 for existing DBs.
+-- helpers when RLS policies invoke them.
 revoke all on function public.is_org_member(uuid) from public, anon;
 revoke all on function public.is_org_admin(uuid) from public, anon;
 grant execute on function public.is_org_member(uuid) to authenticated, service_role;

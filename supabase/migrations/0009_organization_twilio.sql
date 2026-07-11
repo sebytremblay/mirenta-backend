@@ -1,4 +1,4 @@
--- 0012_organization_twilio.sql
+-- 0009_organization_twilio.sql
 -- Per-org Twilio ISV isolation: public SIDs on organizations, encrypted
 -- subaccount auth token in a service-role-only secrets table.
 -- See docs/architecture.md (org phone auto-provisioning) and

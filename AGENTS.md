@@ -49,7 +49,8 @@ activities/        # Temporal activities — contact_store.py, channels.py (Twil
 worker/            # Temporal worker entrypoint (`make worker`)
 scripts/           # Environment setup scripts
 supabase/
-  migrations/      # Numbered hand-written SQL (no ORM), including 0009_knowledge.sql
+  migrations/      # Numbered hand-written schema SQL (no ORM), including 0008_knowledge.sql
+  seed/            # Demo/seed data, applied after migrations (e.g. via `supabase db reset`)
 tests/
   decision/        # Pure unit tests for the decision engine (no I/O, no clock)
   langgraph/       # Unit tests for graph nodes (e.g. output guardrails)

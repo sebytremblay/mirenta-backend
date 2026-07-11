@@ -16,7 +16,7 @@
 1. Create a project at [supabase.com](https://supabase.com).
 2. From **Project Settings → API**, copy the Project URL, publishable key, secret key, and JWKS URL.
 3. From **Project Settings → Database → Connection string**, copy the direct connection host/port/user/password.
-4. Run the migrations in `supabase/migrations/` in order (`0001` through `0010`) via the Supabase SQL editor or CLI — see `docs/database.md` for what each one adds.
+4. Run the migrations in `supabase/migrations/` in order (`0001` through `0009`) via the Supabase SQL editor or CLI — see `docs/database.md` for what each one adds. Optionally also run `supabase/seed/` (`0001`, `0002`) for demo org/knowledge data.
 
 ## Run locally
 

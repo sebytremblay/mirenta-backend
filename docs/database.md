@@ -1,6 +1,6 @@
 # Database
 
-Everything lives in **one Supabase Postgres project**, managed as hand-written, numbered SQL migrations in `supabase/migrations/` (no ORM). That covers org/staff identity glue, the contact domain, the per-org knowledge base, and the Mirenta Runtime agent-loop tables (signals, tasks, interactions, memory) — see [Architecture](architecture.md) for how those tables map onto the loop.
+Everything lives in **one Supabase Postgres project**, managed as hand-written, numbered SQL migrations in `supabase/migrations/` (no ORM). That covers org/staff identity glue, the contact domain, the per-org knowledge base, and the Mirenta Runtime agent-loop tables (signals, tasks, interactions, memory) — see [Architecture](architecture.md) for how those tables map onto the loop. Demo/seed data lives separately in `supabase/seed/`, applied after migrations (e.g. via `supabase db reset`).
 
 User identity (`auth.users`) is owned entirely by Supabase Auth — this repo never creates or migrates a users table. See [Authentication](authentication.md).
 
@@ -17,11 +17,17 @@ The SMS and voice interaction-layer subagents (`app/core/langgraph/sms_graph.py`
 | `0005_tasks.sql` | `tasks` — scheduled executable events emitted by the decision engine |
 | `0006_interactions.sql` | `interactions`, `contact_timeline` view |
 | `0007_memory.sql` | `contact_memory` (pgvector), `match_contact_memory` RPC |
-| `0008_seed_demo_org.sql` | Demo `organizations` row for the shared Twilio number |
-| `0009_knowledge.sql` | `knowledge` — per-org facts that ground SMS replies (booking, hours, FAQ, …) |
-| `0010_secure_agent_views.sql` | `security_invoker` + revoke Data API grants on `current_consent` / `contact_timeline` |
-| `0011_grant_org_helpers_execute.sql` | Grant `EXECUTE` on `is_org_member` / `is_org_admin` to authenticated |
-| `0012_organization_twilio.sql` | Per-org Twilio SIDs on `organizations` + `organization_twilio_secrets` |
+| `0008_knowledge.sql` | `knowledge` — per-org facts that ground SMS replies (booking, hours, FAQ, …) |
+| `0009_organization_twilio.sql` | Per-org Twilio SIDs on `organizations` + `organization_twilio_secrets` |
+
+`security_invoker` + Data API lockdown on `current_consent` / `contact_timeline`, and the `EXECUTE` grants on `is_org_member` / `is_org_admin`, are inline in `0003_contacts.sql` / `0006_interactions.sql` and `0001_organizations.sql` respectively (folded in from what were originally separate fixup migrations).
+
+### Seed data (`supabase/seed/`)
+
+| File | Adds |
+|---|---|
+| `0001_demo_org.sql` | Demo `organizations` row for the shared Twilio number |
+| `0002_demo_knowledge.sql` | Demo `knowledge` rows for that org (booking, hours, services, FAQ) |
 
 ## Schema
 
@@ -208,7 +214,7 @@ RLS is enabled on every table. Two `security definer` helper functions back most
 - `is_org_member(org)` — is the current user (`auth.uid()`) a member of `org`?
 - `is_org_admin(org)` — is the current user an `owner` or `admin` of `org`?
 
-Those helpers need an explicit `EXECUTE` grant for `authenticated` and `service_role` (see `0011_grant_org_helpers_execute.sql`). Without it, RLS policies that call them fail with `permission denied for function is_org_member` before membership is checked. `anon` / `PUBLIC` should not have execute.
+Those helpers need an explicit `EXECUTE` grant for `authenticated` and `service_role` (see `0001_organizations.sql`). Without it, RLS policies that call them fail with `permission denied for function is_org_member` before membership is checked. `anon` / `PUBLIC` should not have execute.
 
 Org create (`POST /organizations`) must insert with `return=minimal`, then insert the caller as owner, then `SELECT` the org. A default PostgREST `INSERT ... RETURNING` hits SELECT RLS (`is_org_member`) before membership exists and fails with `new row violates row-level security policy for table "organizations"`.
 

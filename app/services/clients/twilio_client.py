@@ -2,9 +2,11 @@
 
 ISV pattern (Twilio architecture type #1): each Mirenta org gets its own
 Twilio subaccount, a US local number purchased in that subaccount, and a
-Messaging Service that owns inbound SMS webhook routing. Parent-account
-credentials act on the subaccount via the Client `account_sid` override;
-the subaccount Auth Token is stored encrypted for webhook signature checks.
+Messaging Service that owns inbound SMS webhook routing. Subaccount API
+calls authenticate with that subaccount's own SID + Auth Token (parent
+SID+token with an `account_sid` override can 401 on some resources). The
+subaccount Auth Token is stored encrypted for webhook signature checks and
+outbound sends.
 """
 
 from __future__ import annotations
@@ -30,18 +32,32 @@ from app.core.config import settings
 from app.core.logging import logger
 
 _parent_client: Client | None = None
+_http_client: AsyncTwilioHttpClient | None = None
 
 
-def get_twilio_client(*, account_sid: str | None = None) -> Client:
-    """Twilio REST client for the parent account, or a specific subaccount.
+def _async_http_client() -> AsyncTwilioHttpClient:
+    """Shared async HTTP client so we don't leak aiohttp sessions per Client."""
+    global _http_client
+    if _http_client is None:
+        _http_client = AsyncTwilioHttpClient()
+    return _http_client
+
+
+def get_twilio_client(*, account_sid: str | None = None, auth_token: str | None = None) -> Client:
+    """Twilio REST client for the parent account or a specific subaccount.
 
     Uses `AsyncTwilioHttpClient` so callers can safely use `*_async` methods
-    from FastAPI/Temporal async paths. Parent credentials always authenticate;
-    when `account_sid` is a subaccount, API calls are scoped to that account.
+    from FastAPI/Temporal async paths.
+
+    When both `account_sid` and `auth_token` are provided, authenticates as
+    that account directly (required for subaccounts). Parent SID + parent
+    token with only an `account_sid` override is not used for subaccounts —
+    it can return Twilio 20003/401 on resources like AvailablePhoneNumbers.
 
     Args:
-        account_sid: Optional subaccount SID. Omit (or pass the parent SID)
-            to operate on the parent account.
+        account_sid: Optional account/subaccount SID.
+        auth_token: Auth Token matching `account_sid`. Required when
+            `account_sid` is a subaccount.
 
     Returns:
         Client: Authenticated Twilio client.
@@ -49,13 +65,21 @@ def get_twilio_client(*, account_sid: str | None = None) -> Client:
     global _parent_client
     parent_sid = settings.TWILIO_ACCOUNT_SID
     parent_token = settings.TWILIO_AUTH_TOKEN
+    http = _async_http_client()
+
+    if account_sid and auth_token:
+        return Client(account_sid, auth_token, http_client=http)
 
     if account_sid is None or account_sid == parent_sid:
         if _parent_client is None:
-            _parent_client = Client(parent_sid, parent_token, http_client=AsyncTwilioHttpClient())
+            _parent_client = Client(parent_sid, parent_token, http_client=http)
         return _parent_client
 
-    return Client(parent_sid, parent_token, account_sid, http_client=AsyncTwilioHttpClient())
+    # Subaccount SID without its own token: still prefer authenticating as
+    # the subaccount is impossible — fall back to parent-scoped client and
+    # log so misconfigured orgs are visible.
+    logger.warning("twilio_subaccount_client_missing_auth_token", account_sid=account_sid)
+    return Client(parent_sid, parent_token, account_sid, http_client=http)
 
 
 def _fernet() -> Fernet:
@@ -105,6 +129,7 @@ async def send_sms(
     from_: str | None = None,
     messaging_service_sid: str | None = None,
     subaccount_sid: str | None = None,
+    auth_token: str | None = None,
 ) -> str:
     """Send an outbound SMS via Twilio, retrying on transient (5xx) failures.
 
@@ -118,6 +143,7 @@ async def send_sms(
         from_: Sending organization's Twilio number (legacy path).
         messaging_service_sid: Org Messaging Service SID (preferred).
         subaccount_sid: Org Twilio subaccount SID; scopes the send.
+        auth_token: Subaccount Auth Token (required with `subaccount_sid`).
 
     Returns:
         str: The Twilio message SID.
@@ -125,7 +151,7 @@ async def send_sms(
     if not messaging_service_sid and not from_:
         raise ValueError("send_sms requires messaging_service_sid or from_")
 
-    client = get_twilio_client(account_sid=subaccount_sid)
+    client = get_twilio_client(account_sid=subaccount_sid, auth_token=auth_token)
     try:
         if messaging_service_sid:
             message = await client.messages.create_async(
@@ -214,6 +240,9 @@ async def provision_org_twilio(
     succeeded server-side would leak orphaned Twilio resources on retry.
     Only the read-only number search is safe to retry automatically.
 
+    After the subaccount is created, all further API calls authenticate with
+    that subaccount's own SID + Auth Token from the create response.
+
     Args:
         org_id: Mirenta organization UUID (used in Twilio friendly names).
         friendly_name: Human-readable label (usually the org name).
@@ -233,7 +262,7 @@ async def provision_org_twilio(
     if account.sid is None or account.auth_token is None:
         raise RuntimeError("twilio subaccount create succeeded but returned no sid/auth_token")
 
-    sub = get_twilio_client(account_sid=account.sid)
+    sub = get_twilio_client(account_sid=account.sid, auth_token=account.auth_token)
     sms_url = f"{settings.APP_BASE_URL}{settings.API_PREFIX}/webhooks/twilio/sms"
     voice_url = f"{settings.APP_BASE_URL}{settings.API_PREFIX}/webhooks/twilio/voice"
 

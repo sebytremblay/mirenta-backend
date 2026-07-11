@@ -52,6 +52,20 @@ async def mark_signal_status(client: Any, signal_id: str, status: str) -> None:
     )
 
 
+async def load_org_twilio_auth_token(client: Any, org_id: str) -> str | None:
+    """Decrypt the org's subaccount Auth Token, or None if not provisioned."""
+    response = await execute_query(
+        client.table("organization_twilio_secrets").select("auth_token_encrypted").eq("org_id", org_id).limit(1)
+    )
+    if not response.data:
+        return None
+    try:
+        return decrypt_twilio_auth_token(response.data[0]["auth_token_encrypted"])
+    except Exception:
+        logger.exception("twilio_auth_token_decrypt_failed", org_id=org_id)
+        return None
+
+
 async def resolve_twilio_auth_token(client: Any, org_id: str | None) -> str:
     """Auth token used to validate `X-Twilio-Signature` for this org's webhooks.
 
@@ -60,14 +74,9 @@ async def resolve_twilio_auth_token(client: Any, org_id: str | None) -> str:
     parent account fall back to `TWILIO_AUTH_TOKEN`.
     """
     if org_id:
-        response = await execute_query(
-            client.table("organization_twilio_secrets").select("auth_token_encrypted").eq("org_id", org_id).limit(1)
-        )
-        if response.data:
-            try:
-                return decrypt_twilio_auth_token(response.data[0]["auth_token_encrypted"])
-            except Exception:
-                logger.exception("twilio_auth_token_decrypt_failed", org_id=org_id)
+        token = await load_org_twilio_auth_token(client, org_id)
+        if token:
+            return token
     return settings.TWILIO_AUTH_TOKEN
 
 
