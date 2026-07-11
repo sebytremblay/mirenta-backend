@@ -29,7 +29,7 @@ VOICE_STYLE_INSTRUCTIONS = (
 async def compose(state: VoiceState, config: RunnableConfig) -> Command:
     """Draft the next spoken turn, given the call goal and channel constraints.
 
-    `goal`/`channel_constraints` come from `get_response(..., metadata=...)`
+    `goal`/`channel_constraints`/`knowledge` come from `get_response(..., metadata=...)`
     on the first pass and are persisted onto state so later
     compose->guardrail loop iterations don't need to re-read config.
     """
@@ -38,6 +38,7 @@ async def compose(state: VoiceState, config: RunnableConfig) -> Command:
     channel_constraints = (
         state.channel_constraints or metadata.get("channel_constraints") or DEFAULT_CHANNEL_CONSTRAINTS
     )
+    knowledge = state.knowledge or metadata.get("knowledge") or ""
 
     system_prompt = load_system_prompt()
     instructions = (
@@ -46,12 +47,20 @@ async def compose(state: VoiceState, config: RunnableConfig) -> Command:
     if state.guardrail_feedback:
         instructions += f" Your previous draft was rejected: {state.guardrail_feedback}. Regenerate, correcting this."
 
-    messages = [SystemMessage(content=system_prompt), SystemMessage(content=instructions), *state.messages]
+    messages = [SystemMessage(content=system_prompt), SystemMessage(content=instructions)]
+    if knowledge:
+        messages.append(SystemMessage(content=knowledge))
+    messages.extend(state.messages)
     response = await llm_service.call(messages, model_name=settings.VOICE_LLM_MODEL)
     draft = response.content if isinstance(response.content, str) else str(response.content)
 
     logger.info("voice_draft_composed", guardrail_attempts=state.guardrail_attempts, draft_length=len(draft))
     return Command(
-        update={"draft": draft, "goal": goal, "channel_constraints": channel_constraints},
+        update={
+            "draft": draft,
+            "goal": goal,
+            "channel_constraints": channel_constraints,
+            "knowledge": knowledge,
+        },
         goto="output_guardrails",
     )
