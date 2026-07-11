@@ -6,11 +6,13 @@ from typing import Any
 from pydantic import BaseModel
 from temporalio import activity
 
+from app.core.config import settings
 from app.core.logging import logger
 from app.schemas.signals import Signal
 from app.services.supabase_client import execute_query, get_service_role_client
 from app.services.temporal_client import get_temporal_client
-from workflows.models import SignalEnvelope
+from workflows.contact_loop import ContactLoopWorkflow
+from workflows.models import ContactLoopInput, SignalEnvelope
 
 
 class LogInteractionInput(BaseModel):
@@ -59,6 +61,7 @@ class EmitInteractionResultSignalInput(BaseModel):
     org_id: str
     contact_id: str
     interaction_id: str
+    channel: str
     outcome: str | None = None
     summary: str | None = None
 
@@ -67,9 +70,16 @@ class EmitInteractionResultSignalInput(BaseModel):
 async def emit_interaction_result_signal(input: EmitInteractionResultSignalInput) -> str:
     """Insert a new `interaction_result` signal and deliver it to the contact's workflow.
 
-    Backfills `interactions.result_signal_id` and signals the contact's own
-    `ContactLoopWorkflow` — the "logged result -> new Signal" step that
-    closes the loop in `docs/architecture.md`.
+    Backfills `interactions.result_signal_id` and delivers the signal via
+    Temporal signal-with-start (same pattern as `receive_twilio_sms`) rather
+    than signaling an existing handle — a call from a brand-new contact has
+    no `ContactLoopWorkflow` running yet when the interaction ends, so a
+    plain `.signal()` on a handle would raise "workflow not found."
+    Signal-with-start is a no-op start when the workflow is already running,
+    so this is strictly more robust for every channel, not a voice-only
+    branch.
+
+    Closes the loop in `docs/architecture.md`.
     """
     client = await get_service_role_client()
     now = datetime.now(timezone.utc).isoformat()
@@ -90,7 +100,13 @@ async def emit_interaction_result_signal(input: EmitInteractionResultSignalInput
     )
 
     temporal_client = await get_temporal_client()
-    handle = temporal_client.get_workflow_handle(f"contact-loop:{input.contact_id}")
-    await handle.signal("signal_received", SignalEnvelope(signal=signal, channel="sms"))
+    await temporal_client.start_workflow(
+        ContactLoopWorkflow.run,
+        ContactLoopInput(contact_id=input.contact_id, org_id=input.org_id),
+        id=f"contact-loop:{input.contact_id}",
+        task_queue=settings.TEMPORAL_TASK_QUEUE,
+        start_signal="signal_received",
+        start_signal_args=[SignalEnvelope(signal=signal, channel=input.channel)],
+    )
     logger.info("interaction_result_signal_emitted", contact_id=input.contact_id, signal_id=str(signal.id))
     return str(signal.id)

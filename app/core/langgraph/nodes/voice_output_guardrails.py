@@ -1,46 +1,43 @@
-"""output_guardrails node — deterministic checkpoint before anything is sent.
+"""voice_output_guardrails node — deterministic checkpoint before a turn is spoken.
 
-Runs after `compose` but before anything is sent. No LLM call here
-(deterministic checks only, for now) — the routing decision below
-(pass/retry/escalate) is the seam a future LLM classifier could slot into
-without restructuring the graph.
+Mirrors `output_guardrails.py`'s pass/retry/escalate shape, but with
+voice-appropriate checks: a looser spoken-length cap and, deliberately, no
+STOP-keyword requirement -- that's an SMS/TCPA convention with no voice
+equivalent. Handling a caller saying "stop calling me" is a business-logic
+classification problem, not an output guardrail, and is out of scope for
+this pass (see `docs/architecture.md`'s known gaps).
 """
-
-import re
 
 from langchain_core.messages import AIMessage
 from langgraph.graph import END
 from langgraph.graph.state import Command
 
 from app.core.langgraph.nodes._shared_checks import check_pii, check_prohibited_claims
-from app.core.langgraph.state import SMSState
+from app.core.langgraph.state import VoiceState
 from app.core.logging import logger
 
 MAX_GUARDRAIL_ATTEMPTS = 3
-SMS_MAX_LENGTH = 320  # ~2 segments (160 chars/segment, GSM-7)
-OPT_OUT_PATTERN = re.compile(r"\bstop\b", re.IGNORECASE)
+VOICE_MAX_LENGTH = 600
 
 
 def _check_draft(draft: str, channel_constraints: dict) -> list[str]:
     """Return a list of violation strings; empty means the draft passed."""
     violations: list[str] = []
-    max_length = channel_constraints.get("max_length", SMS_MAX_LENGTH)
+    max_length = channel_constraints.get("max_length", VOICE_MAX_LENGTH)
     if len(draft) > max_length:
         violations.append(f"draft exceeds max length ({len(draft)} > {max_length})")
-    if not OPT_OUT_PATTERN.search(draft):
-        violations.append("missing opt-out language (must mention 'STOP')")
     violations.extend(check_prohibited_claims(draft.lower()))
     violations.extend(check_pii(draft))
     return violations
 
 
-async def output_guardrails(state: SMSState) -> Command:
-    """Validate the drafted message: pass -> send, fail -> retry or escalate."""
+async def output_guardrails(state: VoiceState) -> Command:
+    """Validate the drafted turn: pass -> speak, fail -> retry or escalate."""
     violations = _check_draft(state.draft or "", state.channel_constraints)
     attempts = state.guardrail_attempts + 1
 
     if not violations:
-        logger.info("sms_guardrails_passed", guardrail_attempts=attempts)
+        logger.info("voice_guardrails_passed", guardrail_attempts=attempts)
         return Command(
             update={
                 "messages": [AIMessage(content=state.draft or "")],
@@ -51,8 +48,8 @@ async def output_guardrails(state: SMSState) -> Command:
         )
 
     if attempts >= MAX_GUARDRAIL_ATTEMPTS:
-        logger.warning("sms_guardrails_escalated", guardrail_attempts=attempts, violations=violations)
-        fallback = "Sorry, I'm having trouble responding right now — a team member will follow up shortly."
+        logger.warning("voice_guardrails_escalated", guardrail_attempts=attempts, violations=violations)
+        fallback = "Sorry, let me have someone follow up with you."
         return Command(
             update={
                 "messages": [
@@ -66,7 +63,7 @@ async def output_guardrails(state: SMSState) -> Command:
             goto=END,
         )
 
-    logger.info("sms_guardrails_failed_retrying", guardrail_attempts=attempts, violations=violations)
+    logger.info("voice_guardrails_failed_retrying", guardrail_attempts=attempts, violations=violations)
     return Command(
         update={"guardrail_attempts": attempts, "guardrail_feedback": "; ".join(violations)},
         goto="compose",

@@ -69,7 +69,7 @@ make temporal-up      # local Temporal server + UI (docker-compose), or point TE
 make worker            # separate process: registers ContactLoopWorkflow/TaskExecutionWorkflow + activities
 ```
 
-Fill in `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` in your `.env` and set `APP_BASE_URL` to a URL Twilio can reach (e.g. an ngrok tunnel in local dev) — that's what a newly-provisioned number's SMS webhook points at. Creating an org via `POST /organizations` without a `phone` will then have Twilio buy it a number automatically; texting that number should get you a real, context-aware LLM reply. See [Architecture](architecture.md) for how the pieces (decision engine, Temporal workflows, LangGraph subagent) fit together, and its [Component status](architecture.md#component-status) table for what's live (SMS) vs. not yet (voice, email, proactive outreach, auto-follow-up).
+Fill in `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` in your `.env` and set `APP_BASE_URL` to a URL Twilio can reach (e.g. an ngrok tunnel in local dev) — that's what a newly-provisioned number's SMS webhook points at. Creating an org via `POST /organizations` without a `phone` will then have Twilio buy it a number automatically; texting that number should get you a real, context-aware LLM reply. See [Architecture](architecture.md) for how the pieces (decision engine, Temporal workflows, LangGraph subagent) fit together, and its [Component status](architecture.md#component-status) table for what's live (SMS) vs. not yet (voice, proactive outreach, auto-follow-up).
 
 ## Customising the agent
 
@@ -82,7 +82,7 @@ Fill in `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` in your `.env` and set `APP_BAS
 | Compliance guardrails (quiet hours, DNC, consent, frequency cap) | `decision/guardrails.py` |
 | LLM models & fallback order | `app/services/llm/registry.py` → `LLMRegistry.LLMS` |
 
-Adding a new channel (voice/email) means: a webhook route in `app/api/routers/signals.py`, a decision-engine rule in `decision/rules.py`, a send-side activity in `activities/channels.py`, wiring the new `task.type` into `workflows/task_execution.py`, and a subagent under `app/core/langgraph/` subclassing `BaseChannelAgent`. Voice already has a `voice_graph.py` stub to build from; email has nothing yet.
+Adding a new channel (voice) means: a webhook route in `app/api/routers/signals.py`, a decision-engine rule in `decision/rules.py`, a send-side activity in `activities/channels.py`, wiring the new `task.type` into `workflows/task_execution.py`, and a subagent under `app/core/langgraph/` subclassing `BaseChannelAgent`. Voice already has a `voice_graph.py` stub to build from.
 
 ## Running pre-commit hooks
 

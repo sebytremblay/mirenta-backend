@@ -17,7 +17,6 @@ SignalType = Literal[
     "webhook",
     "inbound_call",
     "inbound_sms",
-    "inbound_email",
     "portal_event",
     "interaction_result",
     "manual",

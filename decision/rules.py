@@ -1,7 +1,7 @@
 """Rule handlers per `Signal.type` — the decision-engine state machine.
 
-Only `inbound_sms` and `interaction_result` are handled this pass; voice/
-email rules are future work (see `decision/engine.py`'s `SIGNAL_HANDLERS`).
+Only `inbound_sms` and `interaction_result` are handled this pass; voice
+rules are future work (see `decision/engine.py`'s `SIGNAL_HANDLERS`).
 """
 
 from datetime import datetime

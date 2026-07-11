@@ -3,6 +3,7 @@
 from twilio.base import values
 from twilio.base.exceptions import TwilioRestException
 from twilio.rest import Client
+from twilio.twiml.voice_response import Connect, Stream, VoiceResponse
 from tenacity import (
     retry,
     retry_if_exception,
@@ -99,7 +100,7 @@ async def _find_available_local_number(area_code: str | None) -> str:
 
 
 async def provision_phone_number(*, area_code: str | None = None) -> str:
-    """Buy a new US local Twilio number and point its SMS webhook at this app.
+    """Buy a new US local Twilio number and point its SMS + voice webhooks at this app.
 
     Not retried at the purchase step itself: a timed-out request that
     actually succeeded server-side would buy a second number on retry, so
@@ -113,15 +114,67 @@ async def provision_phone_number(*, area_code: str | None = None) -> str:
     """
     client = get_twilio_client()
     phone_number = await _find_available_local_number(area_code)
-    sms_url = f"{settings.APP_BASE_URL}/webhooks/twilio/sms"
+    sms_url = f"{settings.APP_BASE_URL}{settings.API_V1_STR}/webhooks/twilio/sms"
+    voice_url = f"{settings.APP_BASE_URL}{settings.API_V1_STR}/webhooks/twilio/voice"
     try:
         purchased = await client.incoming_phone_numbers.create_async(
-            phone_number=phone_number, sms_url=sms_url, sms_method="POST"
+            phone_number=phone_number,
+            sms_url=sms_url,
+            sms_method="POST",
+            voice_url=voice_url,
+            voice_method="POST",
         )
     except TwilioRestException as e:
         logger.exception("twilio_number_purchase_failed", phone_number=phone_number, status=e.status, error=e.msg)
         raise
     if purchased.phone_number is None:
         raise RuntimeError("twilio number purchase succeeded but returned no phone_number")
-    logger.info("twilio_number_purchased", phone_number=purchased.phone_number, sms_url=sms_url)
+    logger.info("twilio_number_purchased", phone_number=purchased.phone_number, sms_url=sms_url, voice_url=voice_url)
     return purchased.phone_number
+
+
+def generate_voice_answer_twiml(*, stream_url: str, org_id: str, contact_id: str, signal_id: str) -> str:
+    """Build TwiML that answers an inbound call with a bidirectional Media Stream.
+
+    Uses <Connect><Stream> rather than <Start><Stream>: <Connect> hands full
+    call control to the stream (so we can send synthesized audio back over
+    the same socket), whereas <Start><Stream> is a read-only parallel fork
+    typically paired with <Dial>/<Say> that cannot receive audio back.
+    Correlation context travels as <Parameter> children since the Media
+    Stream WS handshake itself carries no query string or headers we
+    control — Twilio echoes these back in the `start` event's
+    `start.customParameters`.
+
+    Args:
+        stream_url: The `wss://` URL of our Media Stream WebSocket endpoint.
+        org_id: The organization the call belongs to.
+        contact_id: The resolved contact placing the call.
+        signal_id: The `inbound_call` signal recorded for this call.
+
+    Returns:
+        str: The TwiML document, as XML text.
+    """
+    response = VoiceResponse()
+    connect = Connect()
+    stream = Stream(url=stream_url)
+    stream.parameter(name="org_id", value=org_id)
+    stream.parameter(name="contact_id", value=contact_id)
+    stream.parameter(name="signal_id", value=signal_id)
+    connect.append(stream)
+    response.append(connect)
+    return str(response)
+
+
+def generate_voice_reject_twiml(*, message: str) -> str:
+    """TwiML for a call that must not be answered by the agent (DNC/consent denial).
+
+    Args:
+        message: What to say to the caller before hanging up.
+
+    Returns:
+        str: The TwiML document, as XML text.
+    """
+    response = VoiceResponse()
+    response.say(message)
+    response.hangup()
+    return str(response)

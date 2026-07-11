@@ -148,6 +148,7 @@ class TaskExecutionWorkflow:
                 org_id=str(task.org_id),
                 contact_id=str(task.contact_id),
                 interaction_id=interaction_id,
+                channel="sms",
                 outcome=outcome,
                 summary=None,
             ),
