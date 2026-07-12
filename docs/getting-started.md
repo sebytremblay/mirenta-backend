@@ -114,7 +114,7 @@ The voice agent can run standalone, or answer real inbound Twilio calls once a L
 
 | What | Where |
 |---|---|
-| Agent personality & instructions | `app/core/prompts/system.md` |
+| Agent personality & instructions | `app/core/prompts/sms.md`, `voice.md`, `voice_greeting.md` |
 | Org facts that ground SMS/voice replies | `knowledge` table / `/organizations/{org_id}/knowledge` API |
 | Staff profile / onboarding flag | `profiles` table / `GET`/`PATCH /profiles/me` |
 | Discover caller's orgs after login | `GET /organizations` |
