@@ -9,7 +9,8 @@ make install                # Install deps (uv sync) + pre-commit hooks
 make dev                    # Dev server with hot reload (port 8000)
 make temporal-up            # Local Temporal server + UI (docker-compose) — needed to run the agent loop
 make worker                 # Temporal worker: registers ContactLoopWorkflow/TaskExecutionWorkflow + activities
-make voice-agent-dev        # Local LiveKit agent (connects to LiveKit Cloud for jobs)
+make voice-agent-dev        # Local LiveKit agent (Cloud jobs / Agent Console)
+make voice-agent-console    # Local mic/speakers console (no LiveKit room)
 make voice-agent-deploy     # Deploy livekit_agent/ to LiveKit Cloud (lk CLI)
 make lint                   # ruff check .
 make format                 # ruff format .
@@ -39,7 +40,7 @@ app/
   schemas/         # Pydantic request/response schemas: contacts, knowledge, signals,
                    # tasks, interactions, memory, organizations, profiles, graph state, voice
   services/
-    clients/       # External SDK wrappers: supabase, twilio, temporal, livekit
+    clients/       # External SDK wrappers: supabase, twilio, temporal, livekit (SIP URI for Twilio Dial)
     llm/           # LLM registry, retries, circular fallback
     runtimes/      # Reserved (voice moved to livekit_agent/)
     knowledge.py   # Domain helpers (KB fetch + prompt formatting for SMS/voice)

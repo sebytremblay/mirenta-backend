@@ -165,9 +165,11 @@ class Settings:
         # purchased Twilio number's SMS/voice webhooks back at this app.
         self.APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
 
-        # LiveKit — inbound voice rooms + Cloud agent dispatch (see docs/architecture.md).
-        # LIVEKIT_URL is the WebSocket URL (wss://…); LIVEKIT_SIP_HOST is the SIP
-        # hostname Twilio dials (…sip.livekit.cloud), without a sip: scheme.
+        # LiveKit — inbound voice SIP dial target (see docs/architecture.md).
+        # Room + agent dispatch are owned by the LiveKit inbound trunk + dispatch
+        # rule. LIVEKIT_URL / API key/secret are optional on the FastAPI hot path
+        # (kept for future Room/Dispatch API use). LIVEKIT_SIP_HOST is required
+        # for inbound voice (hostname Twilio dials, without a sip: scheme).
         self.LIVEKIT_URL = os.getenv("LIVEKIT_URL", "")
         self.LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "")
         self.LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "")
@@ -175,7 +177,6 @@ class Settings:
         self.LIVEKIT_SIP_USERNAME = os.getenv("LIVEKIT_SIP_USERNAME", "")
         self.LIVEKIT_SIP_PASSWORD = os.getenv("LIVEKIT_SIP_PASSWORD", "")
         self.LIVEKIT_AGENT_NAME = os.getenv("LIVEKIT_AGENT_NAME", "mirenta-voice")
-        self.LIVEKIT_ROOM_EMPTY_TIMEOUT_SECONDS = int(os.getenv("LIVEKIT_ROOM_EMPTY_TIMEOUT_SECONDS", "60"))
 
         # Shared secret for LiveKit Cloud agent → FastAPI bootstrap/finalize calls.
         self.MIRENTA_INTERNAL_API_KEY = os.getenv("MIRENTA_INTERNAL_API_KEY", "")

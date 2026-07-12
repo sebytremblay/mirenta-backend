@@ -6,7 +6,8 @@ worker owns the live session. On hangup it calls Mirenta's finalize API so
 the Temporal contact loop re-enters.
 
 Local:
-  cd livekit_agent && uv sync && uv run src/agent.py dev
+  cd livekit_agent && uv sync && uv run src/agent.py console   # mic/speakers, no Cloud
+  cd livekit_agent && uv sync && uv run src/agent.py dev       # Cloud jobs / Agent Console
 
 LiveKit Cloud:
   lk agent create   # once, from this directory
@@ -15,10 +16,9 @@ LiveKit Cloud:
 
 from __future__ import annotations
 
-import json
+import asyncio
 import logging
 import os
-from typing import Any
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -31,8 +31,9 @@ from livekit.agents import (
     room_io,
 )
 from livekit.plugins import deepgram, openai, silero
-from livekit.rtc import RemoteParticipant
+from livekit.rtc import ParticipantKind, RemoteParticipant
 
+from call_context import infer_outcome, merge_call_context
 from mirenta_client import MirentaVoiceClient
 
 logger = logging.getLogger("mirenta-voice")
@@ -44,54 +45,46 @@ DEEPGRAM_STT_MODEL = os.getenv("DEEPGRAM_STT_MODEL", "nova-3")
 DEEPGRAM_TTS_MODEL = os.getenv("DEEPGRAM_TTS_MODEL", "aura-2-asteria-en")
 VOICE_LLM_MODEL = os.getenv("VOICE_LLM_MODEL", "gpt-4.1-mini")
 
-# Participant attribute keys produced by trunk headers_to_attributes mapping.
-_ATTR_ORG_ID = "mirenta.org_id"
-_ATTR_CONTACT_ID = "mirenta.contact_id"
-_ATTR_SIGNAL_ID = "mirenta.signal_id"
-_ATTR_CALL_SID = "mirenta.call_sid"
+# SIP headers_to_attributes can arrive shortly after the participant joins.
+_SIP_ATTR_WAIT_SECONDS = 3.0
+_SIP_ATTR_POLL_INTERVAL = 0.1
+
+# Used for any non-SIP join: Agent Console (web), local `console` CLI, or a
+# browser joining a `dev` room manually — none of these are real phone calls.
+_CONSOLE_GREETING = "Hi, this is Mirenta. How can I help you today?"
+_CONSOLE_INSTRUCTIONS = (
+    "You are Mirenta, a helpful voice agent under local/console test. "
+    "You are speaking on a live call. Respond in plain spoken sentences. "
+    "Keep replies brief (one to three sentences). Ask one question at a time. "
+    "Do not invent organization-specific facts; say you don't have that info."
+)
 
 
-def _parse_metadata(raw: str | None) -> dict[str, Any]:
-    if not raw:
-        return {}
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        logger.warning("voice_metadata_invalid raw=%r", raw)
-        return {}
-    return data if isinstance(data, dict) else {}
+def _merge_call_context(participant: RemoteParticipant, ctx: JobContext) -> dict[str, str]:
+    return merge_call_context(
+        dict(participant.attributes or {}),
+        getattr(ctx.job, "metadata", None) or None,
+        ctx.room.metadata,
+    )
 
 
-def _attr(attrs: dict[str, str], *keys: str) -> str:
-    for key in keys:
-        value = (attrs.get(key) or "").strip()
-        if value:
-            return value
-    return ""
+async def _wait_for_mirenta_context(
+    participant: RemoteParticipant,
+    ctx: JobContext,
+    *,
+    timeout_seconds: float = _SIP_ATTR_WAIT_SECONDS,
+) -> dict[str, str]:
+    """Poll until Mirenta ids appear or the timeout elapses.
 
-
-def _call_context_from_participant(participant: RemoteParticipant) -> dict[str, str]:
-    """Resolve Mirenta ids from SIP participant attributes (Twilio X-headers)."""
-    attrs = dict(participant.attributes or {})
-    return {
-        "org_id": _attr(attrs, _ATTR_ORG_ID, "sip.h.x-mirenta-org-id", "x-mirenta-org-id"),
-        "contact_id": _attr(attrs, _ATTR_CONTACT_ID, "sip.h.x-mirenta-contact-id", "x-mirenta-contact-id"),
-        "signal_id": _attr(attrs, _ATTR_SIGNAL_ID, "sip.h.x-mirenta-signal-id", "x-mirenta-signal-id"),
-        "call_sid": _attr(attrs, _ATTR_CALL_SID, "sip.h.x-mirenta-call-sid", "x-mirenta-call-sid"),
-    }
-
-
-def _call_context_from_job(ctx: JobContext) -> dict[str, str]:
-    """Fallback: job/room metadata (explicit API dispatch / older flows)."""
-    job_meta = _parse_metadata(getattr(ctx.job, "metadata", None) or None)
-    room_meta = _parse_metadata(ctx.room.metadata)
-    merged = {**room_meta, **job_meta}
-    return {
-        "org_id": str(merged.get("org_id") or ""),
-        "contact_id": str(merged.get("contact_id") or ""),
-        "signal_id": str(merged.get("signal_id") or ""),
-        "call_sid": str(merged.get("call_sid") or ""),
-    }
+    LiveKit may deliver trunk `headers_to_attributes` after the SIP participant
+    first joins, so a single read at wait_for_participant() can miss them.
+    """
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    context = _merge_call_context(participant, ctx)
+    while not all(context.values()) and asyncio.get_running_loop().time() < deadline:
+        await asyncio.sleep(_SIP_ATTR_POLL_INTERVAL)
+        context = _merge_call_context(participant, ctx)
+    return context
 
 
 def _transcript_from_history(session: AgentSession) -> list[dict[str, str]]:
@@ -111,10 +104,14 @@ def _transcript_from_history(session: AgentSession) -> list[dict[str, str]]:
     return rows
 
 
-def _infer_outcome(transcript: list[dict[str, str]]) -> str:
-    if any(row.get("role") == "ai" for row in transcript):
-        return "progressed"
-    return "no_answer"
+def _build_agent_session() -> AgentSession:
+    return AgentSession(
+        vad=silero.VAD.load(),
+        stt=deepgram.STT(model=DEEPGRAM_STT_MODEL),
+        llm=openai.LLM(model=VOICE_LLM_MODEL),
+        tts=deepgram.TTS(model=DEEPGRAM_TTS_MODEL),
+        preemptive_generation=True,
+    )
 
 
 class MirentaVoiceAssistant(Agent):
@@ -131,26 +128,61 @@ class MirentaVoiceAssistant(Agent):
 server = AgentServer()
 
 
+async def _start_console_session(ctx: JobContext) -> None:
+    """Playground session for any non-SIP join (Agent Console, `agent.py console`, …)."""
+    session = _build_agent_session()
+
+    @session.on("close")
+    def _on_close(ev: CloseEvent) -> None:
+        logger.info("voice_session_closed label=%s reason=%s", "console", ev.reason)
+
+    await session.start(
+        agent=MirentaVoiceAssistant(
+            instructions=_CONSOLE_INSTRUCTIONS,
+            greeting=_CONSOLE_GREETING,
+        ),
+        room=ctx.room,
+        room_options=room_io.RoomOptions(audio_input=True, audio_output=True),
+    )
+
+
 @server.rtc_session(agent_name=AGENT_NAME)
 async def entrypoint(ctx: JobContext) -> None:
-    """Join the LiveKit SIP room and run the Deepgram + OpenAI pipeline."""
+    """Join the LiveKit room and run the Deepgram + OpenAI pipeline.
+
+    Real Twilio calls arrive as a SIP participant (`ParticipantKind.SIP`) and
+    supply Mirenta ids via participant attributes. Anything else — the local
+    `console` CLI, the browser-based Agent Console attached to a `dev` room,
+    or a manual test participant — joins as a standard participant and gets
+    a playground session with default instructions, skipping Mirenta
+    bootstrap/finalize entirely. This is the SDK's own signal for "is this a
+    real phone call", so it doesn't depend on guessing room-name conventions
+    or on metadata happening to be absent.
+    """
     ctx.log_context_fields = {"room": ctx.room.name}
     await ctx.connect()
 
-    # Prefer SIP participant attributes (Twilio X-headers via trunk mapping).
-    # Fall back to job/room metadata for console/API dispatches.
     participant = await ctx.wait_for_participant()
-    context = _call_context_from_participant(participant)
-    if not all(context.values()):
-        fallback = _call_context_from_job(ctx)
-        context = {key: context[key] or fallback[key] for key in context}
+    if participant.kind != ParticipantKind.PARTICIPANT_KIND_SIP:
+        logger.info(
+            "voice_console_mode room=%s participant_kind=%s reason=not_sip_participant",
+            ctx.room.name,
+            participant.kind,
+        )
+        await _start_console_session(ctx)
+        return
+
+    # SIP call: Mirenta ids must come from participant attributes (Twilio
+    # X-headers via trunk mapping), with job/room metadata as a fallback for
+    # explicit API dispatches.
+    context = await _wait_for_mirenta_context(participant, ctx)
 
     org_id = context["org_id"]
     contact_id = context["contact_id"]
     signal_id = context["signal_id"]
     call_sid = context["call_sid"]
 
-    if not org_id or not contact_id or not signal_id or not call_sid:
+    if not (org_id and contact_id and signal_id and call_sid):
         logger.error(
             "voice_room_metadata_incomplete room=%s participant_attrs=%r job_metadata=%r room_metadata=%r context=%s",
             ctx.room.name,
@@ -176,12 +208,7 @@ async def entrypoint(ctx: JobContext) -> None:
         ctx.shutdown(reason="bootstrap_failed")
         return
 
-    session = AgentSession(
-        vad=silero.VAD.load(),
-        stt=deepgram.STT(model=DEEPGRAM_STT_MODEL),
-        llm=openai.LLM(model=VOICE_LLM_MODEL),
-        tts=deepgram.TTS(model=DEEPGRAM_TTS_MODEL),
-    )
+    session = _build_agent_session()
 
     finalized = False
 
@@ -191,7 +218,7 @@ async def entrypoint(ctx: JobContext) -> None:
             return
         finalized = True
         transcript = _transcript_from_history(session)
-        outcome = _infer_outcome(transcript)
+        outcome = infer_outcome(transcript)
         try:
             await mirenta.finalize(
                 org_id=org_id,
@@ -214,7 +241,7 @@ async def entrypoint(ctx: JobContext) -> None:
 
     @session.on("close")
     def _on_close(ev: CloseEvent) -> None:
-        logger.info("voice_session_closed call_sid=%s reason=%s", call_sid, ev.reason)
+        logger.info("voice_session_closed label=%s reason=%s", call_sid, ev.reason)
 
     ctx.add_shutdown_callback(finalize_call)
 

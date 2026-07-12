@@ -9,10 +9,8 @@ the dial URI so the agent can bootstrap/finalize against FastAPI.
 
 from __future__ import annotations
 
-from functools import lru_cache
 from urllib.parse import urlencode
 
-from livekit import api
 from pydantic import BaseModel
 
 from app.core.config import settings
@@ -30,16 +28,6 @@ class PreparedVoiceRoom(BaseModel):
 
     dialed_number: str
     sip_uri: str
-
-
-@lru_cache(maxsize=1)
-def _livekit_api() -> api.LiveKitAPI:
-    """Cached LiveKit server API client (URL + API key/secret from settings)."""
-    return api.LiveKitAPI(
-        url=settings.LIVEKIT_URL,
-        api_key=settings.LIVEKIT_API_KEY,
-        api_secret=settings.LIVEKIT_API_SECRET,
-    )
 
 
 def _e164(number: str) -> str:
@@ -119,12 +107,3 @@ def prepare_inbound_voice_room(
         agent_name=settings.LIVEKIT_AGENT_NAME,
     )
     return PreparedVoiceRoom(dialed_number=dialed_number, sip_uri=sip_uri)
-
-
-async def aclose_livekit_api() -> None:
-    """Close the cached LiveKit API client (app shutdown hook)."""
-    if _livekit_api.cache_info().currsize == 0:
-        return
-    client = _livekit_api()
-    await client.aclose()
-    _livekit_api.cache_clear()
