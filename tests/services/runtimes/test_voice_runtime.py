@@ -6,6 +6,7 @@ calls (that requires the manual end-to-end verification in the plan).
 """
 
 import asyncio
+import time
 from typing import cast
 from unittest.mock import AsyncMock, patch
 
@@ -30,6 +31,7 @@ def _make_session() -> tuple[VoiceCallSession, _FakeWebSocket]:
     fake_ws = _FakeWebSocket()
     session = VoiceCallSession(websocket=cast(WebSocket, fake_ws), call_sid="CA123")
     session._org_id = "org-1"
+    session._org_name = "Mirenta"
     session._contact_id = "contact-1"
     session._stream_sid = "MZ123"
     return session, fake_ws
@@ -49,9 +51,19 @@ def test_start_opening_greeting_queues_tts_and_transcript() -> None:
     asyncio.run(_run())
     assert session._any_turn_completed is False
     assert session._transcript == [
-        {"role": "ai", "content": _opening_greeting()},
+        {"role": "ai", "content": _opening_greeting("Mirenta")},
     ]
     assert session._infer_outcome() == "no_answer"
+
+
+def test_opening_greeting_without_org_name_omits_company() -> None:
+    assert _opening_greeting() == (
+        "Hi, I am the AI receptionist. I can answer questions, take a message, or help you schedule a meeting."
+    )
+    assert _opening_greeting("Mirenta") == (
+        "Hi, I am the AI receptionist for Mirenta. "
+        "I can answer questions, take a message, or help you schedule a meeting."
+    )
 
 
 def test_utterance_end_joins_pending_transcript_and_triggers_turn() -> None:
@@ -149,7 +161,9 @@ def test_handle_barge_in_cancels_playback_and_sends_clear() -> None:
 
     async def _run() -> None:
         session._current_playback = asyncio.create_task(_long_task())
-        await asyncio.sleep(0)  # let the task actually start
+        session._playback_first_frame_sent = True
+        session._playback_barge_in_allowed_after = time.monotonic() - 1.0
+        await asyncio.sleep(0)
         await session._handle_barge_in()
 
     asyncio.run(_run())
@@ -171,6 +185,10 @@ def test_handshake_loads_knowledge_for_org() -> None:
                 "app.services.runtimes.voice_runtime.format_knowledge_for_prompt",
                 return_value="",
             ),
+            patch(
+                "app.services.runtimes.voice_runtime._fetch_org_display_name",
+                new=AsyncMock(return_value="Mirenta"),
+            ) as fetch_org_name,
         ):
             fake_ws.receive_json.side_effect = [
                 {"event": "connected"},
@@ -186,8 +204,10 @@ def test_handshake_loads_knowledge_for_org() -> None:
             ok = await session._handshake()
             assert ok is True
             fetch_knowledge.assert_awaited_once_with("org-1")
+            fetch_org_name.assert_awaited_once_with("org-1")
             assert session._knowledge == ""
             assert session._knowledge_entry_count == 0
+            assert session._org_name == "Mirenta"
 
     asyncio.run(_run())
 
@@ -198,3 +218,91 @@ def test_handle_barge_in_is_noop_without_active_playback() -> None:
     asyncio.run(session._handle_barge_in())
 
     fake_ws.send_json.assert_not_awaited()
+
+
+def test_speech_started_does_not_trigger_barge_in() -> None:
+    session, fake_ws = _make_session()
+
+    async def _run() -> None:
+        session._current_playback = asyncio.create_task(asyncio.sleep(10))
+        session._playback_first_frame_sent = True
+        session._playback_barge_in_allowed_after = time.monotonic() - 1.0
+        await session._on_speech_started()
+
+    asyncio.run(_run())
+    fake_ws.send_json.assert_not_awaited()
+    assert session._current_playback is not None
+
+
+def test_interim_transcript_triggers_barge_in_when_allowed() -> None:
+    session, fake_ws = _make_session()
+
+    async def _long_task() -> None:
+        await asyncio.sleep(10)
+
+    async def _run() -> None:
+        session._current_playback = asyncio.create_task(_long_task())
+        session._playback_first_frame_sent = True
+        session._playback_barge_in_allowed_after = time.monotonic() - 1.0
+        await asyncio.sleep(0)
+        await session._on_transcript("Hello", False)
+
+    asyncio.run(_run())
+    fake_ws.send_json.assert_awaited_once_with({"event": "clear", "streamSid": "MZ123"})
+
+
+def test_short_interim_transcript_does_not_trigger_barge_in() -> None:
+    session, fake_ws = _make_session()
+
+    async def _run() -> None:
+        session._current_playback = asyncio.create_task(asyncio.sleep(10))
+        session._playback_first_frame_sent = True
+        session._playback_barge_in_allowed_after = time.monotonic() - 1.0
+        await session._on_transcript("Hi", False)
+
+    asyncio.run(_run())
+    fake_ws.send_json.assert_not_awaited()
+    assert session._current_playback is not None
+
+
+def test_barge_in_blocked_before_first_playback_frame() -> None:
+    session, fake_ws = _make_session()
+
+    async def _run() -> None:
+        session._current_playback = asyncio.create_task(asyncio.sleep(10))
+        session._playback_barge_in_allowed_after = time.monotonic() - 1.0
+        await session._on_transcript("Hello", False)
+
+    asyncio.run(_run())
+    fake_ws.send_json.assert_not_awaited()
+    assert session._current_playback is not None
+
+
+def test_barge_in_blocked_during_first_two_seconds_of_greeting() -> None:
+    session, fake_ws = _make_session()
+    session._opening_greeting_playback_active = True
+    session._opening_greeting_started_at = time.monotonic()
+
+    async def _run() -> None:
+        session._current_playback = asyncio.create_task(asyncio.sleep(10))
+        session._playback_first_frame_sent = True
+        session._playback_barge_in_allowed_after = time.monotonic() - 1.0
+        await session._on_transcript("Hello", False)
+
+    asyncio.run(_run())
+    fake_ws.send_json.assert_not_awaited()
+
+
+def test_utterance_end_during_opening_greeting_is_discarded() -> None:
+    session, _ = _make_session()
+    session._opening_greeting_playback_active = True
+
+    async def _run() -> None:
+        with patch.object(session, "_handle_turn", new=AsyncMock()) as handle_turn:
+            await session._on_transcript("Hello", True)
+            await session._on_utterance_end()
+            handle_turn.assert_not_awaited()
+
+    asyncio.run(_run())
+    assert session._pending_transcript == []
+    assert session._transcript == []

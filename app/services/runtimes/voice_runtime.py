@@ -16,6 +16,9 @@ actually matters, per AGENTS.md, is that `decision/` never imports from
 import asyncio
 import base64
 import contextlib
+import time
+from collections.abc import Coroutine
+from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 from langchain_core.messages import AIMessage, HumanMessage
@@ -26,20 +29,39 @@ from activities.logging import (
     emit_interaction_result_signal,
     log_interaction,
 )
-from app.core.config import settings
 from app.core.langgraph.voice_graph import voice_agent
 from app.core.logging import logger
 from app.services.clients.deepgram_client import DeepgramSTTSession, DeepgramTTSSession
+from app.services.clients.supabase_client import execute_query, get_service_role_client
 from app.services.knowledge import fetch_active_knowledge, format_knowledge_for_prompt
 
 VOICE_CHANNEL_CONSTRAINTS = {"max_length": 600}
 TTS_FRAME_BYTES = 160  # 20ms of 8kHz mulaw
 TTS_FRAME_SECONDS = 0.02
+OPENING_GREETING_BARGE_IN_AFTER_SECONDS = 2.0
+PLAYBACK_BARGE_IN_GRACE_SECONDS = 0.75
+BARGE_IN_MIN_TRANSCRIPT_CHARS = 3
 
 
-def _opening_greeting() -> str:
+def _opening_greeting(org_name: str | None = None) -> str:
     """Fixed spoken open — TTS only, no LLM round-trip (keeps time-to-first-audio low)."""
-    return f"Hi, this is {settings.DEFAULT_PERSONA_NAME}. How can I help you today?"
+    capabilities = "I can answer questions, take a message, or help you schedule a meeting."
+    if org_name:
+        return f"Hi, I am the AI receptionist for {org_name}. {capabilities}"
+    return f"Hi, I am the AI receptionist. {capabilities}"
+
+
+async def _fetch_org_display_name(org_id: str) -> str | None:
+    """Load the org display name for the spoken opening greeting."""
+    client = await get_service_role_client()
+    try:
+        response = await execute_query(client.table("organizations").select("name").eq("id", org_id).single())
+        name = response.data.get("name") if response.data else None
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+    except Exception:
+        logger.exception("voice_org_name_fetch_failed", org_id=org_id)
+    return None
 
 
 class VoiceCallSession:
@@ -51,11 +73,16 @@ class VoiceCallSession:
         self._call_sid = call_sid
         self._stream_sid: str | None = None
         self._org_id: str | None = None
+        self._org_name: str | None = None
         self._contact_id: str | None = None
         self._stt = DeepgramSTTSession()
         self._pending_transcript: list[str] = []
         self._transcript: list[dict[str, str]] = []
         self._current_playback: asyncio.Task[None] | None = None
+        self._opening_greeting_started_at: float | None = None
+        self._opening_greeting_playback_active = False
+        self._playback_barge_in_allowed_after: float | None = None
+        self._playback_first_frame_sent = False
         self._any_turn_completed = False
         self._any_turn_escalated = False
         self._knowledge = ""
@@ -118,11 +145,13 @@ class VoiceCallSession:
         knowledge_entries = await fetch_active_knowledge(self._org_id)
         self._knowledge = format_knowledge_for_prompt(knowledge_entries)
         self._knowledge_entry_count = len(knowledge_entries)
+        self._org_name = await _fetch_org_display_name(self._org_id)
         logger.info(
             "voice_ws_connected",
             call_sid=self._call_sid,
             org_id=self._org_id,
             contact_id=self._contact_id,
+            org_name=self._org_name,
             knowledge_entries=self._knowledge_entry_count,
         )
         return True
@@ -148,18 +177,66 @@ class VoiceCallSession:
         LLM/checkpointer round-trip. Does not set `_any_turn_completed` —
         greeting-only hangups still count as `no_answer`.
         """
-        greeting = _opening_greeting()
+        greeting = _opening_greeting(self._org_name)
         self._transcript.append({"role": "ai", "content": greeting})
         logger.info("voice_greeting_started", call_sid=self._call_sid, reply_length=len(greeting))
-        self._current_playback = asyncio.create_task(self._play_reply(greeting))
+        self._opening_greeting_started_at = time.monotonic()
+        self._opening_greeting_playback_active = True
+        self._start_playback(self._play_opening_greeting(greeting))
+
+    def _start_playback(self, coro: Coroutine[Any, Any, None]) -> None:
+        """Begin TTS playback and arm barge-in suppression until audio is flowing."""
+        self._playback_first_frame_sent = False
+        self._playback_barge_in_allowed_after = time.monotonic() + PLAYBACK_BARGE_IN_GRACE_SECONDS
+        self._current_playback = asyncio.create_task(coro)
+
+    async def _play_opening_greeting(self, greeting: str) -> None:
+        """Play the canned greeting."""
+        try:
+            await self._play_reply(greeting)
+        finally:
+            self._opening_greeting_playback_active = False
+            self._opening_greeting_started_at = None
+
+    def _opening_greeting_barge_in_allowed(self) -> bool:
+        """Whether the caller may interrupt the opening greeting by speaking."""
+        if not self._opening_greeting_playback_active or self._opening_greeting_started_at is None:
+            return True
+        return time.monotonic() - self._opening_greeting_started_at >= OPENING_GREETING_BARGE_IN_AFTER_SECONDS
+
+    def _barge_in_allowed(self) -> bool:
+        """Whether caller speech should interrupt in-flight agent playback."""
+        if self._current_playback is None or self._current_playback.done():
+            return False
+        if not self._playback_first_frame_sent:
+            return False
+        if self._playback_barge_in_allowed_after is not None and time.monotonic() < self._playback_barge_in_allowed_after:
+            return False
+        if not self._opening_greeting_barge_in_allowed():
+            return False
+        return True
 
     async def _on_transcript(self, text: str, is_final: bool) -> None:
-        """Accumulate finalized transcript pieces; the turn fires on `UtteranceEnd`."""
+        """Accumulate finalized transcript pieces; interim text may trigger barge-in."""
+        stripped = text.strip()
+        if not is_final and stripped:
+            await self._maybe_barge_in_from_transcript(stripped)
         if is_final:
             self._pending_transcript.append(text)
 
+    async def _maybe_barge_in_from_transcript(self, text: str) -> None:
+        """Interrupt agent playback only when STT has real words, not phantom VAD."""
+        if len(text) < BARGE_IN_MIN_TRANSCRIPT_CHARS:
+            return
+        if not self._barge_in_allowed():
+            return
+        await self._handle_barge_in()
+
     async def _on_utterance_end(self) -> None:
         """The caller has finished a turn -- compose and speak a reply."""
+        if self._opening_greeting_playback_active:
+            self._pending_transcript = []
+            return
         if not self._pending_transcript:
             return
         utterance = " ".join(self._pending_transcript).strip()
@@ -170,8 +247,8 @@ class VoiceCallSession:
         await self._handle_turn(utterance)
 
     async def _on_speech_started(self) -> None:
-        """Deepgram's VAD detected new speech -- interrupt playback if the agent is talking."""
-        await self._handle_barge_in()
+        """Deepgram VAD hint — ignored for barge-in; telephony noise triggers false positives."""
+        return
 
     async def _on_stt_error(self, exc: Exception) -> None:
         """Deepgram's background message loop failed -- log and let the call wind down.
@@ -231,27 +308,39 @@ class VoiceCallSession:
         )
 
         await self._cancel_playback()
-        self._current_playback = asyncio.create_task(self._play_reply(reply_text))
+        self._start_playback(self._play_reply(reply_text))
 
     async def _play_reply(self, text: str) -> None:
         """Synthesize `text` and stream it back to Twilio as paced mulaw frames."""
         tts = DeepgramTTSSession()
         buffer = b""
+        frames_sent = 0
         try:
             async for chunk in tts.synthesize_stream(text):
                 buffer += chunk
                 while len(buffer) >= TTS_FRAME_BYTES:
                     frame, buffer = buffer[:TTS_FRAME_BYTES], buffer[TTS_FRAME_BYTES:]
                     await self._send_media_frame(frame)
+                    frames_sent += 1
                     await asyncio.sleep(TTS_FRAME_SECONDS)
             if buffer:
                 await self._send_media_frame(buffer)
+                frames_sent += 1
+            logger.info("voice_playback_completed", call_sid=self._call_sid, frames_sent=frames_sent)
         except asyncio.CancelledError:
+            logger.info("voice_playback_cancelled", call_sid=self._call_sid, frames_sent=frames_sent)
             raise
         except Exception:
-            logger.exception("voice_tts_playback_failed", call_sid=self._call_sid)
+            logger.exception("voice_tts_playback_failed", call_sid=self._call_sid, frames_sent=frames_sent)
+        finally:
+            self._playback_barge_in_allowed_after = None
+            self._playback_first_frame_sent = False
 
     async def _send_media_frame(self, frame: bytes) -> None:
+        if not self._playback_first_frame_sent:
+            self._playback_first_frame_sent = True
+            self._playback_barge_in_allowed_after = time.monotonic() + PLAYBACK_BARGE_IN_GRACE_SECONDS
+            logger.info("voice_playback_first_frame", call_sid=self._call_sid)
         await self._websocket.send_json(
             {
                 "event": "media",
@@ -265,6 +354,8 @@ class VoiceCallSession:
         if self._current_playback is None:
             return
         task, self._current_playback = self._current_playback, None
+        self._playback_barge_in_allowed_after = None
+        self._playback_first_frame_sent = False
         if not task.done():
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -272,7 +363,7 @@ class VoiceCallSession:
 
     async def _handle_barge_in(self) -> None:
         """On new speech while a reply is playing: stop it and flush Twilio's playback buffer."""
-        if self._current_playback is None or self._current_playback.done():
+        if not self._barge_in_allowed():
             return
         logger.info("voice_barge_in", call_sid=self._call_sid)
         await self._cancel_playback()
