@@ -1,15 +1,41 @@
-"""This file contains the prompts for the agent."""
+"""Channel prompt templates rendered with Jinja2."""
 
-import os
 from datetime import datetime
+from pathlib import Path
 
-_PROMPTS_DIR = os.path.dirname(__file__)
+from jinja2 import Environment, FileSystemLoader
 
-# Read templates once at module load — no file I/O per request
-with open(os.path.join(_PROMPTS_DIR, "system.md"), "r") as _f:
-    _SYSTEM_PROMPT_TEMPLATE = _f.read()
+_PROMPTS_DIR = Path(__file__).resolve().parent
+
+_env = Environment(
+    loader=FileSystemLoader(_PROMPTS_DIR),
+    autoescape=False,
+    trim_blocks=True,
+    lstrip_blocks=True,
+)
+
+_SMS_PROMPT = _env.get_template("sms.md")
+_VOICE_PROMPT = _env.get_template("voice.md")
+_VOICE_GREETING = _env.get_template("voice_greeting.md")
+
+
+def load_sms_prompt() -> str:
+    """Load the SMS system prompt, filling in the current date/time."""
+    return _SMS_PROMPT.render(
+        current_date_and_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    ).strip()
 
 
 def load_system_prompt() -> str:
-    """Load the system prompt from the cached template, filling in the current date/time."""
-    return _SYSTEM_PROMPT_TEMPLATE.format(current_date_and_time=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    """Backward-compatible alias for load_sms_prompt()."""
+    return load_sms_prompt()
+
+
+def load_voice_prompt(*, persona: str, knowledge: str = "") -> str:
+    """Load LiveKit voice system instructions, optionally including knowledge."""
+    return _VOICE_PROMPT.render(persona=persona, knowledge=knowledge).strip()
+
+
+def load_voice_greeting(*, company_name: str) -> str:
+    """Load the spoken opening greeting for a voice session."""
+    return _VOICE_GREETING.render(company_name=company_name).strip()

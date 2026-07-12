@@ -51,13 +51,19 @@ VOICE_LLM_MODEL = os.getenv("VOICE_LLM_MODEL", "gpt-4.1-mini")
 _SIP_ATTR_WAIT_SECONDS = 3.0
 _SIP_ATTR_POLL_INTERVAL = 0.1
 
-# Used for any non-SIP join: Agent Console (web), local `console` CLI, or a
-# browser joining a `dev` room manually — none of these are real phone calls.
-_CONSOLE_GREETING = "Hi, this is Mirenta. How can I help you today?"
+# Offline fallback for non-SIP joins (Agent Console / local console). Real SIP
+# calls load greeting + instructions from FastAPI bootstrap
+# (`app/core/prompts/voice*.md`) — keep these roughly in sync for playground UX.
+_CONSOLE_GREETING = (
+    "Hi, I am the AI receptionist for Mirenta, I can answer questions, take a message, or help you schedule a meeting"
+)
 _CONSOLE_INSTRUCTIONS = (
     "You are Mirenta, a helpful voice agent under local/console test. "
     "You are speaking on a live call. Respond in plain spoken sentences. "
     "Keep replies brief (one to three sentences). Ask one question at a time. "
+    "Never use markdown, lists, emojis, or special formatting. "
+    "Do not greet the caller again if you have already greeted them. "
+    "If you lack information, say so honestly rather than inventing details. "
     "Do not invent organization-specific facts; say you don't have that info."
 )
 

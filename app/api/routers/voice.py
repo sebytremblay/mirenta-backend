@@ -30,6 +30,7 @@ from app.api.twilio_utils import mark_signal_status, validate_twilio_signature
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import logger
+from app.core.prompts import load_voice_greeting, load_voice_prompt
 from app.schemas.contacts import Contact
 from app.schemas.signals import Signal
 from app.schemas.voice import (
@@ -54,26 +55,6 @@ def _require_internal_api_key(x_mirenta_internal_key: str | None) -> None:
     expected = settings.MIRENTA_INTERNAL_API_KEY
     if not expected or not x_mirenta_internal_key or not secrets.compare_digest(x_mirenta_internal_key, expected):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_internal_api_key")
-
-
-def _opening_greeting() -> str:
-    return f"Hi, this is {settings.DEFAULT_PERSONA_NAME}. How can I help you today?"
-
-
-def _voice_agent_instructions(*, knowledge: str) -> str:
-    """System instructions for the LiveKit native LLM pipeline."""
-    persona = settings.DEFAULT_PERSONA_NAME
-    blocks = [
-        f"You are {persona}, a helpful voice agent for this organization.",
-        "You are speaking on a live call. Respond in plain spoken sentences.",
-        "Keep replies brief (one to three sentences). Ask one question at a time.",
-        "Never use markdown, lists, emojis, or special formatting.",
-        "Do not greet the caller again if you have already greeted them.",
-        "If you lack information, say so honestly rather than inventing details.",
-    ]
-    if knowledge:
-        blocks.append(knowledge)
-    return "\n".join(blocks)
 
 
 @router.post("/webhooks/twilio/voice")
@@ -205,6 +186,9 @@ async def bootstrap_voice_session(
     """
     _ = request
     _require_internal_api_key(x_mirenta_internal_key)
+    client = await get_service_role_client()
+    org = await execute_query(client.table("organizations").select("name").eq("id", str(body.org_id)).single())
+    company_name = str(org.data.get("name") or settings.DEFAULT_PERSONA_NAME)
     entries = await fetch_active_knowledge(body.org_id)
     knowledge = format_knowledge_for_prompt(entries)
     return VoiceSessionBootstrapResponse(
@@ -213,8 +197,8 @@ async def bootstrap_voice_session(
         signal_id=body.signal_id,
         call_sid=body.call_sid,
         persona_name=settings.DEFAULT_PERSONA_NAME,
-        greeting=_opening_greeting(),
-        instructions=_voice_agent_instructions(knowledge=knowledge),
+        greeting=load_voice_greeting(company_name=company_name),
+        instructions=load_voice_prompt(persona=settings.DEFAULT_PERSONA_NAME, knowledge=knowledge),
         knowledge=knowledge,
     )
 
