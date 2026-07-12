@@ -44,15 +44,30 @@ DEEPGRAM_TTS_MODEL = os.getenv("DEEPGRAM_TTS_MODEL", "aura-2-asteria-en")
 VOICE_LLM_MODEL = os.getenv("VOICE_LLM_MODEL", "gpt-4.1-mini")
 
 
-def _parse_room_metadata(raw: str | None) -> dict[str, Any]:
+def _parse_metadata(raw: str | None) -> dict[str, Any]:
     if not raw:
         return {}
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        logger.warning("voice_room_metadata_invalid")
+        logger.warning("voice_metadata_invalid raw=%r", raw)
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _call_context(ctx: JobContext) -> dict[str, Any]:
+    """Resolve Mirenta ids from job dispatch metadata, then room metadata."""
+    job_meta = _parse_metadata(getattr(ctx.job, "metadata", None) or None)
+    room_meta = _parse_metadata(ctx.room.metadata)
+    # Job dispatch metadata is set by FastAPI's CreateAgentDispatchRequest and
+    # is available immediately; room.metadata can be empty until connected.
+    merged = {**room_meta, **job_meta}
+    return {
+        "org_id": str(merged.get("org_id") or ""),
+        "contact_id": str(merged.get("contact_id") or ""),
+        "signal_id": str(merged.get("signal_id") or ""),
+        "call_sid": str(merged.get("call_sid") or ""),
+    }
 
 
 def _transcript_from_history(session: AgentSession) -> list[dict[str, str]]:
@@ -96,14 +111,22 @@ server = AgentServer()
 async def entrypoint(ctx: JobContext) -> None:
     """Join a prepared Mirenta voice room and run the Deepgram + OpenAI pipeline."""
     ctx.log_context_fields = {"room": ctx.room.name}
-    metadata = _parse_room_metadata(ctx.room.metadata)
-    org_id = str(metadata.get("org_id") or "")
-    contact_id = str(metadata.get("contact_id") or "")
-    signal_id = str(metadata.get("signal_id") or "")
-    call_sid = str(metadata.get("call_sid") or "")
+    await ctx.connect()
+
+    context = _call_context(ctx)
+    org_id = context["org_id"]
+    contact_id = context["contact_id"]
+    signal_id = context["signal_id"]
+    call_sid = context["call_sid"]
 
     if not org_id or not contact_id or not signal_id or not call_sid:
-        logger.error("voice_room_metadata_incomplete", room=ctx.room.name, metadata=metadata)
+        logger.error(
+            "voice_room_metadata_incomplete room=%s job_metadata=%r room_metadata=%r context=%s",
+            ctx.room.name,
+            getattr(ctx.job, "metadata", None),
+            ctx.room.metadata,
+            context,
+        )
         ctx.shutdown(reason="missing_mirenta_metadata")
         return
 
@@ -117,7 +140,7 @@ async def entrypoint(ctx: JobContext) -> None:
             room_name=ctx.room.name,
         )
     except Exception:
-        logger.exception("voice_bootstrap_failed", call_sid=call_sid, room=ctx.room.name)
+        logger.exception("voice_bootstrap_failed call_sid=%s room=%s", call_sid, ctx.room.name)
         ctx.shutdown(reason="bootstrap_failed")
         return
 
@@ -148,18 +171,18 @@ async def entrypoint(ctx: JobContext) -> None:
                 room_name=ctx.room.name,
             )
             logger.info(
-                "voice_finalize_ok",
-                call_sid=call_sid,
-                outcome=outcome,
-                turns=len(transcript),
-                reason=_reason,
+                "voice_finalize_ok call_sid=%s outcome=%s turns=%s reason=%s",
+                call_sid,
+                outcome,
+                len(transcript),
+                _reason,
             )
         except Exception:
-            logger.exception("voice_finalize_failed", call_sid=call_sid)
+            logger.exception("voice_finalize_failed call_sid=%s", call_sid)
 
     @session.on("close")
     def _on_close(ev: CloseEvent) -> None:
-        logger.info("voice_session_closed", call_sid=call_sid, reason=str(ev.reason))
+        logger.info("voice_session_closed call_sid=%s reason=%s", call_sid, ev.reason)
 
     ctx.add_shutdown_callback(finalize_call)
 
