@@ -9,7 +9,7 @@
 - Langfuse account (optional — set `LANGFUSE_TRACING_ENABLED=false` to skip)
 - Docker (optional — only needed to run a local Temporal server via `make temporal-up`, required for the SMS agent loop end-to-end)
 - A Twilio account with a phone number, or let the API buy one for you when you create an org (optional — only needed for SMS/voice; the CRUD API works without it)
-- A Deepgram API key (optional — only needed for inbound voice calls)
+- A Deepgram API key on the LiveKit agent (optional — only needed for inbound voice)
 
 ## Set up your Supabase project
 

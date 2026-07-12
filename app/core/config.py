@@ -180,12 +180,8 @@ class Settings:
         # Shared secret for LiveKit Cloud agent → FastAPI bootstrap/finalize calls.
         self.MIRENTA_INTERNAL_API_KEY = os.getenv("MIRENTA_INTERNAL_API_KEY", "")
 
-        # Voice model defaults used by the LiveKit agent worker (also set there).
-        self.DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY", "")
-        self.DEEPGRAM_STT_MODEL = os.getenv("DEEPGRAM_STT_MODEL", "nova-3")
-        self.DEEPGRAM_TTS_MODEL = os.getenv("DEEPGRAM_TTS_MODEL", "aura-2-asteria-en")
+        # Legacy LangGraph voice compose model (unused on the LiveKit call path).
         self.VOICE_LLM_MODEL = os.getenv("VOICE_LLM_MODEL", "gpt-4.1-mini")
-        self.VOICE_MAX_CALL_SECONDS = int(os.getenv("VOICE_MAX_CALL_SECONDS", "600"))
 
         # Temporal Configuration — durable workflow/task scheduling.
         # Local dev defaults point at the docker-compose Temporal server
