@@ -16,6 +16,7 @@ actually matters, per AGENTS.md, is that `decision/` never imports from
 import asyncio
 import base64
 import contextlib
+import time
 
 from fastapi import WebSocket, WebSocketDisconnect
 from langchain_core.messages import AIMessage, HumanMessage
@@ -35,6 +36,7 @@ from app.services.knowledge import fetch_active_knowledge, format_knowledge_for_
 VOICE_CHANNEL_CONSTRAINTS = {"max_length": 600}
 TTS_FRAME_BYTES = 160  # 20ms of 8kHz mulaw
 TTS_FRAME_SECONDS = 0.02
+OPENING_GREETING_BARGE_IN_GRACE_SECONDS = 2.0
 
 
 def _opening_greeting() -> str:
@@ -56,8 +58,7 @@ class VoiceCallSession:
         self._pending_transcript: list[str] = []
         self._transcript: list[dict[str, str]] = []
         self._current_playback: asyncio.Task[None] | None = None
-        self._opening_greeting_active = False
-        self._utterance_end_deferred = False
+        self._opening_greeting_grace_until: float | None = None
         self._any_turn_completed = False
         self._any_turn_escalated = False
         self._knowledge = ""
@@ -153,24 +154,19 @@ class VoiceCallSession:
         greeting = _opening_greeting()
         self._transcript.append({"role": "ai", "content": greeting})
         logger.info("voice_greeting_started", call_sid=self._call_sid, reply_length=len(greeting))
+        self._opening_greeting_grace_until = time.monotonic() + OPENING_GREETING_BARGE_IN_GRACE_SECONDS
         self._current_playback = asyncio.create_task(self._play_opening_greeting(greeting))
 
     async def _play_opening_greeting(self, greeting: str) -> None:
-        """Play the canned greeting without letting STT barge-in cut it short.
-
-        Deepgram's VAD fires on line noise, comfort tones, or the caller
-        saying "hello" while the agent is still speaking. During the opening
-        greeting that would cancel playback after a second or two; defer
-        barge-in and turn-taking until the greeting finishes.
-        """
-        self._opening_greeting_active = True
+        """Play the canned greeting; suppress false barge-in for the first couple seconds."""
         try:
             await self._play_reply(greeting)
         finally:
-            self._opening_greeting_active = False
-            if self._utterance_end_deferred:
-                self._utterance_end_deferred = False
-                await self._process_utterance_end()
+            self._opening_greeting_grace_until = None
+
+    def _in_opening_greeting_grace(self) -> bool:
+        """Whether barge-in/turn-taking should stay suppressed on the opening greeting."""
+        return self._opening_greeting_grace_until is not None and time.monotonic() < self._opening_greeting_grace_until
 
     async def _on_transcript(self, text: str, is_final: bool) -> None:
         """Accumulate finalized transcript pieces; the turn fires on `UtteranceEnd`."""
@@ -179,14 +175,9 @@ class VoiceCallSession:
 
     async def _on_utterance_end(self) -> None:
         """The caller has finished a turn -- compose and speak a reply."""
-        if self._opening_greeting_active:
-            if self._pending_transcript:
-                self._utterance_end_deferred = True
+        if self._in_opening_greeting_grace():
+            self._pending_transcript = []
             return
-        await self._process_utterance_end()
-
-    async def _process_utterance_end(self) -> None:
-        """Turn finalized transcript into a LangGraph reply, if any text is pending."""
         if not self._pending_transcript:
             return
         utterance = " ".join(self._pending_transcript).strip()
@@ -198,7 +189,7 @@ class VoiceCallSession:
 
     async def _on_speech_started(self) -> None:
         """Deepgram's VAD detected new speech -- interrupt playback if the agent is talking."""
-        if self._opening_greeting_active:
+        if self._in_opening_greeting_grace():
             return
         await self._handle_barge_in()
 
