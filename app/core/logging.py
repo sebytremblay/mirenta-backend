@@ -190,6 +190,26 @@ def get_structlog_processors(include_file_info: bool = True) -> List[Any]:
     return processors
 
 
+# Third-party loggers that print raw HTTP headers (Authorization, apikey, cookies)
+# at DEBUG. Keep them at WARNING even when the app runs with DEBUG=true.
+_NOISY_HTTP_LOGGERS = (
+    "h2",
+    "hpack",
+    "httpcore",
+    "httpx",
+    "urllib3",
+    "httpcore.connection",
+    "httpcore.http2",
+    "httpcore.http11",
+)
+
+
+def _silence_http_debug_loggers() -> None:
+    """Prevent HTTP client libraries from logging secrets in request headers."""
+    for name in _NOISY_HTTP_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
 def setup_logging() -> None:
     """Configure structlog with different formatters based on environment.
 
@@ -219,6 +239,9 @@ def setup_logging() -> None:
         level=log_level,
         handlers=[file_handler, console_handler],
     )
+
+    # Root DEBUG enables h2/hpack/httpcore header dumps; those include API keys.
+    _silence_http_debug_loggers()
 
     # Configure structlog based on environment
     if settings.LOG_FORMAT == "console":

@@ -10,7 +10,7 @@ Built with **FastAPI** on top of **Supabase** (Postgres + Auth, RLS-enforced). O
 
 - **Product-domain API** — profiles (`GET`/`PATCH /profiles/me`), organizations (list mine, create with automatic per-org Twilio subaccount + number provisioning), contacts, contact timeline, and a per-org **knowledge base** (hours, booking, FAQ, …) that grounds SMS replies
 - **The Mirenta Runtime agent loop, live for SMS** — Twilio SMS webhook → Temporal event bus → deterministic decision engine → durable task scheduling → LangGraph SMS subagent (knowledge-grounded) → logged interaction that closes the loop, including a 3-day silence follow-up that cancels on inbound
-- **Inbound voice calls** — Twilio webhook gates DNC/consent, SIP-dials LiveKit; LiveKit Cloud agent (`livekit_agent/`) runs Deepgram STT/TTS + OpenAI LLM; hangup finalize re-enters `ContactLoopWorkflow`
+- **LiveKit voice agent** — Deepgram STT/TTS + OpenAI LLM (`livekit_agent/`); reachable via console / Agent Console / WebRTC and via real inbound Twilio calls dialed into a LiveKit Cloud SIP trunk
 - **Agent-loop data model** — `signals` (inbound events), `tasks` (scheduled outreach), `interactions` (subagent conversations), `contact_memory` (semantic recall) — the durable backbone of the Mirenta Runtime loop
 - **Temporal** durable workflows — one long-running `ContactLoopWorkflow` per contact, child `TaskExecutionWorkflow`s per task, guardrails re-checked at execution time
 - **Supabase Auth** JWT verification — clients sign up/log in directly against Supabase; this backend only verifies the resulting token
@@ -21,7 +21,7 @@ Built with **FastAPI** on top of **Supabase** (Postgres + Auth, RLS-enforced). O
 - **Structured logging** (structlog) with request/user context on every line
 - **Rate limiting** via slowapi on every route
 
-> **Status.** The loop runs end-to-end for **SMS** (inbound text in, LLM-drafted reply out, multi-turn, guardrailed, knowledge-grounded, with a 3-day silence follow-up). **Inbound voice** is live via LiveKit Cloud (Twilio numbers kept; SIP Dial after webhook consent). Outbound calling, proactive/first-touch outreach, and spoken opt-out handling are not started. See [docs/architecture.md](docs/architecture.md#component-status) for the full breakdown.
+> **Status.** The loop runs end-to-end for **SMS** (inbound text in, LLM-drafted reply out, multi-turn, guardrailed, knowledge-grounded, with a 3-day silence follow-up). **LiveKit voice** is reachable standalone and from real inbound Twilio calls (Twilio dials into a LiveKit SIP trunk when `LIVEKIT_SIP_URI` is configured). Outbound calling, proactive/first-touch outreach, and spoken opt-out handling are not started. See [docs/architecture.md](docs/architecture.md#component-status) for the full breakdown.
 
 ## Quickstart
 
@@ -62,7 +62,7 @@ app/
   api/
     routers/       # Route handlers (mounted under /api/v1): auth, profiles, organizations
                    # (incl. list mine), contacts, knowledge, signals (SMS webhook),
-                   # voice (voice webhook + LiveKit SIP Dial + internal agent APIs)
+                   # voice (Twilio voice webhook: LiveKit SIP dial + LiveKit agent bootstrap/finalize)
   core/
     langgraph/     # Per-channel LLM subagents (sms_graph.py + voice_graph.py live) + tools
     prompts/       # System prompt template
@@ -113,13 +113,13 @@ See [LICENSE](LICENSE).
 ### General
 
 **What is this?**
-The backend API for Mirenta, a general-purpose outreach runtime — not tied to any one vertical. It exposes the product domain (profiles, organizations, contacts, knowledge) over a Supabase-authenticated REST API, and runs the Mirenta Runtime agent loop that drives outreach for any kind of organization — live for SMS and inbound voice today; outbound calling still to come.
+The backend API for Mirenta, a general-purpose outreach runtime — not tied to any one vertical. It exposes the product domain (profiles, organizations, contacts, knowledge) over a Supabase-authenticated REST API, and runs the Mirenta Runtime agent loop that drives outreach for any kind of organization — live for SMS today; LiveKit voice handles both standalone sessions and real inbound Twilio calls via a LiveKit SIP trunk; outbound calling still to come.
 
 **What's the Mirenta Runtime?**
 An event-driven architecture where a deterministic decision engine (not an LLM) decides when/whether/how to contact someone, Temporal schedules the resulting tasks durably, and LangGraph subagents handle only the actual conversation on each channel. See [docs/architecture.md](docs/architecture.md) for the full design.
 
 **Is the outreach agent live?**
-Yes, for SMS: text a configured Twilio number and you'll get a real, context-aware, guardrailed, knowledge-grounded LLM reply — inbound webhook → Temporal event bus → decision engine → durable task → LangGraph SMS subagent → logged interaction that re-enters the loop (including a 3-day silence follow-up). Inbound voice is also live (Twilio → LiveKit Cloud agent with Deepgram + OpenAI). Outbound calling and proactive/first-touch outreach are not — see [docs/architecture.md](docs/architecture.md#component-status).
+Yes, for SMS: text a configured Twilio number and you'll get a real, context-aware, guardrailed, knowledge-grounded LLM reply — inbound webhook → Temporal event bus → decision engine → durable task → LangGraph SMS subagent → logged interaction that re-enters the loop (including a 3-day silence follow-up). Voice works the same way for calls: the Twilio voice webhook dials into a LiveKit SIP trunk (when `LIVEKIT_SIP_URI` is configured), the `mirenta-voice` LiveKit agent bootstraps from org knowledge, and finalize logs the interaction and re-enters the loop; it's also usable standalone (console / Agent Console / WebRTC) without a call. Outbound calling and proactive/first-touch outreach are not — see [docs/architecture.md](docs/architecture.md#component-status).
 
 ### Setup & Configuration
 

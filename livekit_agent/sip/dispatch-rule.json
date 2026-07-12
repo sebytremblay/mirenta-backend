@@ -1,0 +1,16 @@
+{
+  "dispatch_rule": {
+    "name": "mirenta-twilio-individual",
+    "trunk_ids": ["ST_cyrFgopLCEgt"],
+    "rule": {
+      "dispatch_rule_individual": {
+        "room_prefix": "call-"
+      }
+    },
+    "room_config": {
+      "agents": [
+        { "agent_name": "mirenta-voice" }
+      ]
+    }
+  }
+}

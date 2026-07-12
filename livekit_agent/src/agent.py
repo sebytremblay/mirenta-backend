@@ -1,9 +1,11 @@
-"""Mirenta inbound voice agent — deploy to LiveKit Cloud.
+"""Mirenta voice agent — deploy to LiveKit Cloud.
 
-Native LiveKit Agents pipeline: Deepgram STT/TTS + OpenAI LLM. Twilio keeps
-the phone numbers; FastAPI gates DNC/consent and SIP-dials LiveKit; this
-worker owns the live session. On hangup it calls Mirenta's finalize API so
-the Temporal contact loop re-enters.
+Native LiveKit Agents pipeline: Deepgram STT/TTS + OpenAI LLM. Runs
+standalone (console / Agent Console / WebRTC) and is also dispatched onto
+real Twilio PSTN calls via a LiveKit SIP inbound trunk (see
+`livekit_agent/sip/`). When Mirenta correlation metadata is present, this
+worker bootstraps instructions from FastAPI and finalizes so the Temporal
+contact loop can re-enter.
 
 Local:
   cd livekit_agent && uv sync && uv run src/agent.py console   # mic/speakers, no Cloud
@@ -150,14 +152,11 @@ async def _start_console_session(ctx: JobContext) -> None:
 async def entrypoint(ctx: JobContext) -> None:
     """Join the LiveKit room and run the Deepgram + OpenAI pipeline.
 
-    Real Twilio calls arrive as a SIP participant (`ParticipantKind.SIP`) and
-    supply Mirenta ids via participant attributes. Anything else — the local
-    `console` CLI, the browser-based Agent Console attached to a `dev` room,
-    or a manual test participant — joins as a standard participant and gets
-    a playground session with default instructions, skipping Mirenta
-    bootstrap/finalize entirely. This is the SDK's own signal for "is this a
-    real phone call", so it doesn't depend on guessing room-name conventions
-    or on metadata happening to be absent.
+    SIP participants (if any) may supply Mirenta ids via participant
+    attributes / job metadata for bootstrap/finalize. Everything else — the
+    local `console` CLI, the browser-based Agent Console, or a manual test
+    participant — joins as a standard participant and gets a playground
+    session with default instructions, skipping Mirenta bootstrap/finalize.
     """
     ctx.log_context_fields = {"room": ctx.room.name}
     await ctx.connect()
@@ -172,9 +171,8 @@ async def entrypoint(ctx: JobContext) -> None:
         await _start_console_session(ctx)
         return
 
-    # SIP call: Mirenta ids must come from participant attributes (Twilio
-    # X-headers via trunk mapping), with job/room metadata as a fallback for
-    # explicit API dispatches.
+    # SIP / explicit dispatch: Mirenta ids from participant attributes or
+    # job/room metadata.
     context = await _wait_for_mirenta_context(participant, ctx)
 
     org_id = context["org_id"]
