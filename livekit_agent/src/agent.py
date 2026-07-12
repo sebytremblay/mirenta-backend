@@ -1,9 +1,9 @@
 """Mirenta inbound voice agent — deploy to LiveKit Cloud.
 
 Native LiveKit Agents pipeline: Deepgram STT/TTS + OpenAI LLM. Twilio keeps
-the phone numbers; FastAPI gates DNC/consent and SIP-dials a LiveKit room;
-this worker owns the live session. On hangup it calls Mirenta's finalize API
-so the Temporal contact loop re-enters.
+the phone numbers; FastAPI gates DNC/consent and SIP-dials LiveKit; this
+worker owns the live session. On hangup it calls Mirenta's finalize API so
+the Temporal contact loop re-enters.
 
 Local:
   cd livekit_agent && uv sync && uv run src/agent.py dev
@@ -31,6 +31,7 @@ from livekit.agents import (
     room_io,
 )
 from livekit.plugins import deepgram, openai, silero
+from livekit.rtc import RemoteParticipant
 
 from mirenta_client import MirentaVoiceClient
 
@@ -42,6 +43,12 @@ AGENT_NAME = os.getenv("LIVEKIT_AGENT_NAME", "mirenta-voice")
 DEEPGRAM_STT_MODEL = os.getenv("DEEPGRAM_STT_MODEL", "nova-3")
 DEEPGRAM_TTS_MODEL = os.getenv("DEEPGRAM_TTS_MODEL", "aura-2-asteria-en")
 VOICE_LLM_MODEL = os.getenv("VOICE_LLM_MODEL", "gpt-4.1-mini")
+
+# Participant attribute keys produced by trunk headers_to_attributes mapping.
+_ATTR_ORG_ID = "mirenta.org_id"
+_ATTR_CONTACT_ID = "mirenta.contact_id"
+_ATTR_SIGNAL_ID = "mirenta.signal_id"
+_ATTR_CALL_SID = "mirenta.call_sid"
 
 
 def _parse_metadata(raw: str | None) -> dict[str, Any]:
@@ -55,12 +62,29 @@ def _parse_metadata(raw: str | None) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def _call_context(ctx: JobContext) -> dict[str, Any]:
-    """Resolve Mirenta ids from job dispatch metadata, then room metadata."""
+def _attr(attrs: dict[str, str], *keys: str) -> str:
+    for key in keys:
+        value = (attrs.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _call_context_from_participant(participant: RemoteParticipant) -> dict[str, str]:
+    """Resolve Mirenta ids from SIP participant attributes (Twilio X-headers)."""
+    attrs = dict(participant.attributes or {})
+    return {
+        "org_id": _attr(attrs, _ATTR_ORG_ID, "sip.h.x-mirenta-org-id", "x-mirenta-org-id"),
+        "contact_id": _attr(attrs, _ATTR_CONTACT_ID, "sip.h.x-mirenta-contact-id", "x-mirenta-contact-id"),
+        "signal_id": _attr(attrs, _ATTR_SIGNAL_ID, "sip.h.x-mirenta-signal-id", "x-mirenta-signal-id"),
+        "call_sid": _attr(attrs, _ATTR_CALL_SID, "sip.h.x-mirenta-call-sid", "x-mirenta-call-sid"),
+    }
+
+
+def _call_context_from_job(ctx: JobContext) -> dict[str, str]:
+    """Fallback: job/room metadata (explicit API dispatch / older flows)."""
     job_meta = _parse_metadata(getattr(ctx.job, "metadata", None) or None)
     room_meta = _parse_metadata(ctx.room.metadata)
-    # Job dispatch metadata is set by FastAPI's CreateAgentDispatchRequest and
-    # is available immediately; room.metadata can be empty until connected.
     merged = {**room_meta, **job_meta}
     return {
         "org_id": str(merged.get("org_id") or ""),
@@ -109,11 +133,18 @@ server = AgentServer()
 
 @server.rtc_session(agent_name=AGENT_NAME)
 async def entrypoint(ctx: JobContext) -> None:
-    """Join a prepared Mirenta voice room and run the Deepgram + OpenAI pipeline."""
+    """Join the LiveKit SIP room and run the Deepgram + OpenAI pipeline."""
     ctx.log_context_fields = {"room": ctx.room.name}
     await ctx.connect()
 
-    context = _call_context(ctx)
+    # Prefer SIP participant attributes (Twilio X-headers via trunk mapping).
+    # Fall back to job/room metadata for console/API dispatches.
+    participant = await ctx.wait_for_participant()
+    context = _call_context_from_participant(participant)
+    if not all(context.values()):
+        fallback = _call_context_from_job(ctx)
+        context = {key: context[key] or fallback[key] for key in context}
+
     org_id = context["org_id"]
     contact_id = context["contact_id"]
     signal_id = context["signal_id"]
@@ -121,8 +152,9 @@ async def entrypoint(ctx: JobContext) -> None:
 
     if not org_id or not contact_id or not signal_id or not call_sid:
         logger.error(
-            "voice_room_metadata_incomplete room=%s job_metadata=%r room_metadata=%r context=%s",
+            "voice_room_metadata_incomplete room=%s participant_attrs=%r job_metadata=%r room_metadata=%r context=%s",
             ctx.room.name,
+            dict(participant.attributes or {}),
             getattr(ctx.job, "metadata", None),
             ctx.room.metadata,
             context,

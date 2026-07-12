@@ -105,9 +105,46 @@ With the API + Temporal worker already running:
    lk agent deploy
    ```
    Or locally against Cloud jobs: `make voice-agent-dev` (needs the same env as `livekit_agent/.env.example`).
-3. Configure a LiveKit inbound SIP trunk that accepts Twilio SIP (optional trunk username/password → `LIVEKIT_SIP_*`).
+3. Configure LiveKit telephony (required — without these, Twilio's SIP Dial fails in 0s):
+   ```bash
+   # Inbound trunk: match Twilio Dial of sip:+E164@<LIVEKIT_SIP_HOST>
+   # Use the same username/password as LIVEKIT_SIP_USERNAME / LIVEKIT_SIP_PASSWORD.
+   cat > /tmp/mirenta-inbound-trunk.json <<'EOF'
+   {
+     "trunk": {
+       "name": "twilio-inbound",
+       "numbers": ["+15551234567"],
+       "headers_to_attributes": {
+         "X-Mirenta-Org-Id": "mirenta.org_id",
+         "X-Mirenta-Contact-Id": "mirenta.contact_id",
+         "X-Mirenta-Signal-Id": "mirenta.signal_id",
+         "X-Mirenta-Call-Sid": "mirenta.call_sid"
+       }
+     }
+   }
+   EOF
+   lk sip inbound create /tmp/mirenta-inbound-trunk.json \
+     --auth-user "$LIVEKIT_SIP_USERNAME" \
+     --auth-pass "$LIVEKIT_SIP_PASSWORD"
 
-Calling the org's Twilio number hits `POST /api/v1/webhooks/twilio/voice`, which checks DNC/consent, creates a LiveKit room + agent dispatch, and returns `<Dial><Sip>` TwiML into that room. The Cloud agent bootstraps knowledge from Mirenta, runs the call, then finalizes so `ContactLoopWorkflow` re-enters.
+   # Individual dispatch: one room per caller + dispatch mirenta-voice
+   cat > /tmp/mirenta-dispatch-rule.json <<'EOF'
+   {
+     "dispatch_rule": {
+       "name": "mirenta-twilio-individual",
+       "rule": {
+         "dispatchRuleIndividual": { "roomPrefix": "call-" }
+       },
+       "roomConfig": {
+         "agents": [{ "agentName": "mirenta-voice" }]
+       }
+     }
+   }
+   EOF
+   lk sip dispatch create /tmp/mirenta-dispatch-rule.json --trunks "<inbound-trunk-id>"
+   ```
+
+Calling the org's Twilio number hits `POST /api/v1/webhooks/twilio/voice`, which checks DNC/consent and returns `<Dial><Sip>` to `sip:+{org_phone}@{LIVEKIT_SIP_HOST}` with Mirenta correlation headers. LiveKit's trunk + dispatch rule create the room and agent; the agent bootstraps knowledge from Mirenta, runs the call, then finalizes so `ContactLoopWorkflow` re-enters.
 
 ## Customising the agent
 
@@ -150,5 +187,8 @@ If it's a false positive, add `# pragma: allowlist secret` to the end of the fla
 **Langfuse errors**
 Set `LANGFUSE_TRACING_ENABLED=false` in your `.env` to disable tracing entirely during development.
 
+**Inbound voice answers but Twilio SIP child call fails in 0s**
+Confirm the LiveKit inbound trunk `numbers` include the org E.164 number Twilio dials, trunk auth matches `LIVEKIT_SIP_USERNAME`/`LIVEKIT_SIP_PASSWORD`, and an individual dispatch rule exists for that trunk (see steps above). Download the child call's SIP PCAP — `404 No trunk found` means trunk matching; `407` means auth.
+
 **Inbound voice answers but never speaks / no transcripts**
-Confirm LiveKit Cloud agent is deployed and receiving jobs (`LIVEKIT_AGENT_NAME` matches), `DEEPGRAM_API_KEY` / `OPENAI_API_KEY` are set on the agent, `MIRENTA_API_BASE_URL` reaches FastAPI, and `LIVEKIT_SIP_HOST` / inbound trunk accept Twilio's SIP Dial.
+Confirm LiveKit Cloud agent is deployed and receiving jobs (`LIVEKIT_AGENT_NAME` matches), `DEEPGRAM_API_KEY` / `OPENAI_API_KEY` are set on the agent, `MIRENTA_API_BASE_URL` reaches FastAPI, and the trunk `headers_to_attributes` maps `X-Mirenta-*` headers so the agent can bootstrap.

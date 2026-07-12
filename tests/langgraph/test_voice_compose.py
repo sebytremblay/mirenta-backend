@@ -34,4 +34,5 @@ def test_compose_injects_knowledge_system_message() -> None:
 
     knowledge_messages = [message for message in captured_messages if knowledge in str(message.content)]
     assert len(knowledge_messages) == 1
+    assert command.update is not None
     assert command.update["knowledge"] == knowledge

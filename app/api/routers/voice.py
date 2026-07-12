@@ -1,9 +1,10 @@
 """Inbound voice call ingestion + LiveKit agent bridge endpoints.
 
 `POST /webhooks/twilio/voice` resolves DNC + consent synchronously and
-answers by SIP-dialing a LiveKit room (Cloud-hosted agent owns the live
-session). It deliberately does NOT route the `inbound_call` signal through
-`decision.engine.evaluate` — see `docs/architecture.md`.
+answers by SIP-dialing the org phone number into LiveKit (Cloud trunk +
+dispatch rule create the room and agent). It deliberately does NOT route
+the `inbound_call` signal through `decision.engine.evaluate` — see
+`docs/architecture.md`.
 
 `POST /internal/voice/bootstrap` and `POST /internal/voice/finalize` are
 called by the LiveKit Cloud agent worker (shared secret), not by Twilio.
@@ -79,9 +80,9 @@ async def receive_twilio_call(request: Request):
     """Answer an inbound call into LiveKit, or reject it if DNC/consent blocks it.
 
     Verifies Twilio's request signature, resolves org/contact, runs DNC +
-    consent checks synchronously, records an `inbound_call` signal, prepares
-    a LiveKit room + Cloud agent dispatch, and returns TwiML that SIP-dials
-    that room.
+    consent checks synchronously, records an `inbound_call` signal, and
+    returns TwiML that SIP-dials the org number into LiveKit with Mirenta
+    correlation headers for the Cloud agent.
 
     Args:
         request: The raw Twilio webhook request (form-encoded).
@@ -159,14 +160,15 @@ async def receive_twilio_call(request: Request):
         )
 
     try:
-        prepared = await prepare_inbound_voice_room(
+        prepared = prepare_inbound_voice_room(
             call_sid=call_sid,
             org_id=str(org["id"]),
             contact_id=str(contact.id),
             signal_id=str(signal.id),
+            to_number=to_number,
         )
     except Exception:
-        logger.exception("livekit_voice_room_prepare_failed", call_sid=call_sid)
+        logger.exception("livekit_voice_sip_prepare_failed", call_sid=call_sid)
         await mark_signal_status(client, str(signal.id), "failed")
         return Response(
             content=generate_voice_reject_twiml(message="We are unable to take your call."),
