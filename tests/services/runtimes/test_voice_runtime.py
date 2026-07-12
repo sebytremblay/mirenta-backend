@@ -31,6 +31,7 @@ def _make_session() -> tuple[VoiceCallSession, _FakeWebSocket]:
     fake_ws = _FakeWebSocket()
     session = VoiceCallSession(websocket=cast(WebSocket, fake_ws), call_sid="CA123")
     session._org_id = "org-1"
+    session._org_name = "Mirenta"
     session._contact_id = "contact-1"
     session._stream_sid = "MZ123"
     return session, fake_ws
@@ -50,9 +51,19 @@ def test_start_opening_greeting_queues_tts_and_transcript() -> None:
     asyncio.run(_run())
     assert session._any_turn_completed is False
     assert session._transcript == [
-        {"role": "ai", "content": _opening_greeting()},
+        {"role": "ai", "content": _opening_greeting("Mirenta")},
     ]
     assert session._infer_outcome() == "no_answer"
+
+
+def test_opening_greeting_without_org_name_omits_company() -> None:
+    assert _opening_greeting() == (
+        "Hi, I am the AI receptionist. I can answer questions, take a message, or help you schedule a meeting."
+    )
+    assert _opening_greeting("Mirenta") == (
+        "Hi, I am the AI receptionist for Mirenta. "
+        "I can answer questions, take a message, or help you schedule a meeting."
+    )
 
 
 def test_utterance_end_joins_pending_transcript_and_triggers_turn() -> None:
@@ -172,6 +183,10 @@ def test_handshake_loads_knowledge_for_org() -> None:
                 "app.services.runtimes.voice_runtime.format_knowledge_for_prompt",
                 return_value="",
             ),
+            patch(
+                "app.services.runtimes.voice_runtime._fetch_org_display_name",
+                new=AsyncMock(return_value="Mirenta"),
+            ) as fetch_org_name,
         ):
             fake_ws.receive_json.side_effect = [
                 {"event": "connected"},
@@ -187,8 +202,10 @@ def test_handshake_loads_knowledge_for_org() -> None:
             ok = await session._handshake()
             assert ok is True
             fetch_knowledge.assert_awaited_once_with("org-1")
+            fetch_org_name.assert_awaited_once_with("org-1")
             assert session._knowledge == ""
             assert session._knowledge_entry_count == 0
+            assert session._org_name == "Mirenta"
 
     asyncio.run(_run())
 

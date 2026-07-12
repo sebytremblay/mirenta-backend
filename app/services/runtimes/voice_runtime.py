@@ -27,10 +27,10 @@ from activities.logging import (
     emit_interaction_result_signal,
     log_interaction,
 )
-from app.core.config import settings
 from app.core.langgraph.voice_graph import voice_agent
 from app.core.logging import logger
 from app.services.clients.deepgram_client import DeepgramSTTSession, DeepgramTTSSession
+from app.services.clients.supabase_client import execute_query, get_service_role_client
 from app.services.knowledge import fetch_active_knowledge, format_knowledge_for_prompt
 
 VOICE_CHANNEL_CONSTRAINTS = {"max_length": 600}
@@ -39,9 +39,25 @@ TTS_FRAME_SECONDS = 0.02
 OPENING_GREETING_BARGE_IN_GRACE_SECONDS = 2.0
 
 
-def _opening_greeting() -> str:
+def _opening_greeting(org_name: str | None = None) -> str:
     """Fixed spoken open — TTS only, no LLM round-trip (keeps time-to-first-audio low)."""
-    return f"Hi, this is {settings.DEFAULT_PERSONA_NAME}. How can I help you today?"
+    capabilities = "I can answer questions, take a message, or help you schedule a meeting."
+    if org_name:
+        return f"Hi, I am the AI receptionist for {org_name}. {capabilities}"
+    return f"Hi, I am the AI receptionist. {capabilities}"
+
+
+async def _fetch_org_display_name(org_id: str) -> str | None:
+    """Load the org display name for the spoken opening greeting."""
+    client = await get_service_role_client()
+    try:
+        response = await execute_query(client.table("organizations").select("name").eq("id", org_id).single())
+        name = response.data.get("name") if response.data else None
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+    except Exception:
+        logger.exception("voice_org_name_fetch_failed", org_id=org_id)
+    return None
 
 
 class VoiceCallSession:
@@ -53,6 +69,7 @@ class VoiceCallSession:
         self._call_sid = call_sid
         self._stream_sid: str | None = None
         self._org_id: str | None = None
+        self._org_name: str | None = None
         self._contact_id: str | None = None
         self._stt = DeepgramSTTSession()
         self._pending_transcript: list[str] = []
@@ -121,11 +138,13 @@ class VoiceCallSession:
         knowledge_entries = await fetch_active_knowledge(self._org_id)
         self._knowledge = format_knowledge_for_prompt(knowledge_entries)
         self._knowledge_entry_count = len(knowledge_entries)
+        self._org_name = await _fetch_org_display_name(self._org_id)
         logger.info(
             "voice_ws_connected",
             call_sid=self._call_sid,
             org_id=self._org_id,
             contact_id=self._contact_id,
+            org_name=self._org_name,
             knowledge_entries=self._knowledge_entry_count,
         )
         return True
@@ -151,7 +170,7 @@ class VoiceCallSession:
         LLM/checkpointer round-trip. Does not set `_any_turn_completed` —
         greeting-only hangups still count as `no_answer`.
         """
-        greeting = _opening_greeting()
+        greeting = _opening_greeting(self._org_name)
         self._transcript.append({"role": "ai", "content": greeting})
         logger.info("voice_greeting_started", call_sid=self._call_sid, reply_length=len(greeting))
         self._opening_greeting_grace_until = time.monotonic() + OPENING_GREETING_BARGE_IN_GRACE_SECONDS
