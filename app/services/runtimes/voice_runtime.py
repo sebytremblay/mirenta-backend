@@ -30,6 +30,7 @@ from app.core.config import settings
 from app.core.langgraph.voice_graph import voice_agent
 from app.core.logging import logger
 from app.services.clients.deepgram_client import DeepgramSTTSession, DeepgramTTSSession
+from app.services.knowledge import fetch_active_knowledge, format_knowledge_for_prompt
 
 VOICE_CHANNEL_CONSTRAINTS = {"max_length": 600}
 TTS_FRAME_BYTES = 160  # 20ms of 8kHz mulaw
@@ -55,8 +56,12 @@ class VoiceCallSession:
         self._pending_transcript: list[str] = []
         self._transcript: list[dict[str, str]] = []
         self._current_playback: asyncio.Task[None] | None = None
+        self._current_turn: asyncio.Task[None] | None = None
+        self._playback_audio_started = False
         self._any_turn_completed = False
         self._any_turn_escalated = False
+        self._knowledge = ""
+        self._knowledge_entry_count = 0
 
     async def run(self) -> None:
         """Accept the call, bridge audio for its duration, then close the loop."""
@@ -79,6 +84,7 @@ class VoiceCallSession:
         except Exception:
             logger.exception("voice_ws_session_failed", call_sid=self._call_sid)
         finally:
+            await self._cancel_turn()
             await self._stt.finish()
             await self._cancel_playback()
             await self._finalize_call()
@@ -112,7 +118,16 @@ class VoiceCallSession:
             logger.warning("voice_ws_missing_correlation_params", call_sid=self._call_sid)
             return False
 
-        logger.info("voice_ws_connected", call_sid=self._call_sid, org_id=self._org_id, contact_id=self._contact_id)
+        knowledge_entries = await fetch_active_knowledge(self._org_id)
+        self._knowledge = format_knowledge_for_prompt(knowledge_entries)
+        self._knowledge_entry_count = len(knowledge_entries)
+        logger.info(
+            "voice_ws_connected",
+            call_sid=self._call_sid,
+            org_id=self._org_id,
+            contact_id=self._contact_id,
+            knowledge_entries=self._knowledge_entry_count,
+        )
         return True
 
     async def _read_media_loop(self) -> None:
@@ -139,6 +154,7 @@ class VoiceCallSession:
         greeting = _opening_greeting()
         self._transcript.append({"role": "ai", "content": greeting})
         logger.info("voice_greeting_started", call_sid=self._call_sid, reply_length=len(greeting))
+        self._playback_audio_started = False
         self._current_playback = asyncio.create_task(self._play_reply(greeting))
 
     async def _on_transcript(self, text: str, is_final: bool) -> None:
@@ -147,7 +163,12 @@ class VoiceCallSession:
             self._pending_transcript.append(text)
 
     async def _on_utterance_end(self) -> None:
-        """The caller has finished a turn -- compose and speak a reply."""
+        """The caller has finished a turn -- schedule compose/speak off the STT loop.
+
+        Must not await `_handle_turn` here: that blocks Deepgram's consumer for
+        the whole LLM round-trip, queues `SpeechStarted` events, and then
+        barge-in cancels TTS the instant playback is scheduled.
+        """
         if not self._pending_transcript:
             return
         utterance = " ".join(self._pending_transcript).strip()
@@ -155,7 +176,8 @@ class VoiceCallSession:
         if not utterance:
             return
         self._transcript.append({"role": "human", "content": utterance})
-        await self._handle_turn(utterance)
+        await self._cancel_turn()
+        self._current_turn = asyncio.create_task(self._handle_turn(utterance))
 
     async def _on_speech_started(self) -> None:
         """Deepgram's VAD detected new speech -- interrupt playback if the agent is talking."""
@@ -178,7 +200,10 @@ class VoiceCallSession:
         """
         if self._org_id is None or self._contact_id is None:
             return
-        session_id = f"voice:{self._org_id}:{self._contact_id}"
+        # Per-call thread: a prior hung-up call can leave the contact-scoped
+        # checkpoint mid-node (`resuming_interrupted_graph`), which breaks the
+        # next inbound call for the same contact.
+        session_id = f"voice:{self._org_id}:{self._contact_id}:{self._call_sid}"
         try:
             response_messages = await voice_agent.get_response(
                 [HumanMessage(content=utterance_text)],
@@ -187,8 +212,11 @@ class VoiceCallSession:
                     "contact_id": self._contact_id,
                     "task_goal": "converse_inbound_call",
                     "channel_constraints": VOICE_CHANNEL_CONSTRAINTS,
+                    "knowledge": self._knowledge,
                 },
             )
+        except asyncio.CancelledError:
+            raise
         except Exception:
             logger.exception("voice_turn_failed", call_sid=self._call_sid)
             return
@@ -210,9 +238,15 @@ class VoiceCallSession:
 
         self._any_turn_completed = True
         self._transcript.append({"role": "ai", "content": reply_text})
-        logger.info("voice_turn_composed", call_sid=self._call_sid, reply_length=len(reply_text))
+        logger.info(
+            "voice_turn_composed",
+            call_sid=self._call_sid,
+            reply_length=len(reply_text),
+            knowledge_entries=self._knowledge_entry_count,
+        )
 
         await self._cancel_playback()
+        self._playback_audio_started = False
         self._current_playback = asyncio.create_task(self._play_reply(reply_text))
 
     async def _play_reply(self, text: str) -> None:
@@ -225,9 +259,11 @@ class VoiceCallSession:
                 while len(buffer) >= TTS_FRAME_BYTES:
                     frame, buffer = buffer[:TTS_FRAME_BYTES], buffer[TTS_FRAME_BYTES:]
                     await self._send_media_frame(frame)
+                    self._playback_audio_started = True
                     await asyncio.sleep(TTS_FRAME_SECONDS)
             if buffer:
                 await self._send_media_frame(buffer)
+                self._playback_audio_started = True
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -244,6 +280,7 @@ class VoiceCallSession:
 
     async def _cancel_playback(self) -> None:
         """Cancel the in-flight TTS playback task, if any, and wait for it to unwind."""
+        self._playback_audio_started = False
         if self._current_playback is None:
             return
         task, self._current_playback = self._current_playback, None
@@ -252,9 +289,26 @@ class VoiceCallSession:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
 
+    async def _cancel_turn(self) -> None:
+        """Cancel an in-flight compose turn, if any."""
+        if self._current_turn is None:
+            return
+        task, self._current_turn = self._current_turn, None
+        if not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
     async def _handle_barge_in(self) -> None:
-        """On new speech while a reply is playing: stop it and flush Twilio's playback buffer."""
+        """On new speech while a reply is audible: stop it and flush Twilio's buffer.
+
+        Ignores `SpeechStarted` until the first TTS frame has been sent — otherwise
+        VAD events queued while compose was running (or noise before audio starts)
+        cancel playback before the caller hears anything.
+        """
         if self._current_playback is None or self._current_playback.done():
+            return
+        if not self._playback_audio_started:
             return
         logger.info("voice_barge_in", call_sid=self._call_sid)
         await self._cancel_playback()
