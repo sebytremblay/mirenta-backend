@@ -161,7 +161,9 @@ def test_handle_barge_in_cancels_playback_and_sends_clear() -> None:
 
     async def _run() -> None:
         session._current_playback = asyncio.create_task(_long_task())
-        await asyncio.sleep(0)  # let the task actually start
+        session._playback_first_frame_sent = True
+        session._playback_barge_in_allowed_after = time.monotonic() - 1.0
+        await asyncio.sleep(0)
         await session._handle_barge_in()
 
     asyncio.run(_run())
@@ -239,11 +241,26 @@ def test_barge_in_allowed_after_opening_greeting_grace() -> None:
 
     async def _run() -> None:
         session._current_playback = asyncio.create_task(_long_task())
+        session._playback_first_frame_sent = True
+        session._playback_barge_in_allowed_after = time.monotonic() - 1.0
         await asyncio.sleep(0)
         await session._on_speech_started()
 
     asyncio.run(_run())
     fake_ws.send_json.assert_awaited_once_with({"event": "clear", "streamSid": "MZ123"})
+
+
+def test_barge_in_blocked_before_first_playback_frame() -> None:
+    session, fake_ws = _make_session()
+
+    async def _run() -> None:
+        session._current_playback = asyncio.create_task(asyncio.sleep(10))
+        session._playback_barge_in_allowed_after = time.monotonic() - 1.0
+        await session._on_speech_started()
+
+    asyncio.run(_run())
+    fake_ws.send_json.assert_not_awaited()
+    assert session._current_playback is not None
 
 
 def test_utterance_end_during_opening_greeting_grace_is_discarded() -> None:
