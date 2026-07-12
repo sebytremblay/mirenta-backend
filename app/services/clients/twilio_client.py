@@ -354,16 +354,16 @@ def generate_voice_answer_twiml(
     sip_username: str | None = None,
     sip_password: str | None = None,
 ) -> str:
-    """Build TwiML that bridges an inbound Twilio call into a LiveKit SIP room.
+    """Build TwiML that bridges an inbound Twilio call into LiveKit over SIP.
 
-    After FastAPI has resolved DNC/consent and prepared a LiveKit room + agent
-    dispatch, this dials LiveKit over SIP. The Cloud-hosted LiveKit agent owns
-    STT/LLM/TTS for the rest of the call; Mirenta correlation lives in the
-    room metadata, not in Media Stream `<Parameter>`s.
+    After FastAPI has resolved DNC/consent, this dials the org phone number on
+    the LiveKit SIP host (Twilio Programmable Voice pattern). The Cloud agent
+    is dispatched by LiveKit's inbound trunk + dispatch rule; Mirenta
+    correlation travels as `x-mirenta-*` query headers on the SIP URI.
 
     Args:
-        sip_uri: LiveKit SIP URI whose user part is the room name
-            (e.g. `sip:call-CA123@<project>.sip.livekit.cloud;transport=tcp`).
+        sip_uri: LiveKit SIP URI whose user part is the dialed E.164 number
+            (e.g. `sip:+15551234567@<project>.sip.livekit.cloud;transport=tcp?…`).
         sip_username: Optional inbound-trunk username (LiveKit trunk auth).
         sip_password: Optional inbound-trunk password.
 
