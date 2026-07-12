@@ -49,6 +49,9 @@ worker:
 voice-agent-dev:
 	@$(call run_with_env,cd livekit_agent && uv sync && uv run src/agent.py dev)
 
+voice-agent-console:
+	@$(call run_with_env,cd livekit_agent && uv sync && uv run src/agent.py console)
+
 voice-agent-deploy:
 	@cd livekit_agent && \
 	  if [ ! -f livekit.toml ]; then \
@@ -56,6 +59,9 @@ voice-agent-deploy:
 	    exit 1; \
 	  fi; \
 	  lk agent deploy
+
+voice-agent-test:
+	@cd livekit_agent && uv sync --group dev && uv run pytest
 
 # ---------------------------------------------------------------------------
 # Code quality
@@ -104,8 +110,10 @@ help:
 	@echo "  worker               Run the Temporal worker (registers workflows + activities)"
 	@echo ""
 	@echo "LiveKit voice:"
-	@echo "  voice-agent-dev      Run the LiveKit agent locally (connects to LiveKit Cloud)"
+	@echo "  voice-agent-dev      Run the LiveKit agent locally (Cloud jobs / Agent Console)"
+	@echo "  voice-agent-console  Local mic/speakers console (no LiveKit room required)"
 	@echo "  voice-agent-deploy   Deploy livekit_agent/ to LiveKit Cloud (requires lk CLI)"
+	@echo "  voice-agent-test     Run livekit_agent/ unit tests"
 	@echo ""
 	@echo "Code quality:"
 	@echo "  lint                 Ruff lint check"
@@ -120,6 +128,6 @@ help:
 
 .PHONY: install dev staging prod _serve \
         temporal-up temporal-down worker \
-        voice-agent-dev voice-agent-deploy \
+        voice-agent-dev voice-agent-console voice-agent-deploy voice-agent-test \
         lint format typecheck check pre-commit pre-commit-update \
         clean help

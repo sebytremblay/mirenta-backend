@@ -52,22 +52,22 @@ If `TWILIO_ACCOUNT_SID` is unset, `POST /api/v1/organizations` skips automatic p
 
 ## LiveKit (inbound voice — FastAPI)
 
-FastAPI only needs these to gate DNC/consent, create a room, dispatch the Cloud agent, and Dial Sip. STT/LLM/TTS secrets belong on the agent (`livekit_agent/.env.example`), not here.
+FastAPI gates DNC/consent and returns TwiML that SIP-dials the org E.164 into LiveKit. Room creation and agent dispatch are owned by the LiveKit **inbound trunk** + **individual dispatch rule** (see [Getting started](getting-started.md#run-inbound-voice)). STT/LLM/TTS secrets belong on the agent (`livekit_agent/.env.example`), not here.
 
 | Variable | Default | Required | Description |
 | --- | --- | --- | --- |
-| `LIVEKIT_URL` | — | Yes, for inbound voice | LiveKit WebSocket URL (`wss://…livekit.cloud`) |
-| `LIVEKIT_API_KEY` | — | Yes, for inbound voice | LiveKit API key |
-| `LIVEKIT_API_SECRET` | — | Yes, for inbound voice | LiveKit API secret |
 | `LIVEKIT_SIP_HOST` | — | Yes, for inbound voice | SIP hostname Twilio dials (`….sip.livekit.cloud`) |
 | `LIVEKIT_SIP_USERNAME` | — | No | Inbound trunk username for TwiML `<Sip>` |
 | `LIVEKIT_SIP_PASSWORD` | — | No | Inbound trunk password for TwiML `<Sip>` |
-| `LIVEKIT_AGENT_NAME` | `mirenta-voice` | No | Must match the Cloud agent name used at dispatch |
+| `LIVEKIT_AGENT_NAME` | `mirenta-voice` | No | Must match the Cloud agent name on the dispatch rule |
 | `MIRENTA_INTERNAL_API_KEY` | — | Yes, for inbound voice | Shared secret for agent → `/internal/voice/*` |
+| `LIVEKIT_URL` | — | No (inbound hot path) | LiveKit WebSocket URL; optional on FastAPI today (agent needs it) |
+| `LIVEKIT_API_KEY` | — | No (inbound hot path) | LiveKit API key; optional on FastAPI today |
+| `LIVEKIT_API_SECRET` | — | No (inbound hot path) | LiveKit API secret; optional on FastAPI today |
 
-Also configure a LiveKit **inbound SIP trunk** that accepts Twilio's SIP signaling (and optional trunk auth matching `LIVEKIT_SIP_*`). See [LiveKit Twilio telephony docs](https://docs.livekit.io/telephony/start/providers/twilio/).
+Also configure a LiveKit **inbound SIP trunk** that accepts Twilio's SIP signaling (and optional trunk auth matching `LIVEKIT_SIP_*`), plus an individual dispatch rule that names `mirenta-voice`. See [LiveKit Twilio telephony docs](https://docs.livekit.io/telephony/accepting-calls/inbound-twilio/).
 
-Agent-only secrets (set in LiveKit Cloud / `livekit_agent/.env`): `DEEPGRAM_API_KEY`, `OPENAI_API_KEY`, `MIRENTA_API_BASE_URL`, model overrides.
+Agent-only secrets (set in LiveKit Cloud / `livekit_agent/.env`): `DEEPGRAM_API_KEY`, `OPENAI_API_KEY`, `MIRENTA_API_BASE_URL`, `API_PREFIX` (must match FastAPI), model overrides.
 
 ---
 

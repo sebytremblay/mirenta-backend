@@ -127,6 +127,14 @@ exclude = [
 stubPath = "typings"
 pythonVersion = "3.13"
 typeCheckingMode = "standard"
+# livekit_agent/ is a separate uv project; resolve its imports from its own .venv.
+executionEnvironments = [
+    { root = "livekit_agent", extraPaths = [
+        "livekit_agent/src",
+        "livekit_agent/.venv/lib/python3.13/site-packages",
+    ] },
+    { root = "." },
+]
 
 # Tightened from defaults — cheap real-bug catchers
 reportDuplicateImport = "error"

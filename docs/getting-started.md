@@ -92,7 +92,7 @@ Fill in `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` in your `.env` and set `APP_BAS
 
 With the API + Temporal worker already running:
 
-1. Set `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_SIP_HOST`, and `MIRENTA_INTERNAL_API_KEY` on FastAPI.
+1. Set `LIVEKIT_SIP_HOST` and `MIRENTA_INTERNAL_API_KEY` on FastAPI (plus optional `LIVEKIT_SIP_USERNAME` / `LIVEKIT_SIP_PASSWORD` if the trunk requires auth). `LIVEKIT_URL` / API key/secret are needed on the **agent**, not on the FastAPI inbound hot path.
 2. Deploy (or locally run) the agent:
    ```bash
    cd livekit_agent
@@ -104,7 +104,13 @@ With the API + Temporal worker already running:
    # set secrets (MIRENTA_*, DEEPGRAM_*, OPENAI_*, …) in Cloud or via --secrets-file
    lk agent deploy
    ```
-   Or locally against Cloud jobs: `make voice-agent-dev` (needs the same env as `livekit_agent/.env.example`).
+   Or locally against Cloud jobs / the browser Agent Console: `make voice-agent-dev`
+   (needs the same env as `livekit_agent/.env.example`). The agent tells real phone
+   calls apart from testing by participant kind, not room name or metadata: a Twilio
+   call joins as a SIP participant and bootstraps/finalizes via FastAPI, while the
+   Agent Console (web), a manual browser join on a `dev` room, or the local `console`
+   CLI join as a standard participant and get a playground persona with no Mirenta
+   calls at all. For mic/speakers in the terminal: `make voice-agent-console`.
 3. Configure LiveKit telephony (required — without these, Twilio's SIP Dial fails in 0s):
    ```bash
    # Inbound trunk: match Twilio Dial of sip:+E164@<LIVEKIT_SIP_HOST>
@@ -191,4 +197,7 @@ Set `LANGFUSE_TRACING_ENABLED=false` in your `.env` to disable tracing entirely 
 Confirm the LiveKit inbound trunk `numbers` include the org E.164 number Twilio dials, trunk auth matches `LIVEKIT_SIP_USERNAME`/`LIVEKIT_SIP_PASSWORD`, and an individual dispatch rule exists for that trunk (see steps above). Download the child call's SIP PCAP — `404 No trunk found` means trunk matching; `407` means auth.
 
 **Inbound voice answers but never speaks / no transcripts**
-Confirm LiveKit Cloud agent is deployed and receiving jobs (`LIVEKIT_AGENT_NAME` matches), `DEEPGRAM_API_KEY` / `OPENAI_API_KEY` are set on the agent, `MIRENTA_API_BASE_URL` reaches FastAPI, and the trunk `headers_to_attributes` maps `X-Mirenta-*` headers so the agent can bootstrap.
+Confirm LiveKit Cloud agent is deployed and receiving jobs (`LIVEKIT_AGENT_NAME` matches), `DEEPGRAM_API_KEY` / `OPENAI_API_KEY` are set on the agent, `MIRENTA_API_BASE_URL` reaches FastAPI, agent `API_PREFIX` matches FastAPI (default `/api/v1`), and the trunk `headers_to_attributes` maps `X-Mirenta-*` headers so the agent can bootstrap. After changing `livekit_agent/`, redeploy with `make voice-agent-deploy` (or `lk agent deploy`).
+
+**Agent Console exits or never speaks**
+Console/browser joins are standard (non-SIP) participants, so the agent should always run a playground persona for them and skip Mirenta bootstrap/finalize — it never touches FastAPI on that path, so `missing_mirenta_metadata` should only ever appear for a real SIP call. If Console sessions exit or Cloud logs show `missing_mirenta_metadata` for a Console room, the deployed agent is stale; redeploy from this repo.

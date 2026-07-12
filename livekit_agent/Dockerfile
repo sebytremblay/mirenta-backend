@@ -18,9 +18,11 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-COPY pyproject.toml ./
-RUN mkdir -p src && uv sync
+# Dependency layer first for cache; --locked matches uv.lock for reproducible Cloud builds.
+COPY pyproject.toml uv.lock ./
+RUN mkdir -p src && uv sync --locked
 
+# Pre-download plugin models before copying app code so code-only changes stay cached.
 RUN uv run --module livekit.agents download-files
 
 COPY src ./src
