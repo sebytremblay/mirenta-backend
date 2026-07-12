@@ -14,6 +14,8 @@ from __future__ import annotations
 import base64
 import hashlib
 from dataclasses import dataclass
+from typing import cast
+from urllib.parse import urlencode
 
 from cryptography.fernet import Fernet, InvalidToken
 from twilio.base import values
@@ -241,7 +243,7 @@ async def provision_org_twilio(
     friendly_name: str,
     area_code: str | None = None,
 ) -> ProvisionedOrgTwilio:
-    """Create a subaccount, buy a US local number, and attach a Messaging Service.
+    """Create a subaccount, buy a US local SMS+voice number, and attach a Messaging Service.
 
     Not retried at create/purchase steps: a timed-out request that actually
     succeeded server-side would leak orphaned Twilio resources on retry.
@@ -249,6 +251,11 @@ async def provision_org_twilio(
 
     After the subaccount is created, all further API calls authenticate with
     that subaccount's own SID + Auth Token from the create response.
+
+    The purchased number is configured with both `sms_url` and `voice_url`
+    webhooks. Inbound SMS enters the agent loop; inbound voice is dialed into
+    the LiveKit SIP trunk when `settings.LIVEKIT_SIP_URI` is configured,
+    otherwise it hits the reject webhook.
 
     Args:
         org_id: Mirenta organization UUID (used in Twilio friendly names).
@@ -348,40 +355,8 @@ async def provision_org_twilio(
     )
 
 
-def generate_voice_answer_twiml(
-    *,
-    sip_uri: str,
-    sip_username: str | None = None,
-    sip_password: str | None = None,
-) -> str:
-    """Build TwiML that bridges an inbound Twilio call into LiveKit over SIP.
-
-    After FastAPI has resolved DNC/consent, this dials the org phone number on
-    the LiveKit SIP host (Twilio Programmable Voice pattern). The Cloud agent
-    is dispatched by LiveKit's inbound trunk + dispatch rule; Mirenta
-    correlation travels as `x-mirenta-*` query headers on the SIP URI.
-
-    Args:
-        sip_uri: LiveKit SIP URI whose user part is the dialed E.164 number
-            (e.g. `sip:+15551234567@<project>.sip.livekit.cloud;transport=tcp?…`).
-        sip_username: Optional inbound-trunk username (LiveKit trunk auth).
-        sip_password: Optional inbound-trunk password.
-
-    Returns:
-        str: The TwiML document, as XML text.
-    """
-    response = VoiceResponse()
-    dial = Dial(answer_on_bridge=True)
-    if sip_username and sip_password:
-        dial.sip(sip_uri, username=sip_username, password=sip_password)
-    else:
-        dial.sip(sip_uri)
-    response.append(dial)
-    return str(response)
-
-
 def generate_voice_reject_twiml(*, message: str) -> str:
-    """TwiML for a call that must not be answered by the agent (DNC/consent denial).
+    """TwiML that speaks a message and hangs up (fallback when no LiveKit SIP bridge is configured).
 
     Args:
         message: What to say to the caller before hanging up.
@@ -392,4 +367,28 @@ def generate_voice_reject_twiml(*, message: str) -> str:
     response = VoiceResponse()
     response.say(message)
     response.hangup()
+    return str(response)
+
+
+def generate_voice_dial_twiml(*, sip_uri: str, headers: dict[str, str], timeout: int = 30) -> str:
+    """TwiML that dials the call into the LiveKit SIP trunk with correlation headers.
+
+    Custom `X-*` query params on a `<Dial><Sip>` URI are forwarded by Twilio as
+    SIP INVITE headers; the LiveKit inbound trunk's `include_headers`/
+    `headers_to_attributes` config (see `livekit_agent/sip/inbound-trunk.json`)
+    exposes them to the agent as participant attributes
+    (`call_context.py::call_context_from_participant_attrs`).
+
+    Args:
+        sip_uri: LiveKit SIP trunk host, no `sip:` scheme (`settings.LIVEKIT_SIP_URI`).
+        headers: Custom `X-Mirenta-*` headers to attach to the SIP INVITE.
+        timeout: Seconds to wait for the SIP leg to answer before giving up.
+
+    Returns:
+        str: The TwiML document, as XML text.
+    """
+    query = urlencode(headers)
+    response = VoiceResponse()
+    dial = cast(Dial, response.dial(timeout=timeout))
+    dial.sip(f"sip:{sip_uri};transport=tcp?{query}")
     return str(response)

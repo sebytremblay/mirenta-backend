@@ -1,24 +1,33 @@
-# LiveKit Agents project (Mirenta inbound voice)
+# LiveKit Agents project (Mirenta voice)
 
-This is a nested LiveKit Agents worker deployed to LiveKit Cloud. Twilio owns
-phone numbers; FastAPI gates DNC/consent and SIP-dials LiveKit; this worker
-runs the live Deepgram STT/TTS + OpenAI LLM session and finalizes back into
-Mirenta's Temporal contact loop.
+This is a nested LiveKit Agents worker deployed to LiveKit Cloud. It runs the
+Deepgram STT/TTS + OpenAI LLM session and can optionally bootstrap/finalize
+against Mirenta's FastAPI. Use console / Agent Console / WebRTC for local and
+Cloud testing; real Twilio phone numbers are bridged into this agent via a
+LiveKit Cloud SIP inbound trunk + dispatch rule (`sip/inbound-trunk.json`,
+`sip/dispatch-rule.json` — created once via the `lk` CLI, see
+`docs/configuration.md`). Twilio dials the trunk from
+`app/api/routers/voice.py::receive_twilio_call` when `LIVEKIT_SIP_URI` is set.
 
 ## Project structure
 
 Use `uv` for install, run, and test. App code lives in `src/`:
 
 - `src/agent.py` — required entrypoint (`Dockerfile` CMD / LiveKit Cloud)
-- `src/call_context.py` — SIP/metadata helpers (unit-tested, no Agents imports)
+- `src/call_context.py` — participant/metadata helpers (unit-tested, no Agents imports)
 - `src/mirenta_client.py` — bootstrap + finalize HTTP client to FastAPI
+
+`sip/` holds the checked-in inbound trunk + dispatch rule request bodies used
+to (re)create the LiveKit Cloud SIP resources — not read by the agent at
+runtime.
 
 Keep `agent.py` as the entrypoint when adding modules.
 
-Branching: Twilio phone calls join as `ParticipantKind.PARTICIPANT_KIND_SIP`
-and go through Mirenta bootstrap/finalize. Everything else (Agent Console,
-`agent.py console`, manual browser joins) is treated as a playground session
-with default instructions — no Mirenta API calls.
+Branching: SIP participants (real Twilio calls) and any join carrying Mirenta
+correlation metadata (participant attrs / job metadata) go through
+bootstrap/finalize. Everything else (Agent Console, `agent.py console`,
+manual browser joins) is treated as a playground session with default
+instructions — no Mirenta API calls.
 
 ## Commands
 

@@ -1,13 +1,16 @@
-"""Inbound voice call ingestion + LiveKit agent bridge endpoints.
+"""Voice endpoints: Twilio inbound webhook + LiveKit agent bridge.
 
-`POST /webhooks/twilio/voice` resolves DNC + consent synchronously and
-answers by SIP-dialing the org phone number into LiveKit (Cloud trunk +
-dispatch rule create the room and agent). It deliberately does NOT route
-the `inbound_call` signal through `decision.engine.evaluate` — see
-`docs/architecture.md`.
+`POST /webhooks/twilio/voice` is the voice webhook set on newly provisioned
+org numbers (alongside the SMS webhook). It records an `inbound_call` signal,
+then — when `settings.LIVEKIT_SIP_URI` is configured — dials the call into
+the LiveKit SIP trunk with Mirenta correlation ids as custom SIP headers, so
+the already-dispatched `mirenta-voice` agent can bootstrap the session. Falls
+back to reject TwiML when the SIP bridge isn't configured, or when the call
+is blocked/invalid.
 
 `POST /internal/voice/bootstrap` and `POST /internal/voice/finalize` are
-called by the LiveKit Cloud agent worker (shared secret), not by Twilio.
+called by the LiveKit Cloud agent worker (shared secret) for both SIP calls
+and WebRTC / console sessions that supply Mirenta correlation metadata.
 """
 
 import secrets
@@ -35,9 +38,8 @@ from app.schemas.voice import (
     VoiceSessionFinalizeRequest,
     VoiceSessionFinalizeResponse,
 )
-from app.services.clients.livekit_client import prepare_inbound_voice_room
 from app.services.clients.supabase_client import execute_query, get_service_role_client
-from app.services.clients.twilio_client import generate_voice_answer_twiml, generate_voice_reject_twiml
+from app.services.clients.twilio_client import generate_voice_dial_twiml, generate_voice_reject_twiml
 from app.services.knowledge import fetch_active_knowledge, format_knowledge_for_prompt
 from app.services.sms_interaction import find_org_by_phone, get_or_create_contact_by_phone
 from decision.guardrails import check_consent, check_dnc
@@ -62,8 +64,8 @@ def _voice_agent_instructions(*, knowledge: str) -> str:
     """System instructions for the LiveKit native LLM pipeline."""
     persona = settings.DEFAULT_PERSONA_NAME
     blocks = [
-        f"You are {persona}, a helpful phone agent for this organization.",
-        "You are speaking on a live phone call. Respond in plain spoken sentences.",
+        f"You are {persona}, a helpful voice agent for this organization.",
+        "You are speaking on a live call. Respond in plain spoken sentences.",
         "Keep replies brief (one to three sentences). Ask one question at a time.",
         "Never use markdown, lists, emojis, or special formatting.",
         "Do not greet the caller again if you have already greeted them.",
@@ -77,18 +79,19 @@ def _voice_agent_instructions(*, knowledge: str) -> str:
 @router.post("/webhooks/twilio/voice")
 @limiter.limit(settings.RATE_LIMIT_ENDPOINTS["voice_webhook"][0])
 async def receive_twilio_call(request: Request):
-    """Answer an inbound call into LiveKit, or reject it if DNC/consent blocks it.
+    """Bridge inbound Twilio voice calls into the LiveKit voice agent.
 
-    Verifies Twilio's request signature, resolves org/contact, runs DNC +
-    consent checks synchronously, records an `inbound_call` signal, and
-    returns TwiML that SIP-dials the org number into LiveKit with Mirenta
-    correlation headers for the Cloud agent.
+    Verifies Twilio's request signature, resolves org/contact, records an
+    `inbound_call` signal for audit, and — when a LiveKit SIP trunk is
+    configured — dials the call into it with Mirenta correlation ids as SIP
+    headers. New org numbers are provisioned with this webhook as `voice_url`.
 
     Args:
         request: The raw Twilio webhook request (form-encoded).
 
     Returns:
-        Response: A TwiML XML document instructing Twilio how to handle the call.
+        Response: TwiML that either dials into the LiveKit SIP trunk or
+        speaks a message and hangs up.
     """
     form = await request.form()
     params = {key: str(value) for key, value in form.items()}
@@ -159,30 +162,28 @@ async def receive_twilio_call(request: Request):
             media_type="application/xml",
         )
 
-    try:
-        prepared = prepare_inbound_voice_room(
-            call_sid=call_sid,
-            org_id=str(org["id"]),
-            contact_id=str(contact.id),
-            signal_id=str(signal.id),
-            to_number=to_number,
-        )
-    except Exception:
-        logger.exception("livekit_voice_sip_prepare_failed", call_sid=call_sid)
-        await mark_signal_status(client, str(signal.id), "failed")
+    if not settings.LIVEKIT_SIP_URI:
+        logger.warning("twilio_voice_sip_bridge_not_configured", call_sid=call_sid, org_id=org["id"])
+        await mark_signal_status(client, str(signal.id), "ignored")
         return Response(
             content=generate_voice_reject_twiml(message="We are unable to take your call."),
             media_type="application/xml",
-            status_code=502,
         )
 
-    await mark_signal_status(client, str(signal.id), "processed")
-    twiml = generate_voice_answer_twiml(
-        sip_uri=prepared.sip_uri,
-        sip_username=settings.LIVEKIT_SIP_USERNAME or None,
-        sip_password=settings.LIVEKIT_SIP_PASSWORD or None,
+    logger.info("twilio_voice_dialed_to_livekit", call_sid=call_sid, org_id=org["id"])
+    await mark_signal_status(client, str(signal.id), "delivered")
+    return Response(
+        content=generate_voice_dial_twiml(
+            sip_uri=settings.LIVEKIT_SIP_URI,
+            headers={
+                "X-Mirenta-Org-Id": org["id"],
+                "X-Mirenta-Contact-Id": str(contact.id),
+                "X-Mirenta-Signal-Id": str(signal.id),
+                "X-Mirenta-Call-Sid": call_sid,
+            },
+        ),
+        media_type="application/xml",
     )
-    return Response(content=twiml, media_type="application/xml")
 
 
 @router.post("/internal/voice/bootstrap", response_model=VoiceSessionBootstrapResponse)

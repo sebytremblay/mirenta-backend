@@ -37,37 +37,43 @@ cp .env.example .env.development
 
 ---
 
-## Twilio (SMS + voice)
+## Twilio (SMS)
 
 | Variable | Default | Required | Description |
 | --- | --- | --- | --- |
-| `TWILIO_ACCOUNT_SID` | — | Yes, for the SMS/voice agent loop | Parent Twilio Account SID (Console → Account Info). Org numbers are bought into per-org subaccounts under this parent. |
-| `TWILIO_AUTH_TOKEN` | — | Yes, for the SMS/voice agent loop | Parent Twilio Auth Token — used for API calls and as a fallback for webhook signature checks on legacy numbers |
+| `TWILIO_ACCOUNT_SID` | — | Yes, for the SMS agent loop | Parent Twilio Account SID (Console → Account Info). Org numbers are bought into per-org subaccounts under this parent. |
+| `TWILIO_AUTH_TOKEN` | — | Yes, for the SMS agent loop | Parent Twilio Auth Token — used for API calls and as a fallback for webhook signature checks on legacy numbers |
 | `TWILIO_TOKEN_ENCRYPTION_KEY` | derived from auth token | Recommended in production | Fernet key (`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`) used to encrypt per-org subaccount Auth Tokens in `organization_twilio_secrets` |
-| `APP_BASE_URL` | `http://localhost:8000` | Yes, for the SMS/voice agent loop | Externally-reachable base URL for this API; a newly-purchased Twilio number's SMS webhook is set to `$APP_BASE_URL$API_PREFIX/webhooks/twilio/sms` (also on the Messaging Service inbound URL) and its voice webhook to `$APP_BASE_URL$API_PREFIX/webhooks/twilio/voice`. Use an ngrok tunnel (or similar) in local dev — Twilio can't reach `localhost` |
+| `APP_BASE_URL` | `http://localhost:8000` | Yes, for the SMS agent loop | Externally-reachable base URL for this API; a newly-purchased Twilio number's SMS webhook is set to `$APP_BASE_URL$API_PREFIX/webhooks/twilio/sms` (also on the Messaging Service inbound URL) and its voice webhook to `$APP_BASE_URL$API_PREFIX/webhooks/twilio/voice`. Use an ngrok tunnel (or similar) in local dev — Twilio can't reach `localhost` |
 
 If `TWILIO_ACCOUNT_SID` is unset, `POST /api/v1/organizations` skips automatic phone-number provisioning (org creation still succeeds; `phone` stays null unless supplied explicitly). Provisioning creates a Twilio subaccount + Messaging Service + local number per org (ISV architecture type #1). A2P 10DLC Brand/Campaign registration is not automated yet — US outbound SMS may be filtered until each org is registered.
 
 ---
 
-## LiveKit (inbound voice — FastAPI)
+## LiveKit agent (FastAPI bridge)
 
-FastAPI gates DNC/consent and returns TwiML that SIP-dials the org E.164 into LiveKit. Room creation and agent dispatch are owned by the LiveKit **inbound trunk** + **individual dispatch rule** (see [Getting started](getting-started.md#run-inbound-voice)). STT/LLM/TTS secrets belong on the agent (`livekit_agent/.env.example`), not here.
+The LiveKit agent (`livekit_agent/`) runs standalone (console / Agent Console / WebRTC) and can also be reached from Twilio PSTN via a LiveKit Cloud SIP inbound trunk. Optional bootstrap/finalize callbacks use a shared secret; LiveKit URL/keys and STT/LLM/TTS secrets belong on the agent (`livekit_agent/.env.example`).
 
 | Variable | Default | Required | Description |
 | --- | --- | --- | --- |
-| `LIVEKIT_SIP_HOST` | — | Yes, for inbound voice | SIP hostname Twilio dials (`….sip.livekit.cloud`) |
-| `LIVEKIT_SIP_USERNAME` | — | No | Inbound trunk username for TwiML `<Sip>` |
-| `LIVEKIT_SIP_PASSWORD` | — | No | Inbound trunk password for TwiML `<Sip>` |
-| `LIVEKIT_AGENT_NAME` | `mirenta-voice` | No | Must match the Cloud agent name on the dispatch rule |
-| `MIRENTA_INTERNAL_API_KEY` | — | Yes, for inbound voice | Shared secret for agent → `/internal/voice/*` |
-| `LIVEKIT_URL` | — | No (inbound hot path) | LiveKit WebSocket URL; optional on FastAPI today (agent needs it) |
-| `LIVEKIT_API_KEY` | — | No (inbound hot path) | LiveKit API key; optional on FastAPI today |
-| `LIVEKIT_API_SECRET` | — | No (inbound hot path) | LiveKit API secret; optional on FastAPI today |
+| `MIRENTA_INTERNAL_API_KEY` | — | Yes, for agent → FastAPI callbacks | Shared secret for `/internal/voice/bootstrap` and `/internal/voice/finalize` |
+| `LIVEKIT_SIP_URI` | — | Yes, to bridge Twilio calls into LiveKit | LiveKit Cloud SIP inbound trunk host, no `sip:` scheme (e.g. `mirenta-y0dc1n3g.sip.livekit.cloud`) — find it on the project's SIP settings page. When unset, `/webhooks/twilio/voice` falls back to reject TwiML. |
 
-Also configure a LiveKit **inbound SIP trunk** that accepts Twilio's SIP signaling (and optional trunk auth matching `LIVEKIT_SIP_*`), plus an individual dispatch rule that names `mirenta-voice`. See [LiveKit Twilio telephony docs](https://docs.livekit.io/telephony/accepting-calls/inbound-twilio/).
+Agent-only secrets (set in LiveKit Cloud / `livekit_agent/.env`): `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_AGENT_NAME` (default `mirenta-voice`), `DEEPGRAM_API_KEY`, `OPENAI_API_KEY`, `MIRENTA_API_BASE_URL`, `API_PREFIX` (must match FastAPI), model overrides.
 
-Agent-only secrets (set in LiveKit Cloud / `livekit_agent/.env`): `DEEPGRAM_API_KEY`, `OPENAI_API_KEY`, `MIRENTA_API_BASE_URL`, `API_PREFIX` (must match FastAPI), model overrides.
+### One-time LiveKit SIP setup
+
+The inbound trunk and dispatch rule are cloud resources created once via the `lk` CLI (not application code) — their request bodies are checked in for reproducibility:
+
+```bash
+lk sip inbound create livekit_agent/sip/inbound-trunk.json
+# capture the returned SipTrunkID, put it into livekit_agent/sip/dispatch-rule.json's trunk_ids
+lk sip dispatch create livekit_agent/sip/dispatch-rule.json
+```
+
+- `inbound-trunk.json` restricts inbound SIP traffic to Twilio's published signaling IP ranges (`allowed_addresses`) and maps `X-Mirenta-*` INVITE headers to SIP participant attributes (`headers_to_attributes` + `include_headers: SIP_X_HEADERS`, consumed by `livekit_agent/src/call_context.py`).
+- `dispatch-rule.json` creates one room per call (`dispatch_rule_individual`) and explicitly dispatches the `mirenta-voice` agent into it (`room_config.agents`).
+- Once created, copy the trunk's SIP URI from the LiveKit Cloud project's SIP settings page into `LIVEKIT_SIP_URI`.
 
 ---
 
@@ -81,7 +87,7 @@ Agent-only secrets (set in LiveKit Cloud / `livekit_agent/.env`): `DEEPGRAM_API_
 | `TEMPORAL_TASK_QUEUE` | `mirenta-runtime` | Task queue the worker polls and the API dispatches workflows to — must match on both sides |
 | `TEMPORAL_TLS` | `false` | Set `true` for Temporal Cloud |
 
-The API process signal-with-starts `ContactLoopWorkflow`s but doesn't execute them — run `make worker` as a separate process (or deployment) to actually process the agent loop. Live inbound voice calls run outside Temporal (see [Architecture](architecture.md)); only the hangup finalize step re-enters the loop.
+The API process signal-with-starts `ContactLoopWorkflow`s but doesn't execute them — run `make worker` as a separate process (or deployment) to actually process the agent loop. LiveKit voice sessions (when used) run outside Temporal (see [Architecture](architecture.md)); only the finalize step re-enters the loop.
 
 ---
 
@@ -128,7 +134,7 @@ Everything — Supabase Auth's `auth.users`, LangGraph's checkpoint tables (crea
 | `RATE_LIMIT_KNOWLEDGE` | `60 per minute` | Organization knowledge-base CRUD |
 | `RATE_LIMIT_SIGNALS` | `60 per minute` | Manual signal creation/listing endpoints |
 | `RATE_LIMIT_SMS_WEBHOOK` | `120 per minute` | Twilio inbound SMS webhook |
-| `RATE_LIMIT_VOICE_WEBHOOK` | `60 per minute` | Twilio inbound voice webhook |
+| `RATE_LIMIT_VOICE_WEBHOOK` | `60 per minute` | Twilio voice webhook (dials into LiveKit SIP when `LIVEKIT_SIP_URI` is set, else reject-only) |
 | `RATE_LIMIT_VOICE_INTERNAL` | `120 per minute` | LiveKit agent bootstrap/finalize callbacks |
 | `RATE_LIMIT_AGENT_CHAT` | `30 per minute` | Reserved for the interaction-layer chat endpoint, once wired up |
 

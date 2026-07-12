@@ -1,0 +1,23 @@
+{
+  "trunk": {
+    "name": "mirenta-twilio-inbound",
+    "numbers": [],
+    "allowed_addresses": [
+      "54.172.60.0/30",
+      "54.244.51.0/30",
+      "54.171.127.192/30",
+      "35.156.191.128/30",
+      "54.65.63.192/30",
+      "54.169.127.128/30",
+      "54.252.254.64/30",
+      "177.71.206.192/30"
+    ],
+    "headers_to_attributes": {
+      "X-Mirenta-Org-Id": "mirenta.org_id",
+      "X-Mirenta-Contact-Id": "mirenta.contact_id",
+      "X-Mirenta-Signal-Id": "mirenta.signal_id",
+      "X-Mirenta-Call-Sid": "mirenta.call_sid"
+    },
+    "include_headers": "SIP_X_HEADERS"
+  }
+}

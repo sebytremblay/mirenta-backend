@@ -8,8 +8,8 @@
 - OpenAI API key
 - Langfuse account (optional — set `LANGFUSE_TRACING_ENABLED=false` to skip)
 - Docker (optional — only needed to run a local Temporal server via `make temporal-up`, required for the SMS agent loop end-to-end)
-- A Twilio account with a phone number, or let the API buy one for you when you create an org (optional — only needed for SMS/voice; the CRUD API works without it)
-- A Deepgram API key on the LiveKit agent (optional — only needed for inbound voice)
+- A Twilio account with a phone number, or let the API buy one for you when you create an org (optional — only needed for SMS; the CRUD API works without it)
+- A Deepgram API key on the LiveKit agent (optional — only needed to run the standalone voice agent)
 
 ## Set up your Supabase project
 
@@ -28,8 +28,8 @@ cp .env.example .env.development
 # Required: OPENAI_API_KEY, SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY,
 #           SUPABASE_SECRET_KEY, SUPABASE_JWKS_URL, SUPABASE_DB_*
 # Optional: LANGFUSE_* keys (or set LANGFUSE_TRACING_ENABLED=false)
-# For SMS/voice: TWILIO_*, APP_BASE_URL (ngrok in local dev)
-# For inbound voice: LIVEKIT_*, MIRENTA_INTERNAL_API_KEY, DEEPGRAM_API_KEY (on the agent), OPENAI_API_KEY (on the agent)
+# For SMS: TWILIO_*, APP_BASE_URL (ngrok in local dev)
+# For LiveKit agent callbacks: MIRENTA_INTERNAL_API_KEY (agent also needs LIVEKIT_*, DEEPGRAM_*, OPENAI_* in livekit_agent/.env)
 
 make install       # installs deps + pre-commit hooks
 make dev           # starts server with hot reload on port 8000
@@ -86,13 +86,13 @@ make temporal-up      # local Temporal server + UI (docker-compose), or point TE
 make worker            # separate process: registers ContactLoopWorkflow/TaskExecutionWorkflow + activities
 ```
 
-Fill in `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` in your `.env` and set `APP_BASE_URL` to a URL Twilio can reach (e.g. an ngrok tunnel in local dev) — that's what a newly-provisioned number's SMS and voice webhooks point at (`$APP_BASE_URL/api/v1/webhooks/twilio/sms` and `.../voice`). Creating an org via `POST /api/v1/organizations` without a `phone` will then create a Twilio subaccount, Messaging Service, and buy it a local number automatically; texting that number should get you a real, context-aware, knowledge-grounded LLM reply. Seed or create knowledge entries under `/api/v1/organizations/{org_id}/knowledge` so compose has facts to work from. See [Architecture](architecture.md) for how the pieces fit together, and its [Component status](architecture.md#component-status) table for what's live.
+Fill in `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` in your `.env` and set `APP_BASE_URL` to a URL Twilio can reach (e.g. an ngrok tunnel in local dev) — that's what a newly-provisioned number's SMS and voice webhooks point at (`$APP_BASE_URL/api/v1/webhooks/twilio/sms` and `…/voice`). Creating an org via `POST /api/v1/organizations` without a `phone` will then create a Twilio subaccount, Messaging Service, and buy it a local number automatically; texting that number should get you a real, context-aware, knowledge-grounded LLM reply. Seed or create knowledge entries under `/api/v1/organizations/{org_id}/knowledge` so compose has facts to work from. See [Architecture](architecture.md) for how the pieces fit together, and its [Component status](architecture.md#component-status) table for what's live.
 
-## Run inbound voice
+## Run the LiveKit voice agent
 
-With the API + Temporal worker already running:
+The voice agent can run standalone, or answer real inbound Twilio calls once a LiveKit SIP trunk is set up (see [Configuration](configuration.md#one-time-livekit-sip-setup) and `LIVEKIT_SIP_URI`). With the API running (and Temporal worker if you want finalize → contact loop):
 
-1. Set `LIVEKIT_SIP_HOST` and `MIRENTA_INTERNAL_API_KEY` on FastAPI (plus optional `LIVEKIT_SIP_USERNAME` / `LIVEKIT_SIP_PASSWORD` if the trunk requires auth). `LIVEKIT_URL` / API key/secret are needed on the **agent**, not on the FastAPI inbound hot path.
+1. Set `MIRENTA_INTERNAL_API_KEY` on FastAPI (optional unless you use bootstrap/finalize). LiveKit URL/keys and model secrets live on the **agent** (`livekit_agent/.env.example`).
 2. Deploy (or locally run) the agent:
    ```bash
    cd livekit_agent
@@ -105,52 +105,10 @@ With the API + Temporal worker already running:
    lk agent deploy
    ```
    Or locally against Cloud jobs / the browser Agent Console: `make voice-agent-dev`
-   (needs the same env as `livekit_agent/.env.example`). The agent tells real phone
-   calls apart from testing by participant kind, not room name or metadata: a Twilio
-   call joins as a SIP participant and bootstraps/finalizes via FastAPI, while the
-   Agent Console (web), a manual browser join on a `dev` room, or the local `console`
-   CLI join as a standard participant and get a playground persona with no Mirenta
-   calls at all. For mic/speakers in the terminal: `make voice-agent-console`.
-3. Configure LiveKit telephony (required — without these, Twilio's SIP Dial fails in 0s):
-   ```bash
-   # Inbound trunk: match Twilio Dial of sip:+E164@<LIVEKIT_SIP_HOST>
-   # Use the same username/password as LIVEKIT_SIP_USERNAME / LIVEKIT_SIP_PASSWORD.
-   cat > /tmp/mirenta-inbound-trunk.json <<'EOF'
-   {
-     "trunk": {
-       "name": "twilio-inbound",
-       "numbers": ["+15551234567"],
-       "headers_to_attributes": {
-         "X-Mirenta-Org-Id": "mirenta.org_id",
-         "X-Mirenta-Contact-Id": "mirenta.contact_id",
-         "X-Mirenta-Signal-Id": "mirenta.signal_id",
-         "X-Mirenta-Call-Sid": "mirenta.call_sid"
-       }
-     }
-   }
-   EOF
-   lk sip inbound create /tmp/mirenta-inbound-trunk.json \
-     --auth-user "$LIVEKIT_SIP_USERNAME" \
-     --auth-pass "$LIVEKIT_SIP_PASSWORD"
-
-   # Individual dispatch: one room per caller + dispatch mirenta-voice
-   cat > /tmp/mirenta-dispatch-rule.json <<'EOF'
-   {
-     "dispatch_rule": {
-       "name": "mirenta-twilio-individual",
-       "rule": {
-         "dispatchRuleIndividual": { "roomPrefix": "call-" }
-       },
-       "roomConfig": {
-         "agents": [{ "agentName": "mirenta-voice" }]
-       }
-     }
-   }
-   EOF
-   lk sip dispatch create /tmp/mirenta-dispatch-rule.json --trunks "<inbound-trunk-id>"
-   ```
-
-Calling the org's Twilio number hits `POST /api/v1/webhooks/twilio/voice`, which checks DNC/consent and returns `<Dial><Sip>` to `sip:+{org_phone}@{LIVEKIT_SIP_HOST}` with Mirenta correlation headers. LiveKit's trunk + dispatch rule create the room and agent; the agent bootstraps knowledge from Mirenta, runs the call, then finalizes so `ContactLoopWorkflow` re-enters.
+   (needs the same env as `livekit_agent/.env.example`). For mic/speakers in the
+   terminal: `make voice-agent-console`. Console / Agent Console joins use a
+   playground persona and skip Mirenta API calls unless you supply correlation
+   metadata for bootstrap/finalize.
 
 ## Customising the agent
 
@@ -167,7 +125,7 @@ Calling the org's Twilio number hits `POST /api/v1/webhooks/twilio/voice`, which
 | Compliance guardrails (DNC, consent, frequency cap; quiet-hours helpers for future outbound) | `decision/guardrails.py` |
 | LLM models & fallback order | `app/services/llm/registry.py` → `LLMRegistry.LLMS` |
 
-Adding a new **outbound** channel (e.g. outbound voice as a `call` task) means: a decision-engine rule in `decision/rules.py`, a send-side activity in `activities/channels.py`, wiring the new `task.type` into `workflows/task_execution.py`, and either a LangGraph subagent or a LiveKit outbound SIP flow. Live inbound duplex sessions belong in LiveKit Agents and only rejoin Temporal at hangup.
+Adding a new **outbound** channel (e.g. outbound voice as a `call` task) means: a decision-engine rule in `decision/rules.py`, a send-side activity in `activities/channels.py`, wiring the new `task.type` into `workflows/task_execution.py`, and either a LangGraph subagent or a LiveKit outbound flow. Duplex voice sessions belong in LiveKit Agents and only rejoin Temporal at finalize.
 
 ## Running pre-commit hooks
 
@@ -193,11 +151,8 @@ If it's a false positive, add `# pragma: allowlist secret` to the end of the fla
 **Langfuse errors**
 Set `LANGFUSE_TRACING_ENABLED=false` in your `.env` to disable tracing entirely during development.
 
-**Inbound voice answers but Twilio SIP child call fails in 0s**
-Confirm the LiveKit inbound trunk `numbers` include the org E.164 number Twilio dials, trunk auth matches `LIVEKIT_SIP_USERNAME`/`LIVEKIT_SIP_PASSWORD`, and an individual dispatch rule exists for that trunk (see steps above). Download the child call's SIP PCAP — `404 No trunk found` means trunk matching; `407` means auth.
-
-**Inbound voice answers but never speaks / no transcripts**
-Confirm LiveKit Cloud agent is deployed and receiving jobs (`LIVEKIT_AGENT_NAME` matches), `DEEPGRAM_API_KEY` / `OPENAI_API_KEY` are set on the agent, `MIRENTA_API_BASE_URL` reaches FastAPI, agent `API_PREFIX` matches FastAPI (default `/api/v1`), and the trunk `headers_to_attributes` maps `X-Mirenta-*` headers so the agent can bootstrap. After changing `livekit_agent/`, redeploy with `make voice-agent-deploy` (or `lk agent deploy`).
+**LiveKit agent never speaks / no transcripts**
+Confirm the agent is deployed or running (`make voice-agent-dev` / `make voice-agent-console`), `DEEPGRAM_API_KEY` / `OPENAI_API_KEY` are set on the agent, and for bootstrap/finalize that `MIRENTA_API_BASE_URL` reaches FastAPI with a matching `API_PREFIX` and `MIRENTA_INTERNAL_API_KEY`. After changing `livekit_agent/`, redeploy with `make voice-agent-deploy` (or `lk agent deploy`).
 
 **Agent Console exits or never speaks**
-Console/browser joins are standard (non-SIP) participants, so the agent should always run a playground persona for them and skip Mirenta bootstrap/finalize — it never touches FastAPI on that path, so `missing_mirenta_metadata` should only ever appear for a real SIP call. If Console sessions exit or Cloud logs show `missing_mirenta_metadata` for a Console room, the deployed agent is stale; redeploy from this repo.
+Console/browser joins are standard (non-SIP) participants and use a playground persona without Mirenta bootstrap/finalize. If Console sessions exit unexpectedly, check agent logs and redeploy from this repo.

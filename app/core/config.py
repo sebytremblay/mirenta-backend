@@ -162,26 +162,21 @@ class Settings:
         # TWILIO_AUTH_TOKEN (fine for local; set explicitly in production).
         self.TWILIO_TOKEN_ENCRYPTION_KEY = os.getenv("TWILIO_TOKEN_ENCRYPTION_KEY", "")
         # Externally-reachable base URL for this API, used to point a newly
-        # purchased Twilio number's SMS/voice webhooks back at this app.
+        # purchased Twilio number's SMS webhook back at this app.
         self.APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
 
-        # LiveKit — inbound voice SIP dial target (see docs/architecture.md).
-        # Room + agent dispatch are owned by the LiveKit inbound trunk + dispatch
-        # rule. LIVEKIT_URL / API key/secret are optional on the FastAPI hot path
-        # (kept for future Room/Dispatch API use). LIVEKIT_SIP_HOST is required
-        # for inbound voice (hostname Twilio dials, without a sip: scheme).
-        self.LIVEKIT_URL = os.getenv("LIVEKIT_URL", "")
-        self.LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "")
-        self.LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "")
-        self.LIVEKIT_SIP_HOST = os.getenv("LIVEKIT_SIP_HOST", "")
-        self.LIVEKIT_SIP_USERNAME = os.getenv("LIVEKIT_SIP_USERNAME", "")
-        self.LIVEKIT_SIP_PASSWORD = os.getenv("LIVEKIT_SIP_PASSWORD", "")
-        self.LIVEKIT_AGENT_NAME = os.getenv("LIVEKIT_AGENT_NAME", "mirenta-voice")
-
         # Shared secret for LiveKit Cloud agent → FastAPI bootstrap/finalize calls.
+        # LiveKit URL/keys live on the agent (`livekit_agent/.env`).
         self.MIRENTA_INTERNAL_API_KEY = os.getenv("MIRENTA_INTERNAL_API_KEY", "")
 
-        # Legacy LangGraph voice compose model (unused on the LiveKit call path).
+        # LiveKit Cloud SIP inbound trunk host (e.g. "<project>.sip.livekit.cloud"),
+        # no "sip:" scheme. Set on the LiveKit Cloud project's SIP settings page
+        # after creating the inbound trunk + dispatch rule (see
+        # livekit_agent/sip/). When set, the Twilio voice webhook dials inbound
+        # PSTN calls into this trunk instead of rejecting them.
+        self.LIVEKIT_SIP_URI = os.getenv("LIVEKIT_SIP_URI", "")
+
+        # Legacy LangGraph voice compose model (unused on the LiveKit agent path).
         self.VOICE_LLM_MODEL = os.getenv("VOICE_LLM_MODEL", "gpt-4.1-mini")
 
         # Temporal Configuration — durable workflow/task scheduling.

@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.services.clients.twilio_client import (
     encrypt_twilio_auth_token,
     decrypt_twilio_auth_token,
-    generate_voice_answer_twiml,
+    generate_voice_dial_twiml,
     generate_voice_reject_twiml,
     get_twilio_client,
     provision_org_twilio,
@@ -74,7 +74,9 @@ def test_provision_org_twilio_creates_subaccount_number_and_messaging_service() 
     _, kwargs = sub.incoming_phone_numbers.create_async.call_args
     assert kwargs["phone_number"] == "+15551234567"
     assert kwargs["sms_url"].endswith(f"{settings.API_PREFIX}/webhooks/twilio/sms")
+    assert kwargs["sms_method"] == "POST"
     assert kwargs["voice_url"].endswith(f"{settings.API_PREFIX}/webhooks/twilio/voice")
+    assert kwargs["voice_method"] == "POST"
     sub.messaging.v1.services.create_async.assert_awaited_once()
     sub.messaging.v1.services.assert_called_with("MG123")
     sub.messaging.v1.services.return_value.phone_numbers.create_async.assert_awaited_once_with(
@@ -181,20 +183,30 @@ def test_encrypt_decrypt_twilio_auth_token_roundtrip() -> None:
         assert decrypt_twilio_auth_token(encrypted) == "secret-token"
 
 
-def test_generate_voice_answer_twiml_dials_livekit_sip() -> None:
-    twiml = generate_voice_answer_twiml(
-        sip_uri="sip:call-CA123@example.sip.livekit.cloud;transport=tcp",
-        sip_username="trunk-user",
-        sip_password="trunk-pass",  # pragma: allowlist secret
-    )
-
-    assert "<Dial" in twiml
-    assert "sip:call-CA123@example.sip.livekit.cloud;transport=tcp" in twiml
-    assert 'username="trunk-user"' in twiml
-
-
 def test_generate_voice_reject_twiml_says_and_hangs_up() -> None:
     twiml = generate_voice_reject_twiml(message="We are unable to take your call.")
 
     assert "<Say>We are unable to take your call.</Say>" in twiml
     assert "<Hangup" in twiml
+
+
+def test_generate_voice_dial_twiml_dials_sip_uri_with_headers() -> None:
+    twiml = generate_voice_dial_twiml(
+        sip_uri="mirenta-y0dc1n3g.sip.livekit.cloud",
+        headers={"X-Mirenta-Org-Id": "org-1", "X-Mirenta-Call-Sid": "CA123"},
+        timeout=45,
+    )
+
+    assert '<Dial timeout="45">' in twiml
+    assert "<Sip>sip:mirenta-y0dc1n3g.sip.livekit.cloud;transport=tcp?" in twiml
+    assert "X-Mirenta-Org-Id=org-1" in twiml
+    assert "X-Mirenta-Call-Sid=CA123" in twiml
+
+
+def test_generate_voice_dial_twiml_url_encodes_header_values() -> None:
+    twiml = generate_voice_dial_twiml(
+        sip_uri="mirenta-y0dc1n3g.sip.livekit.cloud",
+        headers={"X-Mirenta-Contact-Id": "contact id/with special&chars"},
+    )
+
+    assert "X-Mirenta-Contact-Id=contact+id%2Fwith+special%26chars" in twiml

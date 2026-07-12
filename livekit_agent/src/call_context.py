@@ -35,7 +35,7 @@ def attr(attrs: dict[str, str], *keys: str) -> str:
 
 
 def call_context_from_participant_attrs(attrs: dict[str, str]) -> dict[str, str]:
-    """Resolve Mirenta ids from SIP participant attributes (Twilio X-headers)."""
+    """Resolve Mirenta ids from SIP participant attributes or room metadata."""
     return {
         "org_id": attr(attrs, ATTR_ORG_ID, "sip.h.x-mirenta-org-id", "x-mirenta-org-id"),
         "contact_id": attr(attrs, ATTR_CONTACT_ID, "sip.h.x-mirenta-contact-id", "x-mirenta-contact-id"),
