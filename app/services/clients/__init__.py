@@ -1,1 +1,1 @@
-"""External SDK wrappers (Supabase, Twilio, Temporal, Deepgram)."""
+"""External SDK wrappers (Supabase, Twilio, Temporal, LiveKit)."""

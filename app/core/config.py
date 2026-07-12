@@ -165,15 +165,26 @@ class Settings:
         # purchased Twilio number's SMS/voice webhooks back at this app.
         self.APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000")
 
-        # Deepgram Configuration — streaming STT + Aura TTS for the voice channel.
-        self.DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY", "")
-        self.DEEPGRAM_STT_MODEL = os.getenv("DEEPGRAM_STT_MODEL", "nova-2-conversationalai")
-        self.DEEPGRAM_TTS_MODEL = os.getenv("DEEPGRAM_TTS_MODEL", "aura-2-asteria-en")
-        self.DEEPGRAM_ENDPOINTING_MS = int(os.getenv("DEEPGRAM_ENDPOINTING_MS", "500"))
-        self.DEEPGRAM_UTTERANCE_END_MS = int(os.getenv("DEEPGRAM_UTTERANCE_END_MS", "1000"))
+        # LiveKit — inbound voice rooms + Cloud agent dispatch (see docs/architecture.md).
+        # LIVEKIT_URL is the WebSocket URL (wss://…); LIVEKIT_SIP_HOST is the SIP
+        # hostname Twilio dials (…sip.livekit.cloud), without a sip: scheme.
+        self.LIVEKIT_URL = os.getenv("LIVEKIT_URL", "")
+        self.LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "")
+        self.LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "")
+        self.LIVEKIT_SIP_HOST = os.getenv("LIVEKIT_SIP_HOST", "")
+        self.LIVEKIT_SIP_USERNAME = os.getenv("LIVEKIT_SIP_USERNAME", "")
+        self.LIVEKIT_SIP_PASSWORD = os.getenv("LIVEKIT_SIP_PASSWORD", "")
+        self.LIVEKIT_AGENT_NAME = os.getenv("LIVEKIT_AGENT_NAME", "mirenta-voice")
+        self.LIVEKIT_ROOM_EMPTY_TIMEOUT_SECONDS = int(os.getenv("LIVEKIT_ROOM_EMPTY_TIMEOUT_SECONDS", "60"))
 
-        # Voice runtime — inbound calls only this pass (see docs/architecture.md).
-        self.VOICE_LLM_MODEL = os.getenv("VOICE_LLM_MODEL", "gpt-5-mini")
+        # Shared secret for LiveKit Cloud agent → FastAPI bootstrap/finalize calls.
+        self.MIRENTA_INTERNAL_API_KEY = os.getenv("MIRENTA_INTERNAL_API_KEY", "")
+
+        # Voice model defaults used by the LiveKit agent worker (also set there).
+        self.DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY", "")
+        self.DEEPGRAM_STT_MODEL = os.getenv("DEEPGRAM_STT_MODEL", "nova-3")
+        self.DEEPGRAM_TTS_MODEL = os.getenv("DEEPGRAM_TTS_MODEL", "aura-2-asteria-en")
+        self.VOICE_LLM_MODEL = os.getenv("VOICE_LLM_MODEL", "gpt-4.1-mini")
         self.VOICE_MAX_CALL_SECONDS = int(os.getenv("VOICE_MAX_CALL_SECONDS", "600"))
 
         # Temporal Configuration — durable workflow/task scheduling.
@@ -225,6 +236,7 @@ class Settings:
             "signals": ["60 per minute"],
             "sms_webhook": ["120 per minute"],
             "voice_webhook": ["60 per minute"],
+            "voice_internal": ["120 per minute"],
             "agent_chat": ["30 per minute"],
         }
 

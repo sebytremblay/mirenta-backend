@@ -1,9 +1,8 @@
 """Shared helpers for Twilio webhook routers (`signals.py`, `voice.py`).
 
 Both the SMS and voice inbound webhooks need to reconstruct the
-externally-visible request URL (to validate `X-Twilio-Signature` and, for
-voice, to build the `wss://` Media Stream URL) and mark a `signals` row's
-processing status.
+externally-visible request URL (to validate `X-Twilio-Signature`) and mark a
+`signals` row's processing status.
 """
 
 from datetime import datetime, timezone

@@ -10,18 +10,18 @@ Built with **FastAPI** on top of **Supabase** (Postgres + Auth, RLS-enforced). O
 
 - **Product-domain API** — profiles (`GET`/`PATCH /profiles/me`), organizations (list mine, create with automatic per-org Twilio subaccount + number provisioning), contacts, contact timeline, and a per-org **knowledge base** (hours, booking, FAQ, …) that grounds SMS replies
 - **The Mirenta Runtime agent loop, live for SMS** — Twilio SMS webhook → Temporal event bus → deterministic decision engine → durable task scheduling → LangGraph SMS subagent (knowledge-grounded) → logged interaction that closes the loop, including a 3-day silence follow-up that cancels on inbound
-- **Inbound voice calls** — Twilio Media Streams + Deepgram STT/TTS bridged to a LangGraph voice subagent by `app/services/runtimes/voice_runtime.py` (outside Temporal for the live duplex session; hangup logs the interaction and re-enters `ContactLoopWorkflow`)
+- **Inbound voice calls** — Twilio webhook gates DNC/consent, SIP-dials LiveKit; LiveKit Cloud agent (`livekit_agent/`) runs Deepgram STT/TTS + OpenAI LLM; hangup finalize re-enters `ContactLoopWorkflow`
 - **Agent-loop data model** — `signals` (inbound events), `tasks` (scheduled outreach), `interactions` (subagent conversations), `contact_memory` (semantic recall) — the durable backbone of the Mirenta Runtime loop
 - **Temporal** durable workflows — one long-running `ContactLoopWorkflow` per contact, child `TaskExecutionWorkflow`s per task, guardrails re-checked at execution time
 - **Supabase Auth** JWT verification — clients sign up/log in directly against Supabase; this backend only verifies the resulting token
 - **Row Level Security** on every table — dashboard tables scope reads to the caller's org membership; agent-loop tables are locked to the service role
-- **LangGraph** SMS and voice subagents (compose → deterministic output-guardrails loop) with Postgres checkpointing
+- **LangGraph** SMS subagent (compose → deterministic output-guardrails loop) with Postgres checkpointing; voice uses LiveKit Agents' native LLM pipeline
 - **LLM service** with circular model fallback, exponential backoff retries, and a total timeout budget
 - **Langfuse** tracing on all LLM calls
 - **Structured logging** (structlog) with request/user context on every line
 - **Rate limiting** via slowapi on every route
 
-> **Status.** The loop runs end-to-end for **SMS** (inbound text in, LLM-drafted reply out, multi-turn, guardrailed, knowledge-grounded, with a 3-day silence follow-up). **Inbound voice** is also live via Media Streams + Deepgram; outbound calling is not. There's also no proactive/first-touch outreach, no voice knowledge grounding yet, and no spoken opt-out handling on calls. See [docs/architecture.md](docs/architecture.md#component-status) for the full breakdown.
+> **Status.** The loop runs end-to-end for **SMS** (inbound text in, LLM-drafted reply out, multi-turn, guardrailed, knowledge-grounded, with a 3-day silence follow-up). **Inbound voice** is live via LiveKit Cloud (Twilio numbers kept; SIP Dial after webhook consent). Outbound calling, proactive/first-touch outreach, and spoken opt-out handling are not started. See [docs/architecture.md](docs/architecture.md#component-status) for the full breakdown.
 
 ## Quickstart
 
@@ -32,7 +32,7 @@ make install
 make dev                           # starts the API on port 8000
 ```
 
-Open [http://localhost:8000/docs](http://localhost:8000/docs) to see the interactive API. All routes are mounted under `/api/v1` (configurable via `API_PREFIX`) — e.g. `GET /api/v1/organizations` (list the caller's orgs), `GET`/`PATCH /api/v1/profiles/me`, `POST /api/v1/webhooks/twilio/sms`, `WS /api/v1/ws/twilio/voice/{call_sid}`.
+Open [http://localhost:8000/docs](http://localhost:8000/docs) to see the interactive API. All routes are mounted under `/api/v1` (configurable via `API_PREFIX`) — e.g. `GET /api/v1/organizations` (list the caller's orgs), `GET`/`PATCH /api/v1/profiles/me`, `POST /api/v1/webhooks/twilio/sms`, `POST /api/v1/webhooks/twilio/voice`.
 
 To run the full agent loop (not just the CRUD API), also start Temporal and a worker:
 
@@ -62,7 +62,7 @@ app/
   api/
     routers/       # Route handlers (mounted under /api/v1): auth, profiles, organizations
                    # (incl. list mine), contacts, knowledge, signals (SMS webhook),
-                   # voice (voice webhook + Media Stream WS)
+                   # voice (voice webhook + LiveKit SIP Dial + internal agent APIs)
   core/
     langgraph/     # Per-channel LLM subagents (sms_graph.py + voice_graph.py live) + tools
     prompts/       # System prompt template
@@ -72,7 +72,7 @@ app/
   schemas/         # Pydantic request/response schemas (contacts, knowledge, signals,
                    # tasks, interactions, memory, organizations, profiles, ...)
   services/
-    clients/       # External SDK wrappers: supabase, twilio, temporal, deepgram
+    clients/       # External SDK wrappers: supabase, twilio, temporal, livekit
     llm/           # LLM registry, retries, fallback
     runtimes/      # Long-lived sessions outside Temporal (voice)
     knowledge.py   # Domain helpers (KB fetch + prompt formatting)
@@ -119,7 +119,7 @@ The backend API for Mirenta, a general-purpose outreach runtime — not tied to 
 An event-driven architecture where a deterministic decision engine (not an LLM) decides when/whether/how to contact someone, Temporal schedules the resulting tasks durably, and LangGraph subagents handle only the actual conversation on each channel. See [docs/architecture.md](docs/architecture.md) for the full design.
 
 **Is the outreach agent live?**
-Yes, for SMS: text a configured Twilio number and you'll get a real, context-aware, guardrailed, knowledge-grounded LLM reply — inbound webhook → Temporal event bus → decision engine → durable task → LangGraph SMS subagent → logged interaction that re-enters the loop (including a 3-day silence follow-up). Inbound voice is also live (Media Streams + Deepgram → voice LangGraph subagent). Outbound calling and proactive/first-touch outreach are not — see [docs/architecture.md](docs/architecture.md#component-status).
+Yes, for SMS: text a configured Twilio number and you'll get a real, context-aware, guardrailed, knowledge-grounded LLM reply — inbound webhook → Temporal event bus → decision engine → durable task → LangGraph SMS subagent → logged interaction that re-enters the loop (including a 3-day silence follow-up). Inbound voice is also live (Twilio → LiveKit Cloud agent with Deepgram + OpenAI). Outbound calling and proactive/first-touch outreach are not — see [docs/architecture.md](docs/architecture.md#component-status).
 
 ### Setup & Configuration
 

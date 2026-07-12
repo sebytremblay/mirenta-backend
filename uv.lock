@@ -357,22 +357,6 @@ wheels = [
 ]
 
 [[package]]
-name = "deepgram-sdk"
-version = "7.4.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "httpx" },
-    { name = "pydantic" },
-    { name = "pydantic-core" },
-    { name = "typing-extensions" },
-    { name = "websockets" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f4/e1/d77f17f55fac94bf6aa81fb01a355ecfd923e12b5f19ef5a67cfc202d652/deepgram_sdk-7.4.0.tar.gz", hash = "sha256:0d35f830bcaa01196e3546b8c326f1d872f8fa52fc841c5640c2d68ef6678a03", size = 212507, upload-time = "2026-06-26T20:55:56.053Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/09/57/718090410686cbc8d039178e518ab9a010c9dd7bbef327918323f562274a/deepgram_sdk-7.4.0-py3-none-any.whl", hash = "sha256:713a84c22dfdb87fa37f44b36ece47938580e3343815254cc19fcaffff9915c5", size = 565593, upload-time = "2026-06-26T20:55:54.565Z" },
-]
-
-[[package]]
 name = "deprecated"
 version = "1.2.18"
 source = { registry = "https://pypi.org/simple" }
@@ -1039,7 +1023,6 @@ dependencies = [
     { name = "colorama" },
     { name = "cryptography" },
     { name = "ddgs" },
-    { name = "deepgram-sdk" },
     { name = "duckduckgo-search" },
     { name = "email-validator" },
     { name = "fastapi" },
@@ -1050,6 +1033,7 @@ dependencies = [
     { name = "langfuse" },
     { name = "langgraph" },
     { name = "langgraph-checkpoint-postgres" },
+    { name = "livekit-api" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic", extra = ["email"] },
     { name = "pydantic-settings" },
@@ -1096,7 +1080,6 @@ requires-dist = [
     { name = "colorama", specifier = ">=0.4.6" },
     { name = "cryptography", specifier = ">=44.0.0" },
     { name = "ddgs", specifier = ">=9.6.0" },
-    { name = "deepgram-sdk", specifier = ">=4.1.0" },
     { name = "djlint", marker = "extra == 'dev'", specifier = "==1.36.4" },
     { name = "duckduckgo-search", specifier = ">=3.9.0" },
     { name = "email-validator", specifier = ">=2.2.0" },
@@ -1110,6 +1093,7 @@ requires-dist = [
     { name = "langfuse", specifier = "==3.9.1" },
     { name = "langgraph", specifier = ">=1.0.2" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=3.0.1" },
+    { name = "livekit-api", specifier = ">=1.0.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.2" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.11.1" },
     { name = "pydantic-settings", specifier = ">=2.8.1" },
@@ -1197,6 +1181,35 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/87/40/d5c6f5d2f774c231f80e9c3c9f0e7ee68baf0401070f54d9d5a2f8367800/limits-4.4.1.tar.gz", hash = "sha256:ec200a20ccb7292dd77035ded417984386333418cb9f9d579090e4194e831907", size = 86826, upload-time = "2025-03-15T03:59:48.203Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e9/41/32fe0bba27a62eb7d0811251f2d75140edd43c6da28ec7254d9c3de58e38/limits-4.4.1-py3-none-any.whl", hash = "sha256:9fefa114e58fa3182d64b011cf6e000fe1cc4917cf3e9cbe8f6d4b70e52498d5", size = 61717, upload-time = "2025-03-15T03:59:46.413Z" },
+]
+
+[[package]]
+name = "livekit-api"
+version = "1.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "aiohttp" },
+    { name = "livekit-protocol" },
+    { name = "protobuf" },
+    { name = "pyjwt" },
+    { name = "types-protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f3/19/36ff6712ec638a4b7dad4d8f03795952e401dc31db0b04cddec7892650da/livekit_api-1.2.0.tar.gz", hash = "sha256:a89817b3bca9584873786ff07209839308217537a42f95ecb2609aafaa109ddc", size = 20778, upload-time = "2026-07-11T23:20:54.781Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bf/e7/8926f16d4bc1b2e0ae46d4a507321bb899396d263a757f1adaabcd3b3867/livekit_api-1.2.0-py3-none-any.whl", hash = "sha256:307f8e5cfb0358c3ca091814ab768af55896022151bcd7f951954ccefa036a24", size = 26499, upload-time = "2026-07-11T23:20:53.736Z" },
+]
+
+[[package]]
+name = "livekit-protocol"
+version = "1.1.19"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "protobuf" },
+    { name = "types-protobuf" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/84/85/10aee7d87cf716ab06075836590616cb91d453251dac683cae73fe4b7122/livekit_protocol-1.1.19.tar.gz", hash = "sha256:81709e8bc47cdaf0cc5ba937bd9ec24a095e4978c58fb3d5e69b9888b9930be4", size = 118325, upload-time = "2026-07-08T17:21:10.707Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/44/20/98150dc45b9e92ab81a8eba74cdf544015b9291c4281252e2e76a7338462/livekit_protocol-1.1.19-py3-none-any.whl", hash = "sha256:fe5a8411c6cb886e55b2564d729f275af5d77ec191dd2ca95ffac3db16979a8a", size = 145513, upload-time = "2026-07-08T17:21:09.303Z" },
 ]
 
 [[package]]

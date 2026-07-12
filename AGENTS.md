@@ -9,6 +9,8 @@ make install                # Install deps (uv sync) + pre-commit hooks
 make dev                    # Dev server with hot reload (port 8000)
 make temporal-up            # Local Temporal server + UI (docker-compose) — needed to run the agent loop
 make worker                 # Temporal worker: registers ContactLoopWorkflow/TaskExecutionWorkflow + activities
+make voice-agent-dev        # Local LiveKit agent (connects to LiveKit Cloud for jobs)
+make voice-agent-deploy     # Deploy livekit_agent/ to LiveKit Cloud (lk CLI)
 make lint                   # ruff check .
 make format                 # ruff format .
 make typecheck              # uv run pyright (static type check)
@@ -26,27 +28,28 @@ app/
     routers/       # Route handlers (all mounted under API_PREFIX, default /api/v1): auth,
                    # organizations (incl. list mine), profiles (GET/PATCH /profiles/me),
                    # contacts, knowledge (org KB CRUD), signals (Twilio SMS
-                   # webhook + manual signals), voice (Twilio voice webhook + Media Stream WS)
+                   # webhook + manual signals), voice (Twilio voice webhook + LiveKit SIP Dial)
   core/
     config.py      # Settings (env-var based, no pydantic-settings)
-    langgraph/     # Per-channel LLM subagents: base.py (shared plumbing), sms_graph.py (live), voice_graph.py (live, inbound calls only), nodes/, tools/
+    langgraph/     # Per-channel LLM subagents: base.py, sms_graph.py (live), voice_graph.py (legacy), nodes/, tools/
     logging.py     # structlog setup
     limiter.py     # Rate limiting (slowapi, in-memory)
     middleware.py  # ASGI middleware
     prompts/       # System prompts
   schemas/         # Pydantic request/response schemas: contacts, knowledge, signals,
-                   # tasks, interactions, memory, organizations, profiles, graph state
+                   # tasks, interactions, memory, organizations, profiles, graph state, voice
   services/
-    clients/       # External SDK wrappers: supabase, twilio, temporal, deepgram
+    clients/       # External SDK wrappers: supabase, twilio, temporal, livekit
     llm/           # LLM registry, retries, circular fallback
-    runtimes/      # Long-lived sessions outside Temporal (voice_runtime.py)
-    knowledge.py   # Domain helpers (KB fetch + prompt formatting for SMS compose)
+    runtimes/      # Reserved (voice moved to livekit_agent/)
+    knowledge.py   # Domain helpers (KB fetch + prompt formatting for SMS/voice)
     sms_interaction.py  # Org/contact resolution + STOP/START fast-path
   utils/           # Shared utilities
 decision/          # Deterministic decision engine — rules.py, guardrails.py, idempotency.py, engine.py
 workflows/         # Temporal workflows — ContactLoopWorkflow (per-contact event loop), TaskExecutionWorkflow (per-task)
 activities/        # Temporal activities — contact_store.py, channels.py (Twilio send), interactions.py (LangGraph + KB injection), logging.py
 worker/            # Temporal worker entrypoint (`make worker`)
+livekit_agent/     # LiveKit Cloud voice agent (Deepgram STT/TTS + OpenAI LLM)
 scripts/           # Environment setup scripts
 supabase/
   migrations/      # Numbered hand-written schema SQL (no ORM), including 0008_knowledge.sql
@@ -60,18 +63,19 @@ tests/
 ## Project Overview
 
 This is an outreach-agent backend for Mirenta, built with:
-- **The Mirenta Runtime** — an event-driven, durable-workflow architecture for agent work spanning days to weeks across voice and SMS. A deterministic decision engine (plain Python, zero LLM calls) decides *when, whether, and on what channel* to act; LLMs only run the conversation itself. **Live end-to-end for SMS** (Twilio webhook → Temporal event bus → decision engine → durable task → knowledge-grounded LangGraph subagent → logged interaction that closes the loop, including a 3-day silence follow-up) **and for inbound voice calls** (Twilio Media Streams + Deepgram STT/TTS bridged to a LangGraph subagent by `app/services/runtimes/voice_runtime.py`, running outside Temporal since a live call is a long-lived duplex session — only the closing "log + re-enter the loop" step rejoins `ContactLoopWorkflow`). Outbound calling and proactive/first-touch outreach are not implemented yet. See `docs/architecture.md` for the full design and current implementation status.
-- **LangGraph** for the stateful, multi-step interaction-layer subagents. `app/core/langgraph/sms_graph.py` and `voice_graph.py` (both a `compose -> output_guardrails` loop) are wired to the interaction layer — SMS runs on every SMS task via a Temporal activity (with org `knowledge` injected into compose), voice runs one turn at a time from `voice_runtime.py` during a live call.
+- **The Mirenta Runtime** — an event-driven, durable-workflow architecture for agent work spanning days to weeks across voice and SMS. A deterministic decision engine (plain Python, zero LLM calls) decides *when, whether, and on what channel* to act; LLMs only run the conversation itself. **Live end-to-end for SMS** (Twilio webhook → Temporal event bus → decision engine → durable task → knowledge-grounded LangGraph subagent → logged interaction that closes the loop, including a 3-day silence follow-up) **and for inbound voice calls** (Twilio webhook gates DNC/consent, SIP-dials LiveKit; a LiveKit Cloud agent runs Deepgram STT/TTS + OpenAI LLM; hangup finalize re-enters `ContactLoopWorkflow`). Outbound calling and proactive/first-touch outreach are not implemented yet. See `docs/architecture.md` for the full design and current implementation status.
+- **LangGraph** for the stateful SMS interaction-layer subagent (`app/core/langgraph/sms_graph.py`). Voice uses LiveKit Agents' native LLM pipeline (`livekit_agent/`), not LangGraph, on the live call path.
 - **FastAPI** for high-performance async REST API endpoints and signal ingestion (webhook routers). The API router is mounted at `settings.API_PREFIX` (default `/api/v1`) in `app/main.py` — route decorators are relative to that prefix (e.g. `@router.post("/webhooks/twilio/sms")` is served at `/api/v1/webhooks/twilio/sms`)
 - **Temporal** for durable task scheduling — one long-running `ContactLoopWorkflow` per contact, child `TaskExecutionWorkflow`s per task, timers firing minutes to weeks out. Run `make temporal-up` (local server) and `make worker` (registers workflows/activities) alongside `make dev` to exercise the loop.
 - **Langfuse** for LLM observability and tracing
 - **Supabase (Postgres + Auth)** for the product domain (`profiles`, `organizations`, `contacts`, `knowledge`), user identity, and the agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`)
-- **Twilio** for SMS send/receive, voice call answering (Media Streams), and automatic per-org Twilio subaccount + number + Messaging Service provisioning on new-org creation (`app/services/clients/twilio_client.py`)
-- **Deepgram** for streaming speech-to-text and text-to-speech (Aura) on live inbound calls (`app/services/clients/deepgram_client.py`)
+- **Twilio** for SMS send/receive, voice call answering (webhook → LiveKit SIP Dial), and automatic per-org Twilio subaccount + number + Messaging Service provisioning on new-org creation (`app/services/clients/twilio_client.py`)
+- **LiveKit Cloud** for the inbound voice agent worker and WebRTC/SIP media (`livekit_agent/`; deploy with `make voice-agent-deploy`)
+- **Deepgram** for streaming STT/TTS inside the LiveKit agent (not called directly from FastAPI)
 
 When working on the decision engine specifically: it must stay free of LLM calls and free of imports from `app/core/langgraph/` — that separation (deterministic core, generative edge) is the architecture's central invariant. Compliance guardrails (contact-frequency caps, DNC, consent) are preconditions that block task *emission*, and are re-checked at task *execution* time — never bolt them on as a post-hoc filter. Quiet-hours deferral helpers exist for future proactive/outbound outreach but do not apply to inbound replies. Live inbound calls are the one path that resolves DNC/consent synchronously in the webhook rather than through the decision engine — see `docs/architecture.md`'s voice-webhook section for why.
 
-Known gaps if you're picking up related work (see `docs/architecture.md#component-status` for details): no outbound calling, no proactive/first-touch outreach, no voice grounding on the org knowledge base yet (SMS only), and no voice equivalent of SMS's STOP/START opt-out handling. A 3-day SMS silence follow-up (and cancel-on-inbound) is already live.
+Known gaps if you're picking up related work (see `docs/architecture.md#component-status` for details): no outbound calling, no proactive/first-touch outreach, and no voice equivalent of SMS's STOP/START opt-out handling. A 3-day SMS silence follow-up (and cancel-on-inbound) is already live. Voice grounds on org knowledge via the LiveKit agent bootstrap endpoint.
 
 ## Quick Reference: Critical Rules
 

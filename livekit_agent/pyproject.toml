@@ -1,0 +1,24 @@
+[project]
+name = "mirenta-livekit-voice-agent"
+version = "0.1.0"
+description = "Mirenta inbound voice agent for LiveKit Cloud (Deepgram STT/TTS + OpenAI LLM)"
+requires-python = ">=3.13,<3.15"
+dependencies = [
+    "livekit-agents[silero]>=1.6.1",
+    "livekit-plugins-deepgram>=1.6.1",
+    "livekit-plugins-openai>=1.6.1",
+    "python-dotenv>=1.1.0",
+    "httpx>=0.28.1",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.11.4",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 119
+target-version = "py313"

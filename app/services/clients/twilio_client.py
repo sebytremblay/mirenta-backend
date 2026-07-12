@@ -20,7 +20,7 @@ from twilio.base import values
 from twilio.base.exceptions import TwilioRestException
 from twilio.http.async_http_client import AsyncTwilioHttpClient
 from twilio.rest import Client
-from twilio.twiml.voice_response import Connect, Stream, VoiceResponse
+from twilio.twiml.voice_response import Dial, VoiceResponse
 from tenacity import (
     retry,
     retry_if_exception,
@@ -348,35 +348,35 @@ async def provision_org_twilio(
     )
 
 
-def generate_voice_answer_twiml(*, stream_url: str, org_id: str, contact_id: str, signal_id: str) -> str:
-    """Build TwiML that answers an inbound call with a bidirectional Media Stream.
+def generate_voice_answer_twiml(
+    *,
+    sip_uri: str,
+    sip_username: str | None = None,
+    sip_password: str | None = None,
+) -> str:
+    """Build TwiML that bridges an inbound Twilio call into a LiveKit SIP room.
 
-    Uses <Connect><Stream> rather than <Start><Stream>: <Connect> hands full
-    call control to the stream (so we can send synthesized audio back over
-    the same socket), whereas <Start><Stream> is a read-only parallel fork
-    typically paired with <Dial>/<Say> that cannot receive audio back.
-    Correlation context travels as <Parameter> children since the Media
-    Stream WS handshake itself carries no query string or headers we
-    control — Twilio echoes these back in the `start` event's
-    `start.customParameters`.
+    After FastAPI has resolved DNC/consent and prepared a LiveKit room + agent
+    dispatch, this dials LiveKit over SIP. The Cloud-hosted LiveKit agent owns
+    STT/LLM/TTS for the rest of the call; Mirenta correlation lives in the
+    room metadata, not in Media Stream `<Parameter>`s.
 
     Args:
-        stream_url: The `wss://` URL of our Media Stream WebSocket endpoint.
-        org_id: The organization the call belongs to.
-        contact_id: The resolved contact placing the call.
-        signal_id: The `inbound_call` signal recorded for this call.
+        sip_uri: LiveKit SIP URI whose user part is the room name
+            (e.g. `sip:call-CA123@<project>.sip.livekit.cloud;transport=tcp`).
+        sip_username: Optional inbound-trunk username (LiveKit trunk auth).
+        sip_password: Optional inbound-trunk password.
 
     Returns:
         str: The TwiML document, as XML text.
     """
     response = VoiceResponse()
-    connect = Connect()
-    stream = Stream(url=stream_url)
-    stream.parameter(name="org_id", value=org_id)
-    stream.parameter(name="contact_id", value=contact_id)
-    stream.parameter(name="signal_id", value=signal_id)
-    connect.append(stream)
-    response.append(connect)
+    dial = Dial(answer_on_bridge=True)
+    if sip_username and sip_password:
+        dial.sip(sip_uri, username=sip_username, password=sip_password)
+    else:
+        dial.sip(sip_uri)
+    response.append(dial)
     return str(response)
 
 
