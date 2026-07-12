@@ -1,0 +1,16 @@
+# Example only — do not copy as livekit.toml with empty values.
+# `lk agent create` generates the real file (subdomain + agent id).
+#
+# After create, yours should look like:
+#
+# [project]
+# subdomain = "mirenta-f83clzsn"
+#
+# [agent]
+# id = "CA_xxxxxxxx"
+
+[project]
+subdomain = "YOUR_PROJECT_SUBDOMAIN"
+
+[agent]
+id = "CA_YOUR_AGENT_ID"

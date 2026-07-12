@@ -50,26 +50,24 @@ If `TWILIO_ACCOUNT_SID` is unset, `POST /api/v1/organizations` skips automatic p
 
 ---
 
-## Deepgram (voice STT/TTS)
+## LiveKit (inbound voice — FastAPI)
 
-Required only for inbound voice calls. SMS works without these.
+FastAPI only needs these to gate DNC/consent, create a room, dispatch the Cloud agent, and Dial Sip. STT/LLM/TTS secrets belong on the agent (`livekit_agent/.env.example`), not here.
 
 | Variable | Default | Required | Description |
 | --- | --- | --- | --- |
-| `DEEPGRAM_API_KEY` | — | Yes, for inbound voice | Deepgram API key (console.deepgram.com → API Keys) |
-| `DEEPGRAM_STT_MODEL` | `nova-2-conversationalai` | No | Streaming speech-to-text model |
-| `DEEPGRAM_TTS_MODEL` | `aura-2-asteria-en` | No | Aura streaming text-to-speech model |
-| `DEEPGRAM_ENDPOINTING_MS` | `500` | No | Silence ms before Deepgram finalizes an utterance |
-| `DEEPGRAM_UTTERANCE_END_MS` | `1000` | No | Utterance-end detection window |
+| `LIVEKIT_URL` | — | Yes, for inbound voice | LiveKit WebSocket URL (`wss://…livekit.cloud`) |
+| `LIVEKIT_API_KEY` | — | Yes, for inbound voice | LiveKit API key |
+| `LIVEKIT_API_SECRET` | — | Yes, for inbound voice | LiveKit API secret |
+| `LIVEKIT_SIP_HOST` | — | Yes, for inbound voice | SIP hostname Twilio dials (`….sip.livekit.cloud`) |
+| `LIVEKIT_SIP_USERNAME` | — | No | Inbound trunk username for TwiML `<Sip>` |
+| `LIVEKIT_SIP_PASSWORD` | — | No | Inbound trunk password for TwiML `<Sip>` |
+| `LIVEKIT_AGENT_NAME` | `mirenta-voice` | No | Must match the Cloud agent name used at dispatch |
+| `MIRENTA_INTERNAL_API_KEY` | — | Yes, for inbound voice | Shared secret for agent → `/internal/voice/*` |
 
----
+Also configure a LiveKit **inbound SIP trunk** that accepts Twilio's SIP signaling (and optional trunk auth matching `LIVEKIT_SIP_*`). See [LiveKit Twilio telephony docs](https://docs.livekit.io/telephony/start/providers/twilio/).
 
-## Voice runtime
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `VOICE_LLM_MODEL` | `gpt-5-mini` | Model used for per-turn voice compose (kept separate from SMS so you can pick a lower-latency model) |
-| `VOICE_MAX_CALL_SECONDS` | `600` | Soft cap on how long a single inbound call session may run |
+Agent-only secrets (set in LiveKit Cloud / `livekit_agent/.env`): `DEEPGRAM_API_KEY`, `OPENAI_API_KEY`, `MIRENTA_API_BASE_URL`, model overrides.
 
 ---
 
@@ -130,7 +128,8 @@ Everything — Supabase Auth's `auth.users`, LangGraph's checkpoint tables (crea
 | `RATE_LIMIT_KNOWLEDGE` | `60 per minute` | Organization knowledge-base CRUD |
 | `RATE_LIMIT_SIGNALS` | `60 per minute` | Manual signal creation/listing endpoints |
 | `RATE_LIMIT_SMS_WEBHOOK` | `120 per minute` | Twilio inbound SMS webhook |
-| `RATE_LIMIT_VOICE_WEBHOOK` | `60 per minute` | Twilio inbound voice webhook + Media Stream WebSocket |
+| `RATE_LIMIT_VOICE_WEBHOOK` | `60 per minute` | Twilio inbound voice webhook |
+| `RATE_LIMIT_VOICE_INTERNAL` | `120 per minute` | LiveKit agent bootstrap/finalize callbacks |
 | `RATE_LIMIT_AGENT_CHAT` | `30 per minute` | Reserved for the interaction-layer chat endpoint, once wired up |
 
 Rate limiting uses in-memory storage, so limits are tracked per-process (not shared across multiple app instances).

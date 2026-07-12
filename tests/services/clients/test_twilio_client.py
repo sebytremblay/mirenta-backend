@@ -181,18 +181,16 @@ def test_encrypt_decrypt_twilio_auth_token_roundtrip() -> None:
         assert decrypt_twilio_auth_token(encrypted) == "secret-token"
 
 
-def test_generate_voice_answer_twiml_connects_stream_with_parameters() -> None:
+def test_generate_voice_answer_twiml_dials_livekit_sip() -> None:
     twiml = generate_voice_answer_twiml(
-        stream_url="wss://example.test/api/v1/ws/twilio/voice/CA123",
-        org_id="org-1",
-        contact_id="contact-1",
-        signal_id="signal-1",
+        sip_uri="sip:call-CA123@example.sip.livekit.cloud;transport=tcp",
+        sip_username="trunk-user",
+        sip_password="trunk-pass",  # pragma: allowlist secret
     )
 
-    assert '<Connect><Stream url="wss://example.test/api/v1/ws/twilio/voice/CA123">' in twiml
-    assert '<Parameter name="org_id" value="org-1"' in twiml
-    assert '<Parameter name="contact_id" value="contact-1"' in twiml
-    assert '<Parameter name="signal_id" value="signal-1"' in twiml
+    assert "<Dial" in twiml
+    assert "sip:call-CA123@example.sip.livekit.cloud;transport=tcp" in twiml
+    assert 'username="trunk-user"' in twiml
 
 
 def test_generate_voice_reject_twiml_says_and_hangs_up() -> None:

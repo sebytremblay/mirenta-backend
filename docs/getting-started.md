@@ -9,7 +9,7 @@
 - Langfuse account (optional — set `LANGFUSE_TRACING_ENABLED=false` to skip)
 - Docker (optional — only needed to run a local Temporal server via `make temporal-up`, required for the SMS agent loop end-to-end)
 - A Twilio account with a phone number, or let the API buy one for you when you create an org (optional — only needed for SMS/voice; the CRUD API works without it)
-- A Deepgram API key (optional — only needed for inbound voice calls)
+- A Deepgram API key on the LiveKit agent (optional — only needed for inbound voice)
 
 ## Set up your Supabase project
 
@@ -29,7 +29,7 @@ cp .env.example .env.development
 #           SUPABASE_SECRET_KEY, SUPABASE_JWKS_URL, SUPABASE_DB_*
 # Optional: LANGFUSE_* keys (or set LANGFUSE_TRACING_ENABLED=false)
 # For SMS/voice: TWILIO_*, APP_BASE_URL (ngrok in local dev)
-# For inbound voice: DEEPGRAM_API_KEY
+# For inbound voice: LIVEKIT_*, MIRENTA_INTERNAL_API_KEY, DEEPGRAM_API_KEY (on the agent), OPENAI_API_KEY (on the agent)
 
 make install       # installs deps + pre-commit hooks
 make dev           # starts server with hot reload on port 8000
@@ -90,24 +90,41 @@ Fill in `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` in your `.env` and set `APP_BAS
 
 ## Run inbound voice
 
-With the API + Temporal worker already running, also set `DEEPGRAM_API_KEY`. Calling the org's Twilio number hits `POST /api/v1/webhooks/twilio/voice`, which answers with Media Streams TwiML and bridges audio through Deepgram STT/TTS to the voice LangGraph subagent. DNC/consent are checked synchronously in the webhook (not via the decision engine). On hangup, the call is logged and re-enters `ContactLoopWorkflow` the same way an SMS interaction does. Voice does not yet ground on the org knowledge base.
+With the API + Temporal worker already running:
+
+1. Set `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_SIP_HOST`, and `MIRENTA_INTERNAL_API_KEY` on FastAPI.
+2. Deploy (or locally run) the agent:
+   ```bash
+   cd livekit_agent
+   lk cloud auth
+   lk project list                 # pick/set the right Cloud project
+   # if livekit.toml still has empty subdomain="", remove it first:
+   rm -f livekit.toml
+   lk agent create                 # writes subdomain + agent id into livekit.toml
+   # set secrets (MIRENTA_*, DEEPGRAM_*, OPENAI_*, …) in Cloud or via --secrets-file
+   lk agent deploy
+   ```
+   Or locally against Cloud jobs: `make voice-agent-dev` (needs the same env as `livekit_agent/.env.example`).
+3. Configure a LiveKit inbound SIP trunk that accepts Twilio SIP (optional trunk username/password → `LIVEKIT_SIP_*`).
+
+Calling the org's Twilio number hits `POST /api/v1/webhooks/twilio/voice`, which checks DNC/consent, creates a LiveKit room + agent dispatch, and returns `<Dial><Sip>` TwiML into that room. The Cloud agent bootstraps knowledge from Mirenta, runs the call, then finalizes so `ContactLoopWorkflow` re-enters.
 
 ## Customising the agent
 
 | What | Where |
 |---|---|
 | Agent personality & instructions | `app/core/prompts/system.md` |
-| Org facts that ground SMS replies | `knowledge` table / `/organizations/{org_id}/knowledge` API |
+| Org facts that ground SMS/voice replies | `knowledge` table / `/organizations/{org_id}/knowledge` API |
 | Staff profile / onboarding flag | `profiles` table / `GET`/`PATCH /profiles/me` |
 | Discover caller's orgs after login | `GET /organizations` |
 | Available tools | `app/core/langgraph/tools/` |
 | SMS compose/guardrail behavior | `app/core/langgraph/nodes/compose.py`, `nodes/output_guardrails.py` |
-| Voice compose/guardrail behavior | `app/core/langgraph/nodes/voice_compose.py`, `nodes/voice_output_guardrails.py` |
+| LiveKit voice agent instructions / models | `livekit_agent/src/agent.py` + bootstrap endpoint in `app/api/routers/voice.py` |
 | Decision-engine rules (what tasks get emitted for a signal) | `decision/rules.py` |
 | Compliance guardrails (DNC, consent, frequency cap; quiet-hours helpers for future outbound) | `decision/guardrails.py` |
 | LLM models & fallback order | `app/services/llm/registry.py` → `LLMRegistry.LLMS` |
 
-Adding a new **outbound** channel (e.g. outbound voice as a `call` task) means: a decision-engine rule in `decision/rules.py`, a send-side activity in `activities/channels.py`, wiring the new `task.type` into `workflows/task_execution.py`, and a subagent under `app/core/langgraph/` subclassing `BaseChannelAgent`. Live inbound duplex sessions (like today's voice path) instead belong in `app/services/runtimes/` and only rejoin Temporal at hangup.
+Adding a new **outbound** channel (e.g. outbound voice as a `call` task) means: a decision-engine rule in `decision/rules.py`, a send-side activity in `activities/channels.py`, wiring the new `task.type` into `workflows/task_execution.py`, and either a LangGraph subagent or a LiveKit outbound SIP flow. Live inbound duplex sessions belong in LiveKit Agents and only rejoin Temporal at hangup.
 
 ## Running pre-commit hooks
 
@@ -134,4 +151,4 @@ If it's a false positive, add `# pragma: allowlist secret` to the end of the fla
 Set `LANGFUSE_TRACING_ENABLED=false` in your `.env` to disable tracing entirely during development.
 
 **Inbound voice answers but never speaks / no transcripts**
-Confirm `DEEPGRAM_API_KEY` is set and that `APP_BASE_URL` is an HTTPS URL Twilio can reach for both the voice webhook and the Media Stream WebSocket (`wss://…/api/v1/ws/twilio/voice/{call_sid}`).
+Confirm LiveKit Cloud agent is deployed and receiving jobs (`LIVEKIT_AGENT_NAME` matches), `DEEPGRAM_API_KEY` / `OPENAI_API_KEY` are set on the agent, `MIRENTA_API_BASE_URL` reaches FastAPI, and `LIVEKIT_SIP_HOST` / inbound trunk accept Twilio's SIP Dial.
