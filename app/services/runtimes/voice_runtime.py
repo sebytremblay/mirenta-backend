@@ -26,6 +26,7 @@ from activities.logging import (
     emit_interaction_result_signal,
     log_interaction,
 )
+from app.core.config import settings
 from app.core.langgraph.voice_graph import voice_agent
 from app.core.logging import logger
 from app.services.clients.deepgram_client import DeepgramSTTSession, DeepgramTTSSession
@@ -33,6 +34,11 @@ from app.services.clients.deepgram_client import DeepgramSTTSession, DeepgramTTS
 VOICE_CHANNEL_CONSTRAINTS = {"max_length": 600}
 TTS_FRAME_BYTES = 160  # 20ms of 8kHz mulaw
 TTS_FRAME_SECONDS = 0.02
+
+
+def _opening_greeting() -> str:
+    """Fixed spoken open — TTS only, no LLM round-trip (keeps time-to-first-audio low)."""
+    return f"Hi, this is {settings.DEFAULT_PERSONA_NAME}. How can I help you today?"
 
 
 class VoiceCallSession:
@@ -64,6 +70,9 @@ class VoiceCallSession:
                 on_speech_started=self._on_speech_started,
                 on_error=self._on_stt_error,
             )
+            # Fire-and-forget: must not block `_read_media_loop` or Twilio
+            # audio (and barge-in) stalls while the greeting synthesizes.
+            self._start_opening_greeting()
             await self._read_media_loop()
         except WebSocketDisconnect:
             logger.info("voice_ws_disconnected", call_sid=self._call_sid)
@@ -118,6 +127,19 @@ class VoiceCallSession:
             elif event == "stop":
                 logger.info("voice_ws_stop_received", call_sid=self._call_sid)
                 break
+
+    def _start_opening_greeting(self) -> None:
+        """Speak a fixed greeting as soon as the media stream is live.
+
+        Uses a canned line + TTS rather than the LangGraph turn path so the
+        caller hears audio within ~TTS latency instead of waiting on a cold
+        LLM/checkpointer round-trip. Does not set `_any_turn_completed` —
+        greeting-only hangups still count as `no_answer`.
+        """
+        greeting = _opening_greeting()
+        self._transcript.append({"role": "ai", "content": greeting})
+        logger.info("voice_greeting_started", call_sid=self._call_sid, reply_length=len(greeting))
+        self._current_playback = asyncio.create_task(self._play_reply(greeting))
 
     async def _on_transcript(self, text: str, is_final: bool) -> None:
         """Accumulate finalized transcript pieces; the turn fires on `UtteranceEnd`."""

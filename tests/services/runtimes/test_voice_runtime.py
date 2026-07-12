@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi import WebSocket
 from langchain_core.messages import AIMessage
 
-from app.services.runtimes.voice_runtime import VoiceCallSession
+from app.services.runtimes.voice_runtime import VoiceCallSession, _opening_greeting
 
 
 class _FakeWebSocket:
@@ -32,6 +32,25 @@ def _make_session() -> tuple[VoiceCallSession, _FakeWebSocket]:
     session._contact_id = "contact-1"
     session._stream_sid = "MZ123"
     return session, fake_ws
+
+
+def test_start_opening_greeting_queues_tts_and_transcript() -> None:
+    session, _ = _make_session()
+
+    async def _run() -> None:
+        with patch("app.services.runtimes.voice_runtime.DeepgramTTSSession") as fake_tts_cls:
+            fake_tts_cls.return_value.synthesize_stream = _empty_stream
+            session._start_opening_greeting()
+            playback = session._current_playback
+            assert playback is not None
+            await playback
+
+    asyncio.run(_run())
+    assert session._any_turn_completed is False
+    assert session._transcript == [
+        {"role": "ai", "content": _opening_greeting()},
+    ]
+    assert session._infer_outcome() == "no_answer"
 
 
 def test_utterance_end_joins_pending_transcript_and_triggers_turn() -> None:

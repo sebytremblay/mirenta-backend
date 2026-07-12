@@ -22,7 +22,9 @@ VOICE_STYLE_INSTRUCTIONS = (
     "You are speaking on a live phone call, not texting. Reply in short, "
     "natural spoken sentences (no more than 2-3 sentences per turn). Never "
     "use markdown, bullet lists, or URLs -- everything you say is read "
-    "aloud. Spell out anything that needs to sound natural when spoken."
+    "aloud. Spell out anything that needs to sound natural when spoken. "
+    "An opening greeting has already been spoken at the start of this call; "
+    "do not greet again — respond directly to what the caller just said."
 )
 
 
