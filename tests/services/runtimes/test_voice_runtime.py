@@ -198,3 +198,65 @@ def test_handle_barge_in_is_noop_without_active_playback() -> None:
     asyncio.run(session._handle_barge_in())
 
     fake_ws.send_json.assert_not_awaited()
+
+
+def test_barge_in_ignored_during_opening_greeting() -> None:
+    session, fake_ws = _make_session()
+    playback_started = asyncio.Event()
+    playback_release = asyncio.Event()
+
+    async def _slow_greeting(_text: str):
+        playback_started.set()
+        await playback_release.wait()
+        return
+        yield  # pragma: no cover
+
+    async def _run() -> None:
+        with patch("app.services.runtimes.voice_runtime.DeepgramTTSSession") as fake_tts_cls:
+            fake_tts_cls.return_value.synthesize_stream = _slow_greeting
+            session._start_opening_greeting()
+            await playback_started.wait()
+            assert session._opening_greeting_active is True
+            await session._on_speech_started()
+            playback_release.set()
+            assert session._current_playback is not None
+            await session._current_playback
+
+    asyncio.run(_run())
+    fake_ws.send_json.assert_not_awaited()
+    assert session._opening_greeting_active is False
+
+
+def test_utterance_end_during_greeting_is_deferred_until_greeting_finishes() -> None:
+    session, _ = _make_session()
+    playback_started = asyncio.Event()
+    playback_release = asyncio.Event()
+
+    async def _slow_greeting(_text: str):
+        playback_started.set()
+        await playback_release.wait()
+        return
+        yield  # pragma: no cover
+
+    async def _run() -> None:
+        with (
+            patch("app.services.runtimes.voice_runtime.DeepgramTTSSession") as fake_tts_cls,
+            patch.object(session, "_handle_turn", new=AsyncMock()) as handle_turn,
+        ):
+            fake_tts_cls.return_value.synthesize_stream = _slow_greeting
+            session._start_opening_greeting()
+            await playback_started.wait()
+            await session._on_transcript("Hello", True)
+            await session._on_utterance_end()
+            handle_turn.assert_not_awaited()
+            assert session._utterance_end_deferred is True
+            playback_release.set()
+            assert session._current_playback is not None
+            await session._current_playback
+            handle_turn.assert_awaited_once_with("Hello")
+
+    asyncio.run(_run())
+    assert session._transcript == [
+        {"role": "ai", "content": _opening_greeting()},
+        {"role": "human", "content": "Hello"},
+    ]

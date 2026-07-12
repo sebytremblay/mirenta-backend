@@ -56,6 +56,8 @@ class VoiceCallSession:
         self._pending_transcript: list[str] = []
         self._transcript: list[dict[str, str]] = []
         self._current_playback: asyncio.Task[None] | None = None
+        self._opening_greeting_active = False
+        self._utterance_end_deferred = False
         self._any_turn_completed = False
         self._any_turn_escalated = False
         self._knowledge = ""
@@ -151,7 +153,24 @@ class VoiceCallSession:
         greeting = _opening_greeting()
         self._transcript.append({"role": "ai", "content": greeting})
         logger.info("voice_greeting_started", call_sid=self._call_sid, reply_length=len(greeting))
-        self._current_playback = asyncio.create_task(self._play_reply(greeting))
+        self._current_playback = asyncio.create_task(self._play_opening_greeting(greeting))
+
+    async def _play_opening_greeting(self, greeting: str) -> None:
+        """Play the canned greeting without letting STT barge-in cut it short.
+
+        Deepgram's VAD fires on line noise, comfort tones, or the caller
+        saying "hello" while the agent is still speaking. During the opening
+        greeting that would cancel playback after a second or two; defer
+        barge-in and turn-taking until the greeting finishes.
+        """
+        self._opening_greeting_active = True
+        try:
+            await self._play_reply(greeting)
+        finally:
+            self._opening_greeting_active = False
+            if self._utterance_end_deferred:
+                self._utterance_end_deferred = False
+                await self._process_utterance_end()
 
     async def _on_transcript(self, text: str, is_final: bool) -> None:
         """Accumulate finalized transcript pieces; the turn fires on `UtteranceEnd`."""
@@ -160,6 +179,14 @@ class VoiceCallSession:
 
     async def _on_utterance_end(self) -> None:
         """The caller has finished a turn -- compose and speak a reply."""
+        if self._opening_greeting_active:
+            if self._pending_transcript:
+                self._utterance_end_deferred = True
+            return
+        await self._process_utterance_end()
+
+    async def _process_utterance_end(self) -> None:
+        """Turn finalized transcript into a LangGraph reply, if any text is pending."""
         if not self._pending_transcript:
             return
         utterance = " ".join(self._pending_transcript).strip()
@@ -171,6 +198,8 @@ class VoiceCallSession:
 
     async def _on_speech_started(self) -> None:
         """Deepgram's VAD detected new speech -- interrupt playback if the agent is talking."""
+        if self._opening_greeting_active:
+            return
         await self._handle_barge_in()
 
     async def _on_stt_error(self, exc: Exception) -> None:
