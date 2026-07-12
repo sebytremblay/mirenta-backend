@@ -220,21 +220,22 @@ def test_handle_barge_in_is_noop_without_active_playback() -> None:
     fake_ws.send_json.assert_not_awaited()
 
 
-def test_barge_in_ignored_during_opening_greeting_grace() -> None:
+def test_speech_started_does_not_trigger_barge_in() -> None:
     session, fake_ws = _make_session()
-    session._opening_greeting_grace_until = time.monotonic() + 60.0
 
     async def _run() -> None:
         session._current_playback = asyncio.create_task(asyncio.sleep(10))
+        session._playback_first_frame_sent = True
+        session._playback_barge_in_allowed_after = time.monotonic() - 1.0
         await session._on_speech_started()
 
     asyncio.run(_run())
     fake_ws.send_json.assert_not_awaited()
+    assert session._current_playback is not None
 
 
-def test_barge_in_allowed_after_opening_greeting_grace() -> None:
+def test_interim_transcript_triggers_barge_in_when_allowed() -> None:
     session, fake_ws = _make_session()
-    session._opening_greeting_grace_until = time.monotonic() - 1.0
 
     async def _long_task() -> None:
         await asyncio.sleep(10)
@@ -244,10 +245,24 @@ def test_barge_in_allowed_after_opening_greeting_grace() -> None:
         session._playback_first_frame_sent = True
         session._playback_barge_in_allowed_after = time.monotonic() - 1.0
         await asyncio.sleep(0)
-        await session._on_speech_started()
+        await session._on_transcript("Hello", False)
 
     asyncio.run(_run())
     fake_ws.send_json.assert_awaited_once_with({"event": "clear", "streamSid": "MZ123"})
+
+
+def test_short_interim_transcript_does_not_trigger_barge_in() -> None:
+    session, fake_ws = _make_session()
+
+    async def _run() -> None:
+        session._current_playback = asyncio.create_task(asyncio.sleep(10))
+        session._playback_first_frame_sent = True
+        session._playback_barge_in_allowed_after = time.monotonic() - 1.0
+        await session._on_transcript("Hi", False)
+
+    asyncio.run(_run())
+    fake_ws.send_json.assert_not_awaited()
+    assert session._current_playback is not None
 
 
 def test_barge_in_blocked_before_first_playback_frame() -> None:
@@ -256,16 +271,31 @@ def test_barge_in_blocked_before_first_playback_frame() -> None:
     async def _run() -> None:
         session._current_playback = asyncio.create_task(asyncio.sleep(10))
         session._playback_barge_in_allowed_after = time.monotonic() - 1.0
-        await session._on_speech_started()
+        await session._on_transcript("Hello", False)
 
     asyncio.run(_run())
     fake_ws.send_json.assert_not_awaited()
     assert session._current_playback is not None
 
 
-def test_utterance_end_during_opening_greeting_grace_is_discarded() -> None:
+def test_barge_in_blocked_during_first_two_seconds_of_greeting() -> None:
+    session, fake_ws = _make_session()
+    session._opening_greeting_playback_active = True
+    session._opening_greeting_started_at = time.monotonic()
+
+    async def _run() -> None:
+        session._current_playback = asyncio.create_task(asyncio.sleep(10))
+        session._playback_first_frame_sent = True
+        session._playback_barge_in_allowed_after = time.monotonic() - 1.0
+        await session._on_transcript("Hello", False)
+
+    asyncio.run(_run())
+    fake_ws.send_json.assert_not_awaited()
+
+
+def test_utterance_end_during_opening_greeting_is_discarded() -> None:
     session, _ = _make_session()
-    session._opening_greeting_grace_until = time.monotonic() + 60.0
+    session._opening_greeting_playback_active = True
 
     async def _run() -> None:
         with patch.object(session, "_handle_turn", new=AsyncMock()) as handle_turn:

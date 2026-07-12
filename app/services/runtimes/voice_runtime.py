@@ -38,8 +38,9 @@ from app.services.knowledge import fetch_active_knowledge, format_knowledge_for_
 VOICE_CHANNEL_CONSTRAINTS = {"max_length": 600}
 TTS_FRAME_BYTES = 160  # 20ms of 8kHz mulaw
 TTS_FRAME_SECONDS = 0.02
-OPENING_GREETING_BARGE_IN_GRACE_SECONDS = 2.0
+OPENING_GREETING_BARGE_IN_AFTER_SECONDS = 2.0
 PLAYBACK_BARGE_IN_GRACE_SECONDS = 0.75
+BARGE_IN_MIN_TRANSCRIPT_CHARS = 3
 
 
 def _opening_greeting(org_name: str | None = None) -> str:
@@ -78,7 +79,8 @@ class VoiceCallSession:
         self._pending_transcript: list[str] = []
         self._transcript: list[dict[str, str]] = []
         self._current_playback: asyncio.Task[None] | None = None
-        self._opening_greeting_grace_until: float | None = None
+        self._opening_greeting_started_at: float | None = None
+        self._opening_greeting_playback_active = False
         self._playback_barge_in_allowed_after: float | None = None
         self._playback_first_frame_sent = False
         self._any_turn_completed = False
@@ -178,7 +180,8 @@ class VoiceCallSession:
         greeting = _opening_greeting(self._org_name)
         self._transcript.append({"role": "ai", "content": greeting})
         logger.info("voice_greeting_started", call_sid=self._call_sid, reply_length=len(greeting))
-        self._opening_greeting_grace_until = time.monotonic() + OPENING_GREETING_BARGE_IN_GRACE_SECONDS
+        self._opening_greeting_started_at = time.monotonic()
+        self._opening_greeting_playback_active = True
         self._start_playback(self._play_opening_greeting(greeting))
 
     def _start_playback(self, coro: Coroutine[Any, Any, None]) -> None:
@@ -188,38 +191,50 @@ class VoiceCallSession:
         self._current_playback = asyncio.create_task(coro)
 
     async def _play_opening_greeting(self, greeting: str) -> None:
-        """Play the canned greeting; suppress false barge-in for the first couple seconds."""
+        """Play the canned greeting."""
         try:
             await self._play_reply(greeting)
         finally:
-            self._opening_greeting_grace_until = None
-            self._playback_barge_in_allowed_after = None
-            self._playback_first_frame_sent = False
+            self._opening_greeting_playback_active = False
+            self._opening_greeting_started_at = None
 
-    def _in_opening_greeting_grace(self) -> bool:
-        """Whether barge-in/turn-taking should stay suppressed on the opening greeting."""
-        return self._opening_greeting_grace_until is not None and time.monotonic() < self._opening_greeting_grace_until
+    def _opening_greeting_barge_in_allowed(self) -> bool:
+        """Whether the caller may interrupt the opening greeting by speaking."""
+        if not self._opening_greeting_playback_active or self._opening_greeting_started_at is None:
+            return True
+        return time.monotonic() - self._opening_greeting_started_at >= OPENING_GREETING_BARGE_IN_AFTER_SECONDS
 
     def _barge_in_allowed(self) -> bool:
         """Whether caller speech should interrupt in-flight agent playback."""
-        if self._in_opening_greeting_grace():
-            return False
         if self._current_playback is None or self._current_playback.done():
             return False
         if not self._playback_first_frame_sent:
             return False
         if self._playback_barge_in_allowed_after is not None and time.monotonic() < self._playback_barge_in_allowed_after:
             return False
+        if not self._opening_greeting_barge_in_allowed():
+            return False
         return True
 
     async def _on_transcript(self, text: str, is_final: bool) -> None:
-        """Accumulate finalized transcript pieces; the turn fires on `UtteranceEnd`."""
+        """Accumulate finalized transcript pieces; interim text may trigger barge-in."""
+        stripped = text.strip()
+        if not is_final and stripped:
+            await self._maybe_barge_in_from_transcript(stripped)
         if is_final:
             self._pending_transcript.append(text)
 
+    async def _maybe_barge_in_from_transcript(self, text: str) -> None:
+        """Interrupt agent playback only when STT has real words, not phantom VAD."""
+        if len(text) < BARGE_IN_MIN_TRANSCRIPT_CHARS:
+            return
+        if not self._barge_in_allowed():
+            return
+        await self._handle_barge_in()
+
     async def _on_utterance_end(self) -> None:
         """The caller has finished a turn -- compose and speak a reply."""
-        if self._in_opening_greeting_grace():
+        if self._opening_greeting_playback_active:
             self._pending_transcript = []
             return
         if not self._pending_transcript:
@@ -232,10 +247,8 @@ class VoiceCallSession:
         await self._handle_turn(utterance)
 
     async def _on_speech_started(self) -> None:
-        """Deepgram's VAD detected new speech -- interrupt playback if the agent is talking."""
-        if not self._barge_in_allowed():
-            return
-        await self._handle_barge_in()
+        """Deepgram VAD hint — ignored for barge-in; telephony noise triggers false positives."""
+        return
 
     async def _on_stt_error(self, exc: Exception) -> None:
         """Deepgram's background message loop failed -- log and let the call wind down.
