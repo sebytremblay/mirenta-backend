@@ -4,12 +4,33 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi.testclient import TestClient
 
+from app.core.config import settings
+from app.main import app
 from app.services.clients.livekit_client import prepare_inbound_voice_room, voice_room_name, voice_sip_uri
 from app.services.clients.twilio_client import (
     generate_voice_answer_twiml,
     generate_voice_reject_twiml,
 )
+
+
+def test_bootstrap_binds_json_body_not_query() -> None:
+    """Regression: future annotations + slowapi once treated the body as a query param (422)."""
+    client = TestClient(app)
+    response = client.post(
+        f"{settings.API_PREFIX}/internal/voice/bootstrap",
+        json={
+            "org_id": "org-1",
+            "contact_id": "contact-1",
+            "signal_id": "signal-1",
+            "call_sid": "CA123",
+            "room_name": "call-CA123",
+        },
+    )
+    # Auth runs after body parsing — 401 means the JSON body was accepted.
+    assert response.status_code == 401
+    assert response.json()["detail"] == "invalid_internal_api_key"
 
 
 def test_generate_voice_answer_twiml_dials_livekit_sip() -> None:

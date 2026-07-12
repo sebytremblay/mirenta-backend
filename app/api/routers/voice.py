@@ -9,8 +9,6 @@ session). It deliberately does NOT route the `inbound_call` signal through
 called by the LiveKit Cloud agent worker (shared secret), not by Twilio.
 """
 
-from __future__ import annotations
-
 import secrets
 from typing import Any
 

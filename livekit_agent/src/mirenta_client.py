@@ -59,7 +59,7 @@ class MirentaVoiceClient:
                     "room_name": room_name,
                 },
             )
-            response.raise_for_status()
+            self._raise_for_status(response)
             return response.json()
 
     async def finalize(
@@ -90,5 +90,20 @@ class MirentaVoiceClient:
                     "room_name": room_name,
                 },
             )
-            response.raise_for_status()
+            self._raise_for_status(response)
             return response.json()
+
+    @staticmethod
+    def _raise_for_status(response: httpx.Response) -> None:
+        """Raise with response body included so Cloud agent logs are actionable."""
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = (response.text or "").strip()
+            if detail:
+                raise httpx.HTTPStatusError(
+                    f"{exc} body={detail[:500]}",
+                    request=exc.request,
+                    response=exc.response,
+                ) from exc
+            raise
