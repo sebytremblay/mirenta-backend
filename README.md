@@ -32,7 +32,7 @@ make install
 make dev                           # starts the API on port 8000
 ```
 
-Open [http://localhost:8000/docs](http://localhost:8000/docs) to see the interactive API. All routes are mounted under `/api/v1` (configurable via `API_PREFIX`) — e.g. `GET /api/v1/organizations` (list the caller's orgs), `GET`/`PATCH /api/v1/profiles/me`, `POST /api/v1/webhooks/twilio/sms`, `POST /api/v1/webhooks/twilio/voice`.
+Open [http://localhost:8000/docs](http://localhost:8000/docs) to see the interactive API. All routes are mounted under `/api` (configurable via `API_PREFIX`) — e.g. `GET /api/organizations` (list the caller's orgs), `GET`/`PATCH /api/profiles/me`, `POST /api/webhooks/twilio/sms`, `POST /api/webhooks/twilio/voice`.
 
 To run the full agent loop (not just the CRUD API), also start Temporal and a worker:
 
@@ -60,21 +60,24 @@ make worker                        # registers ContactLoopWorkflow/TaskExecution
 ```
 app/
   api/
-    routers/       # Route handlers (mounted under /api/v1): auth, profiles, organizations
+    routers/       # Route handlers (mounted under /api): auth, profiles, organizations
                    # (incl. list mine), contacts, knowledge, signals (SMS webhook),
                    # voice (Twilio voice webhook: LiveKit SIP dial + LiveKit agent bootstrap/finalize)
   core/
-    langgraph/     # Per-channel LLM subagents (sms_graph.py + voice_graph.py live) + tools
-    prompts/       # System prompt template
+    langgraph/     # Per-channel LLM subagents: sms_graph.py (live); voice_graph.py present
+                   # but unused (legacy — voice runs on LiveKit Agents' native pipeline) + tools
+    prompts/       # Jinja2 prompt templates: sms.md, voice.md, voice_greeting.md
     config.py      # Settings
     middleware.py  # Logging context
     limiter.py     # Rate limiting
   schemas/         # Pydantic request/response schemas (contacts, knowledge, signals,
                    # tasks, interactions, memory, organizations, profiles, ...)
   services/
-    clients/       # External SDK wrappers: supabase, twilio, temporal, livekit
+    clients/       # External SDK wrappers: supabase, twilio, temporal;
+                   # livekit is a reserved stub (SIP trunk/dispatch rule managed via
+                   # the lk CLI, see livekit_agent/sip/)
     llm/           # LLM registry, retries, fallback
-    runtimes/      # Long-lived sessions outside Temporal (voice)
+    runtimes/      # Reserved (voice moved to livekit_agent/)
     knowledge.py   # Domain helpers (KB fetch + prompt formatting)
     sms_interaction.py  # Org/contact resolution + STOP/START fast-path
 decision/           # Deterministic decision engine: rules, guardrails, idempotency

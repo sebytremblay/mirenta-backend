@@ -13,7 +13,7 @@ sequenceDiagram
     C->>S: POST /auth/v1/signup or /auth/v1/token (password grant)
     S-->>C: {access_token, refresh_token} (Supabase JWT)
 
-    C->>A: GET /api/v1/organizations, /profiles/me, contacts, knowledge, ...<br/>Bearer: Supabase access_token
+    C->>A: GET /api/organizations, /profiles/me, contacts, knowledge, ...<br/>Bearer: Supabase access_token
     A-->>C: response (RLS-scoped to the caller)
 ```
 
@@ -21,7 +21,7 @@ The Supabase access token identifies the user (`sub` = `auth.users.id`) and is v
 
 This backend never stores a password or issues a user-identity token itself — that's entirely Supabase's responsibility, and there is no separate backend-issued token type.
 
-Membership lives in `organization_members`, not in the JWT. After login the client discovers `org_id` via `GET /api/v1/organizations` (and optionally remembers a last-selected org in local UI state). Do not put `org_id` in `user_metadata` / `app_metadata` as the source of truth.
+Membership lives in `organization_members`, not in the JWT. After login the client discovers `org_id` via `GET /api/organizations` (and optionally remembers a last-selected org in local UI state). Do not put `org_id` in `user_metadata` / `app_metadata` as the source of truth.
 
 ---
 
@@ -55,12 +55,12 @@ Both return `access_token`/`refresh_token`. Use `access_token` as the Bearer tok
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/v1/organizations` | List orgs the caller belongs to (discover `org_id` after login) |
-| `POST` | `/api/v1/organizations` | Create an org (caller becomes owner; Twilio number provisioned when configured) |
-| `GET` | `/api/v1/organizations/{org_id}` | Fetch one org (caller must be a member) |
-| `PATCH` | `/api/v1/organizations/{org_id}` | Update an org (admin) |
-| `GET` | `/api/v1/profiles/me` | Read the caller's profile |
-| `PATCH` | `/api/v1/profiles/me` | Update `full_name`, `avatar_url`, and/or `onboarding_completed` |
+| `GET` | `/api/organizations` | List orgs the caller belongs to (discover `org_id` after login) |
+| `POST` | `/api/organizations` | Create an org (caller becomes owner; Twilio number provisioned when configured) |
+| `GET` | `/api/organizations/{org_id}` | Fetch one org (caller must be a member) |
+| `PATCH` | `/api/organizations/{org_id}` | Update an org (admin) |
+| `GET` | `/api/profiles/me` | Read the caller's profile |
+| `PATCH` | `/api/profiles/me` | Update `full_name`, `avatar_url`, and/or `onboarding_completed` |
 
 Org-scoped product routes (`/organizations/{org_id}/contacts`, `/knowledge`, `/contacts/{id}/timeline`, …) require that `org_id` from the list (or create) response.
 

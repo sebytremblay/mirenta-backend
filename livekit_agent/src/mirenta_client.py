@@ -9,7 +9,7 @@ import httpx
 
 MIRENTA_API_BASE_URL = os.getenv("MIRENTA_API_BASE_URL", "http://localhost:8000").rstrip("/")
 MIRENTA_INTERNAL_API_KEY = os.getenv("MIRENTA_INTERNAL_API_KEY", "")
-API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
+API_PREFIX = os.getenv("API_PREFIX", "/api")
 
 
 class MirentaVoiceClient:
@@ -24,7 +24,7 @@ class MirentaVoiceClient:
         timeout_seconds: float = 30.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
-        self._api_prefix = api_prefix.rstrip("/") or "/api/v1"
+        self._api_prefix = api_prefix.rstrip("/") or "/api"
         self._api_key = api_key
         self._timeout = timeout_seconds
 

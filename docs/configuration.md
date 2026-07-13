@@ -18,7 +18,7 @@ cp .env.example .env.development
 | `PROJECT_NAME` | `FastAPI LangGraph Template` | Displayed in API docs and logs |
 | `VERSION` | `1.0.0` | API version |
 | `DEBUG` | `false` | Enables debug logging |
-| `API_PREFIX` | `/api/v1` | Mount path for all API routes (e.g. `/api/v1/organizations`) |
+| `API_PREFIX` | `/api` | Mount path for all API routes (e.g. `/api/organizations`) |
 | `ALLOWED_ORIGINS` | `*` | Comma-separated CORS origins |
 | `DEFAULT_PERSONA_NAME` | `Alex` | Default agent persona name injected into prompts |
 
@@ -46,7 +46,7 @@ cp .env.example .env.development
 | `TWILIO_TOKEN_ENCRYPTION_KEY` | derived from auth token | Recommended in production | Fernet key (`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`) used to encrypt per-org subaccount Auth Tokens in `organization_twilio_secrets` |
 | `APP_BASE_URL` | `http://localhost:8000` | Yes, for the SMS agent loop | Externally-reachable base URL for this API; a newly-purchased Twilio number's SMS webhook is set to `$APP_BASE_URL$API_PREFIX/webhooks/twilio/sms` (also on the Messaging Service inbound URL) and its voice webhook to `$APP_BASE_URL$API_PREFIX/webhooks/twilio/voice`. Use an ngrok tunnel (or similar) in local dev — Twilio can't reach `localhost` |
 
-If `TWILIO_ACCOUNT_SID` is unset, `POST /api/v1/organizations` skips automatic phone-number provisioning (org creation still succeeds; `phone` stays null unless supplied explicitly). Provisioning creates a Twilio subaccount + Messaging Service + local number per org (ISV architecture type #1). A2P 10DLC Brand/Campaign registration is not automated yet — US outbound SMS may be filtered until each org is registered.
+If `TWILIO_ACCOUNT_SID` is unset, `POST /api/organizations` skips automatic phone-number provisioning (org creation still succeeds; `phone` stays null unless supplied explicitly). Provisioning creates a Twilio subaccount + Messaging Service + local number per org (ISV architecture type #1). A2P 10DLC Brand/Campaign registration is not automated yet — US outbound SMS may be filtered until each org is registered.
 
 ---
 

@@ -55,27 +55,27 @@ Returns an `access_token` (a Supabase-issued JWT) and `refresh_token`.
 ### 2. Call a product-domain endpoint
 
 ```bash
-curl http://localhost:8000/api/v1/organizations \
+curl http://localhost:8000/api/organizations \
   -H "Authorization: Bearer <access_token from step 1>"
 ```
 
-That lists orgs the caller belongs to (empty until they've created or been invited to one). Profile state for onboarding lives at `GET`/`PATCH /api/v1/profiles/me`:
+That lists orgs the caller belongs to (empty until they've created or been invited to one). Profile state for onboarding lives at `GET`/`PATCH /api/profiles/me`:
 
 ```bash
-curl http://localhost:8000/api/v1/profiles/me \
+curl http://localhost:8000/api/profiles/me \
   -H "Authorization: Bearer <access_token>"
 
-curl -X PATCH http://localhost:8000/api/v1/profiles/me \
+curl -X PATCH http://localhost:8000/api/profiles/me \
   -H "Authorization: Bearer <access_token>" \
   -H "Content-Type: application/json" \
   -d '{"full_name": "Alex", "onboarding_completed": true}'
 ```
 
-After you have an `org_id` (from the list or from `POST /api/v1/organizations`), call org-scoped routes such as contacts and knowledge.
+After you have an `org_id` (from the list or from `POST /api/organizations`), call org-scoped routes such as contacts and knowledge.
 
 Every dashboard-facing endpoint (organizations, contacts, knowledge, profiles) takes the same Supabase access token — Row Level Security scopes the response to whatever orgs the user belongs to (or their own profile row). See [Authentication](authentication.md).
 
-The agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`) aren't exposed as user-facing endpoints — they're written and read by the agent runtime via the service-role client. `GET /api/v1/organizations/{org_id}/contacts/{id}/timeline` surfaces a read-only merged view of them for the dashboard. Org knowledge is managed at `GET/POST/PATCH/DELETE /api/v1/organizations/{org_id}/knowledge`.
+The agent-loop tables (`signals`, `tasks`, `interactions`, `contact_memory`) aren't exposed as user-facing endpoints — they're written and read by the agent runtime via the service-role client. `GET /api/organizations/{org_id}/contacts/{id}/timeline` surfaces a read-only merged view of them for the dashboard. Org knowledge is managed at `GET/POST/PATCH/DELETE /api/organizations/{org_id}/knowledge`.
 
 ## Run the full agent loop (SMS)
 
@@ -86,7 +86,7 @@ make temporal-up      # local Temporal server + UI (docker-compose), or point TE
 make worker            # separate process: registers ContactLoopWorkflow/TaskExecutionWorkflow + activities
 ```
 
-Fill in `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` in your `.env` and set `APP_BASE_URL` to a URL Twilio can reach (e.g. an ngrok tunnel in local dev) — that's what a newly-provisioned number's SMS and voice webhooks point at (`$APP_BASE_URL/api/v1/webhooks/twilio/sms` and `…/voice`). Creating an org via `POST /api/v1/organizations` without a `phone` will then create a Twilio subaccount, Messaging Service, and buy it a local number automatically; texting that number should get you a real, context-aware, knowledge-grounded LLM reply. Seed or create knowledge entries under `/api/v1/organizations/{org_id}/knowledge` so compose has facts to work from. See [Architecture](architecture.md) for how the pieces fit together, and its [Component status](architecture.md#component-status) table for what's live.
+Fill in `TWILIO_ACCOUNT_SID`/`TWILIO_AUTH_TOKEN` in your `.env` and set `APP_BASE_URL` to a URL Twilio can reach (e.g. an ngrok tunnel in local dev) — that's what a newly-provisioned number's SMS and voice webhooks point at (`$APP_BASE_URL/api/webhooks/twilio/sms` and `…/voice`). Creating an org via `POST /api/organizations` without a `phone` will then create a Twilio subaccount, Messaging Service, and buy it a local number automatically; texting that number should get you a real, context-aware, knowledge-grounded LLM reply. Seed or create knowledge entries under `/api/organizations/{org_id}/knowledge` so compose has facts to work from. See [Architecture](architecture.md) for how the pieces fit together, and its [Component status](architecture.md#component-status) table for what's live.
 
 ## Run the LiveKit voice agent
 

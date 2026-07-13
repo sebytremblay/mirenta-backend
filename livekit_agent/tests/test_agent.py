@@ -78,9 +78,9 @@ def test_mirenta_client_url_and_headers() -> None:
     client = MirentaVoiceClient(
         base_url="https://api.example.com/",
         api_key="secret",  # pragma: allowlist secret
-        api_prefix="/api/v1/",
+        api_prefix="/api/",
     )
-    assert client._url("/internal/voice/bootstrap") == ("https://api.example.com/api/v1/internal/voice/bootstrap")
+    assert client._url("/internal/voice/bootstrap") == ("https://api.example.com/api/internal/voice/bootstrap")
     assert client._headers() == {
         "Content-Type": "application/json",
         "X-Mirenta-Internal-Key": "secret",
