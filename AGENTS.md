@@ -225,3 +225,60 @@ Before modifying code:
 - LangChain Documentation: https://python.langchain.com/docs/
 - FastAPI Documentation: https://fastapi.tiangolo.com/
 - Langfuse Documentation: https://langfuse.com/docs
+
+## Cursor Cloud specific instructions
+
+Dependencies are refreshed automatically on VM startup by the update script
+(`pip install uv` + `uv sync --group test`). `uv` lives in `~/.local/bin`
+(added to `~/.bashrc`); it auto-manages the required Python 3.13. Standard
+commands are in **Quick Commands** above — the notes below are the non-obvious
+cloud caveats.
+
+### Services must be (re)started each session — nothing runs under systemd
+- **Docker daemon:** start it before Supabase/Temporal, e.g. in tmux:
+  `sudo dockerd > /tmp/dockerd.log 2>&1`. It is preconfigured for this VM with
+  `storage-driver=fuse-overlayfs` (`/etc/docker/daemon.json`) and
+  `iptables-legacy`; plain `overlay2`/nftables do not work here. If you hit
+  `permission denied` on the socket, run `sudo chmod 666 /var/run/docker.sock`.
+- **Local Supabase (Postgres + Auth + PostgREST):** `supabase start` (CLI in
+  `~/.local/share/supabase`, also on PATH via `~/.bashrc`). This replaces a
+  hosted Supabase project so no external Supabase secrets are needed. Two
+  non-obvious config requirements are baked into `supabase/config.toml`:
+  - `[auth] signing_keys_path = "./signing_keys.json"` — the backend verifies
+    JWTs via **JWKS/ES256** (`app/utils/auth.py` requires a `kid`), so local
+    Auth must issue asymmetric tokens; the HS256 default will not verify.
+    `signing_keys.json` is gitignored; if missing, regenerate it with
+    `supabase gen signing-key --output json`, then wrap the object in a JSON
+    array (`[ { ... } ]`).
+  - `auto_expose_new_tables = true` — the migrations rely on Supabase's default
+    role grants; without this, `service_role` gets `permission denied for table
+    organizations` and `/health` reports the DB unhealthy.
+  Heavy services (studio, storage, realtime, edge_runtime, analytics) are
+  disabled in config to speed startup.
+- **`.env.development`** is gitignored and points at the local stack
+  (`SUPABASE_URL=http://127.0.0.1:54321`, `SUPABASE_DB_HOST=127.0.0.1`,
+  `SUPABASE_DB_PORT=54322`, local publishable/secret keys, JWKS at
+  `.../auth/v1/.well-known/jwks.json`). Recreate it from `.env.example` with
+  those local values if it is missing.
+- **Temporal + API:** `make temporal-up` then `make worker`, and `make dev`
+  (API on :8000, Swagger at `/docs`).
+
+### Known caveats
+- **`make worker` currently fails Temporal workflow-sandbox validation**
+  (`Restriction state not present. Using subclasses of proxied objects is
+  unsupported`). The workflow module (`workflows/contact_loop.py`) transitively
+  imports `sniffio`/`anyio` (which subclass `threading.local`) without marking
+  them as sandbox passthrough. This blocks the durable SMS agent loop until the
+  workflow imports are wrapped in `workflow.unsafe.imports_passed_through()` (a
+  code change, not an environment fix).
+- **LLM paths need a real `OPENAI_API_KEY`** (add it as a secret). The
+  product-domain REST API (auth, profiles, organizations, contacts, knowledge)
+  works end-to-end against local Supabase without it; SMS/voice compose does not.
+- Real SMS/voice also needs a Twilio-reachable `APP_BASE_URL` (a tunnel), so
+  those webhooks cannot be exercised from inside the VM without one.
+
+### Testing
+- Run the main suite as `uv run --group test pytest tests` — a bare
+  `uv run --group test pytest` also collects `livekit_agent/tests`, which belong
+  to the separate `livekit_agent` uv project and fail to import from the root
+  venv. Run those via `make voice-agent-test`.

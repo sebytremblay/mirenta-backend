@@ -1,0 +1,11 @@
+# Supabase
+.branches
+.temp
+
+# dotenvx
+.env.keys
+.env.local
+.env.*.local
+
+# Local JWT signing key (regenerate with `supabase gen signing-key`)
+signing_keys.json
