@@ -128,7 +128,7 @@ class Settings:
         self.DESCRIPTION = os.getenv(
             "DESCRIPTION", "A production-ready FastAPI template with LangGraph and Langfuse integration"
         )
-        self.API_PREFIX = os.getenv("API_PREFIX", "/api/v1")
+        self.API_PREFIX = os.getenv("API_PREFIX", "/api")
         self.DEBUG = os.getenv("DEBUG", "false").lower() in ("true", "1", "t", "yes")
         self.DEFAULT_PERSONA_NAME = os.getenv("DEFAULT_PERSONA_NAME", "Alex")
 
