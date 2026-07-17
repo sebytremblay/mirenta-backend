@@ -4,7 +4,6 @@ Authorization comes from Postgres RLS (`is_org_member` / `is_org_admin`) via
 the caller's forwarded Supabase JWT — same pattern as organizations/contacts.
 """
 
-from typing import List
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -42,11 +41,11 @@ class UpdateKnowledgeRequest(BaseModel):
     is_active: bool | None = None
 
 
-@router.get("/organizations/{org_id}/knowledge", response_model=List[Knowledge])
+@router.get("/organizations/{org_id}/knowledge", response_model=list[Knowledge])
 @limiter.limit(settings.RATE_LIMIT_ENDPOINTS["knowledge"][0])
 async def list_knowledge(
     request: Request, org_id: UUID, user: SupabaseUser = Depends(get_current_user)
-) -> List[Knowledge]:
+) -> list[Knowledge]:
     """List knowledge entries for an organization (members can read)."""
     client = await get_user_client(user.access_token)
     try:

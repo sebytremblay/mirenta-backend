@@ -14,7 +14,7 @@ imports. That neutrality is what lets one tool body run behind both binders.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -30,8 +30,8 @@ class ToolContext:
     org_id: str
     contact_id: str
     channel: str  # "sms" | "voice" | "email" | "website" | "console"
-    thread_id: Optional[str] = None  # LangGraph checkpoint thread (text channels)
-    call_sid: Optional[str] = None  # Twilio call correlation (voice)
-    signal_id: Optional[str] = None  # signal that opened this turn, when known
-    user_id: Optional[str] = None  # dashboard user, when a human is in the loop
+    thread_id: str | None = None  # LangGraph checkpoint thread (text channels)
+    call_sid: str | None = None  # Twilio call correlation (voice)
+    signal_id: str | None = None  # signal that opened this turn, when known
+    user_id: str | None = None  # dashboard user, when a human is in the loop
     extra: dict[str, Any] = field(default_factory=dict)  # binder-specific extras

@@ -7,7 +7,6 @@ forwarded Supabase JWT (`get_user_client`), so the `is_org_member`/
 editable.
 """
 
-from typing import List
 from uuid import UUID, uuid4
 
 from fastapi import (
@@ -58,7 +57,7 @@ class AddMemberRequest(BaseModel):
     role: MemberRole = "member"
 
 
-@router.get("/organizations", response_model=List[Organization])
+@router.get("/organizations", response_model=list[Organization])
 @limiter.limit(settings.RATE_LIMIT_ENDPOINTS["organizations"][0])
 async def list_organizations(request: Request, user: SupabaseUser = Depends(get_current_user)):
     """List organizations the caller belongs to.
@@ -221,7 +220,7 @@ async def update_organization(
         raise HTTPException(status_code=400, detail=e.message)
 
 
-@router.get("/organizations/{org_id}/members", response_model=List[OrganizationMember])
+@router.get("/organizations/{org_id}/members", response_model=list[OrganizationMember])
 @limiter.limit(settings.RATE_LIMIT_ENDPOINTS["organizations"][0])
 async def list_organization_members(request: Request, org_id: UUID, user: SupabaseUser = Depends(get_current_user)):
     """List an organization's members.

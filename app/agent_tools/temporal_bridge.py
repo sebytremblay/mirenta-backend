@@ -16,7 +16,7 @@ signal up on the next loop tick and decides what, if anything, to emit.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 from app.agent_tools.context import ToolContext
 from app.core.config import settings
@@ -83,7 +83,7 @@ async def emit_tool_signal(
     return str(signal.id)
 
 
-def temporal_available() -> Optional[str]:
+def temporal_available() -> str | None:
     """Return the configured Temporal address, or ``None`` if unconfigured.
 
     Lets a durable tool degrade to a plain acknowledgement (rather than crash a

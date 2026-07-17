@@ -9,7 +9,7 @@ against `organizations`) and then reads/writes through
 `get_service_role_client()`.
 """
 
-from typing import Any, List
+from typing import Any
 from uuid import UUID
 
 from fastapi import (
@@ -60,7 +60,7 @@ class UpdateContactRequest(BaseModel):
     attributes: dict[str, Any] | None = None
 
 
-@router.get("/organizations/{org_id}/contacts", response_model=List[Contact])
+@router.get("/organizations/{org_id}/contacts", response_model=list[Contact])
 @limiter.limit(settings.RATE_LIMIT_ENDPOINTS["contacts"][0])
 async def list_contacts(
     request: Request,
@@ -215,7 +215,7 @@ async def delete_contact(
         raise HTTPException(status_code=400, detail=e.message)
 
 
-@router.get("/organizations/{org_id}/contacts/{contact_id}/timeline", response_model=List[TimelineEntry])
+@router.get("/organizations/{org_id}/contacts/{contact_id}/timeline", response_model=list[TimelineEntry])
 @limiter.limit(settings.RATE_LIMIT_ENDPOINTS["contacts"][0])
 async def get_contact_timeline(
     request: Request,

@@ -9,7 +9,7 @@ replay-determinism).
 """
 
 from datetime import datetime
-from typing import Callable
+from collections.abc import Callable
 
 from app.schemas.contacts import Contact, ContactState, CurrentConsent
 from app.schemas.signals import Signal, SignalType

@@ -3,7 +3,7 @@
 import asyncio
 import re
 import time
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from jose import (
@@ -44,7 +44,7 @@ async def _fetch_jwks() -> dict[str, Any]:
         return response.json()
 
 
-async def _get_signing_key(kid: str) -> Optional[dict[str, Any]]:
+async def _get_signing_key(kid: str) -> dict[str, Any] | None:
     """Get the JWK matching `kid`, refreshing the cache if needed.
 
     Args:
@@ -77,7 +77,7 @@ async def _get_signing_key(kid: str) -> Optional[dict[str, Any]]:
     return next((key for key in _jwks_cache.get("keys", []) if key.get("kid") == kid), None)
 
 
-async def verify_supabase_token(token: str) -> Optional[dict[str, Any]]:
+async def verify_supabase_token(token: str) -> dict[str, Any] | None:
     """Verify a Supabase-issued user JWT and return its claims.
 
     Args:

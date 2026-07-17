@@ -8,10 +8,7 @@ its ``agent_name``, ``state_cls``, and ``tools``, and overrides ``_chat`` or
 """
 
 import asyncio
-from typing import (
-    AsyncGenerator,
-    Optional,
-)
+from collections.abc import AsyncGenerator
 from urllib.parse import quote_plus
 
 from langchain_core.callbacks import BaseCallbackHandler
@@ -97,8 +94,8 @@ class BaseChannelAgent:
         self.llm_service = llm_service
         self.llm_service.bind_tools(self.tools)
         self.tools_by_name = {tool.name: tool for tool in self.tools}
-        self._connection_pool: Optional[PostgresConnPool] = None
-        self._graph: Optional[CompiledStateGraph] = None
+        self._connection_pool: PostgresConnPool | None = None
+        self._graph: CompiledStateGraph | None = None
         logger.info(
             "channel_agent_initialized",
             agent_name=self.agent_name,
@@ -106,7 +103,7 @@ class BaseChannelAgent:
             environment=settings.ENVIRONMENT.value,
         )
 
-    async def _get_connection_pool(self) -> Optional[PostgresConnPool]:
+    async def _get_connection_pool(self) -> PostgresConnPool | None:
         """Get a PostgreSQL connection pool using environment-specific settings.
 
         Returns:
@@ -247,7 +244,7 @@ class BaseChannelAgent:
 
         return Command(update={"messages": outputs}, goto="chat")
 
-    async def _build_checkpointer(self) -> Optional[AsyncPostgresSaver]:
+    async def _build_checkpointer(self) -> AsyncPostgresSaver | None:
         """Get a ready-to-use checkpointer, or ``None`` in a degraded production pool."""
         connection_pool = await self._get_connection_pool()
         if connection_pool:
@@ -258,7 +255,7 @@ class BaseChannelAgent:
             raise Exception("Connection pool initialization failed")
         return None
 
-    async def create_graph(self) -> Optional[CompiledStateGraph]:
+    async def create_graph(self) -> CompiledStateGraph | None:
         """Create and compile the chat/tool-call graph for this channel.
 
         Returns:
@@ -322,8 +319,8 @@ class BaseChannelAgent:
         self,
         messages: list[BaseMessage],
         session_id: str,
-        user_id: Optional[str] = None,
-        metadata: Optional[dict] = None,
+        user_id: str | None = None,
+        metadata: dict | None = None,
     ) -> list[BaseMessage]:
         """Run the graph to completion and return the messages produced by this turn.
 
@@ -395,9 +392,9 @@ class BaseChannelAgent:
         self,
         messages: list[BaseMessage],
         session_id: str,
-        user_id: Optional[str] = None,
-        metadata: Optional[dict] = None,
-    ) -> AsyncGenerator[str, None]:
+        user_id: str | None = None,
+        metadata: dict | None = None,
+    ) -> AsyncGenerator[str]:
         """Stream response tokens from the LLM for this channel's graph.
 
         Args:

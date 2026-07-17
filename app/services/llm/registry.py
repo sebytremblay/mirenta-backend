@@ -2,8 +2,6 @@
 
 from typing import (
     Any,
-    Dict,
-    List,
 )
 
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -16,7 +14,7 @@ from app.core.config import (
 )
 from app.core.logging import logger
 
-_TOKEN_LIMIT: Dict[str, Any] = {"max_completion_tokens": settings.MAX_TOKENS}
+_TOKEN_LIMIT: dict[str, Any] = {"max_completion_tokens": settings.MAX_TOKENS}
 _API_KEY = SecretStr(settings.OPENAI_API_KEY)
 
 
@@ -27,7 +25,7 @@ class LLMRegistry:
     methods to retrieve them by name with optional argument overrides.
     """
 
-    LLMS: List[Dict[str, Any]] = [
+    LLMS: list[dict[str, Any]] = [
         {
             "name": "gpt-5-mini",
             "llm": ChatOpenAI(
@@ -99,7 +97,7 @@ class LLMRegistry:
         return model_entry["llm"]
 
     @classmethod
-    def get_all_names(cls) -> List[str]:
+    def get_all_names(cls) -> list[str]:
         """Return all registered model names in order.
 
         Returns:
@@ -108,7 +106,7 @@ class LLMRegistry:
         return [e["name"] for e in cls.LLMS]
 
     @classmethod
-    def get_model_at_index(cls, index: int) -> Dict[str, Any]:
+    def get_model_at_index(cls, index: int) -> dict[str, Any]:
         """Return the model entry at a specific index, wrapping to 0 if out of range.
 
         Args:

@@ -4,8 +4,6 @@ import html
 import re
 from typing import (
     Any,
-    Dict,
-    List,
 )
 
 
@@ -34,7 +32,7 @@ def sanitize_string(value: str) -> str:
     return value
 
 
-def sanitize_dict(data: Dict[str, Any]) -> Dict[str, Any]:
+def sanitize_dict(data: dict[str, Any]) -> dict[str, Any]:
     """Recursively sanitize all string values in a dictionary.
 
     Args:
@@ -56,7 +54,7 @@ def sanitize_dict(data: Dict[str, Any]) -> Dict[str, Any]:
     return sanitized
 
 
-def sanitize_list(data: List[Any]) -> List[Any]:
+def sanitize_list(data: list[Any]) -> list[Any]:
     """Recursively sanitize all string values in a list.
 
     Args:

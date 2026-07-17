@@ -17,7 +17,7 @@ full task -> interaction loop.
 """
 
 from datetime import datetime, timezone
-from typing import Any, List
+from typing import Any
 from uuid import UUID
 
 from fastapi import (
@@ -202,7 +202,7 @@ async def create_signal(
         raise HTTPException(status_code=400, detail=e.message)
 
 
-@router.get("/organizations/{org_id}/signals", response_model=List[Signal])
+@router.get("/organizations/{org_id}/signals", response_model=list[Signal])
 @limiter.limit(settings.RATE_LIMIT_ENDPOINTS["signals"][0])
 async def list_signals(
     request: Request,

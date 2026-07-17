@@ -6,7 +6,7 @@ available for experiments or a future LangGraph↔LiveKit LLM adapter; it is
 not invoked on the production call path.
 """
 
-from typing import Optional, override
+from typing import override
 
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -29,7 +29,7 @@ class VoiceAgent(BaseChannelAgent):
     tools = tools
 
     @override
-    async def create_graph(self) -> Optional[CompiledStateGraph]:
+    async def create_graph(self) -> CompiledStateGraph | None:
         """Build the compose <-> output_guardrails graph (see module docstring)."""
         if self._graph is None:
             try:

@@ -1,9 +1,9 @@
 """Custom middleware for cross-cutting concerns."""
 
 from typing import (
-    Callable,
     override,
 )
+from collections.abc import Callable
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
