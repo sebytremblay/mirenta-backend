@@ -88,6 +88,7 @@ class LLMService:
         messages: LanguageModelInput,
         model_name: Optional[str] = ...,
         response_format: None = ...,
+        tools: Optional[List] = ...,
         **model_kwargs: Any,
     ) -> BaseMessage: ...
 
@@ -98,6 +99,7 @@ class LLMService:
         model_name: Optional[str] = ...,
         *,
         response_format: Type[T],
+        tools: Optional[List] = ...,
         **model_kwargs: Any,
     ) -> T: ...
 
@@ -106,6 +108,7 @@ class LLMService:
         messages: LanguageModelInput,
         model_name: Optional[str] = None,
         response_format: Optional[Type[BaseModel]] = None,
+        tools: Optional[List] = None,
         **model_kwargs: Any,
     ) -> Union[BaseMessage, BaseModel]:
         """Call the LLM with retries and circular fallback.
@@ -117,6 +120,12 @@ class LLMService:
                 provided the call chains ``.with_structured_output(schema)``
                 and returns a validated instance of that schema instead of a
                 raw ``BaseMessage``.
+            tools: Per-call tools to bind for this invocation only. Unlike
+                ``bind_tools`` (which mutates the shared default model), these
+                are bound to a **fresh** per-attempt instance via the one-off
+                path, so ``self._llm`` is never touched and concurrent callers
+                cannot clobber each other's tool sets. Use this for
+                request-scoped tools whose closures carry per-contact context.
             **model_kwargs: Extra kwargs forwarded to ``LLMRegistry.get`` when
                 constructing a one-off model instance (e.g. ``temperature``,
                 ``max_tokens``, ``reasoning``).
@@ -131,7 +140,7 @@ class LLMService:
         """
         try:
             return await asyncio.wait_for(
-                self._call_with_fallback(messages, model_name, response_format, model_kwargs),
+                self._call_with_fallback(messages, model_name, response_format, tools, model_kwargs),
                 timeout=settings.LLM_TOTAL_TIMEOUT,
             )
         except asyncio.TimeoutError:
@@ -241,21 +250,29 @@ class LLMService:
         messages: LanguageModelInput,
         model_name: Optional[str],
         response_format: Optional[Type[BaseModel]],
+        tools: Optional[List],
         model_kwargs: dict,
     ) -> Union[BaseMessage, BaseModel]:
         """Build path-specific strategies and delegate to the shared fallback loop.
 
-        One-off path (any override set):
-            ``get_target`` builds a fresh registry instance each attempt.
-            ``advance`` increments a local index — ``self._llm`` is never touched.
+        One-off path (any override set, including ``tools``):
+            ``get_target`` builds a fresh registry instance each attempt and
+            binds per-call ``tools`` onto it. ``advance`` increments a local
+            index — ``self._llm`` is never touched, so concurrent default-path
+            calls (and other one-off calls) are unaffected.
 
         Default path (no overrides):
-            ``get_target`` returns ``self._llm`` (tool-bound).
+            ``get_target`` returns ``self._llm`` (tool-bound at ``__init__``).
             ``advance`` calls ``_switch_to_next_model`` so bindings persist.
         """
 
         def _override_target(idx: int) -> Any:
-            base = LLMRegistry.get(LLMRegistry.LLMS[idx]["name"], **model_kwargs)
+            base: Any = LLMRegistry.get(LLMRegistry.LLMS[idx]["name"], **model_kwargs)
+            # bind_tools returns a NEW runnable; the shared registry instance and
+            # self._llm are left untouched, which is what keeps per-call tools
+            # concurrency-safe.
+            if tools:
+                base = base.bind_tools(tools)
             return base.with_structured_output(response_format) if response_format else base
 
         def _default_target(_: int) -> Any:
@@ -264,7 +281,7 @@ class LLMService:
         def _default_advance(_: int) -> Optional[int]:
             return self._current_model_index if self._switch_to_next_model() else None
 
-        if model_name or response_format or model_kwargs:
+        if model_name or response_format or model_kwargs or tools:
             all_names = LLMRegistry.get_all_names()
             if model_name and model_name not in all_names:
                 logger.error("requested_model_not_found", model_name=model_name)
