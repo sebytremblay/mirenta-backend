@@ -1,0 +1,6 @@
+# app/services/ — domain helpers + external clients
+
+- `clients/` — thin wrappers around each external SDK (Supabase, Twilio, Temporal, LiveKit). Go here for connection/auth details, retry policies, and provisioning logic.
+- `llm/` — the LLM model registry and the service wrapping it with retries + circular fallback across models. Go here for anything about which model gets called, in what order, on failure.
+- `knowledge.py` — `fetch_active_knowledge`/`format_knowledge_for_prompt`: loads an org's active `knowledge` rows (service-role client, capped at `MAX_KNOWLEDGE_ENTRIES=40`) and renders them into the compact block injected into both the SMS compose node and the voice bootstrap response. Single shared source for KB grounding across both channels.
+- `sms_interaction.py` — org/contact resolution by phone (`find_org_by_phone`, `get_or_create_contact_by_phone` — also used by the voice webhook, not just SMS) and the STOP/START compliance fast-path (`handle_sms_keyword_fastpath`). This fast-path is a webhook-level short-circuit: it never creates a `Task`, never touches an LLM, and acks within the request — it's not part of the Signal → Decision → Task → Interaction loop that everything else in the agent runtime goes through.
