@@ -19,8 +19,9 @@ Two axes decide where a tool shows up:
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable, Optional, Type, TypeVar, cast
+from typing import Any, TypeVar, cast
 
 from pydantic import BaseModel
 
@@ -30,7 +31,7 @@ from app.core.logging import logger
 # A tool body: (context, validated args) -> user-facing result string. The args
 # parameter is ``Any`` rather than ``BaseModel`` so a body may annotate its own
 # concrete args model without tripping parameter contravariance at registration.
-ToolFn = Callable[[ToolContext, Any], Awaitable[str]]
+type ToolFn = Callable[[ToolContext, Any], Awaitable[str]]
 
 # Preserves the concrete decorated-function type through ``register`` so callers
 # (and tests) still see a ``Coroutine`` return, not the erased ``ToolFn``.
@@ -43,9 +44,9 @@ class AgentTool:
 
     name: str
     description: str
-    args_model: Type[BaseModel]
+    args_model: type[BaseModel]
     fn: ToolFn
-    channels: Optional[frozenset[str]] = None  # None => available on all channels
+    channels: frozenset[str] | None = None  # None => available on all channels
     durable: bool = False  # True => side effect must route through Temporal
     tags: frozenset[str] = frozenset()
 
@@ -73,10 +74,10 @@ def register(
     *,
     name: str,
     description: str,
-    args_model: Type[BaseModel],
-    channels: Optional[list[str]] = None,
+    args_model: type[BaseModel],
+    channels: list[str] | None = None,
     durable: bool = False,
-    tags: Optional[list[str]] = None,
+    tags: list[str] | None = None,
 ) -> Callable[[F], F]:
     """Register a tool body under ``name`` and return it unchanged.
 
@@ -123,8 +124,8 @@ def get_tool(name: str) -> AgentTool:
 
 def get_tools(
     *,
-    channel: Optional[str] = None,
-    tags: Optional[list[str]] = None,
+    channel: str | None = None,
+    tags: list[str] | None = None,
 ) -> list[AgentTool]:
     """Return registered tools filtered by channel applicability and tags.
 

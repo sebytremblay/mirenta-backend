@@ -51,8 +51,17 @@ class _FakeBaseModel:
 
 
 class _NamedTool:
+    """A callable stand-in for a bound tool.
+
+    Being callable satisfies the ``Callable`` arm of ``ToolSpec`` so these
+    fakes type-check as real tools; ``_FakeBoundModel`` reads ``.name`` off them.
+    """
+
     def __init__(self, name: str) -> None:
         self.name = name
+
+    def __call__(self) -> None:  # pragma: no cover - never invoked
+        raise NotImplementedError
 
 
 def _service_with_fake_registry() -> tuple[LLMService, _FakeBaseModel]:

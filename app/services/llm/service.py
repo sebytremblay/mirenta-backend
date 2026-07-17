@@ -2,19 +2,12 @@
 
 import asyncio
 import logging
-from typing import (
-    Any,
-    Callable,
-    List,
-    Optional,
-    Type,
-    TypeVar,
-    Union,
-    overload,
-)
+from collections.abc import Callable, Sequence
+from typing import Any, TypeVar, overload
 
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import BaseMessage
+from langchain_core.tools import BaseTool
 from openai import (
     APIError,
     APITimeoutError,
@@ -36,6 +29,18 @@ from app.services.llm.registry import LLMRegistry
 
 T = TypeVar("T", bound=BaseModel)
 
+# The four forms ``BaseChatModel.bind_tools`` accepts for a single tool. Named
+# individually so ``ToolSpec`` reads as prose rather than a wall of generics.
+type RawToolSchema = dict[str, Any]  # an OpenAI-style function-schema dict
+type ToolArgsModel = type  # a Pydantic model / class describing the tool's args
+type ToolFunction = Callable[..., Any]  # a plain callable inferred into a tool
+# (BaseTool is the fourth form: a ready-made LangChain tool.)
+
+# One bindable tool in any of the forms above. Aliased here so every ``tools=``
+# parameter across the service shares one first-class definition instead of a
+# bare ``list``.
+type ToolSpec = RawToolSchema | ToolArgsModel | ToolFunction | BaseTool
+
 
 class LLMService:
     """Service for managing LLM calls with retries and circular fallback.
@@ -55,7 +60,7 @@ class LLMService:
         """Initialize the LLM service with the configured default model."""
         self._llm: Any = None  # BaseChatModel pre-bind_tools, Runnable after
         self._current_model_index: int = 0
-        self._bound_tools: List = []
+        self._bound_tools: list[ToolSpec] = []
 
         all_names = LLMRegistry.get_all_names()
         try:
@@ -86,9 +91,9 @@ class LLMService:
     async def call(
         self,
         messages: LanguageModelInput,
-        model_name: Optional[str] = ...,
+        model_name: str | None = ...,
         response_format: None = ...,
-        tools: Optional[List] = ...,
+        tools: Sequence[ToolSpec] | None = ...,
         **model_kwargs: Any,
     ) -> BaseMessage: ...
 
@@ -96,21 +101,21 @@ class LLMService:
     async def call(
         self,
         messages: LanguageModelInput,
-        model_name: Optional[str] = ...,
+        model_name: str | None = ...,
         *,
-        response_format: Type[T],
-        tools: Optional[List] = ...,
+        response_format: type[T],
+        tools: Sequence[ToolSpec] | None = ...,
         **model_kwargs: Any,
     ) -> T: ...
 
     async def call(
         self,
         messages: LanguageModelInput,
-        model_name: Optional[str] = None,
-        response_format: Optional[Type[BaseModel]] = None,
-        tools: Optional[List] = None,
+        model_name: str | None = None,
+        response_format: type[BaseModel] | None = None,
+        tools: Sequence[ToolSpec] | None = None,
         **model_kwargs: Any,
-    ) -> Union[BaseMessage, BaseModel]:
+    ) -> BaseMessage | BaseModel:
         """Call the LLM with retries and circular fallback.
 
         Args:
@@ -158,17 +163,17 @@ class LLMService:
         """
         return self._llm
 
-    def bind_tools(self, tools: List) -> "LLMService":
+    def bind_tools(self, tools: Sequence[ToolSpec]) -> "LLMService":
         """Bind tools to the default LLM instance.
 
         Args:
-            tools: List of tools to bind.
+            tools: Tools to bind, in any form ``bind_tools`` accepts.
 
         Returns:
             Self for method chaining.
         """
         if self._llm:
-            self._bound_tools = tools
+            self._bound_tools = list(tools)
             self._llm = self._llm.bind_tools(tools)
             logger.debug("tools_bound_to_llm", tool_count=len(tools))
         return self
@@ -248,11 +253,11 @@ class LLMService:
     async def _call_with_fallback(
         self,
         messages: LanguageModelInput,
-        model_name: Optional[str],
-        response_format: Optional[Type[BaseModel]],
-        tools: Optional[List],
+        model_name: str | None,
+        response_format: type[BaseModel] | None,
+        tools: Sequence[ToolSpec] | None,
         model_kwargs: dict,
-    ) -> Union[BaseMessage, BaseModel]:
+    ) -> BaseMessage | BaseModel:
         """Build path-specific strategies and delegate to the shared fallback loop.
 
         One-off path (any override set, including ``tools``):
@@ -278,7 +283,7 @@ class LLMService:
         def _default_target(_: int) -> Any:
             return self._llm
 
-        def _default_advance(_: int) -> Optional[int]:
+        def _default_advance(_: int) -> int | None:
             return self._current_model_index if self._switch_to_next_model() else None
 
         if model_name or response_format or model_kwargs or tools:
@@ -293,10 +298,10 @@ class LLMService:
             total = len(LLMRegistry.LLMS)
             get_target: Callable[[int], Any] = _override_target
 
-            def _override_advance(idx: int) -> Optional[int]:
+            def _override_advance(idx: int) -> int | None:
                 return (idx + 1) % total
 
-            advance: Callable[[int], Optional[int]] = _override_advance
+            advance: Callable[[int], int | None] = _override_advance
         else:
             start = self._current_model_index
             get_target = _default_target
@@ -309,7 +314,7 @@ class LLMService:
         messages: LanguageModelInput,
         start: int,
         get_target: Callable[[int], Any],
-        advance: Callable[[int], Optional[int]],
+        advance: Callable[[int], int | None],
     ) -> Any:
         """Shared fallback loop — try each model in turn until one succeeds.
 
@@ -328,7 +333,7 @@ class LLMService:
         total = len(LLMRegistry.LLMS)
         current = start
         models_tried = 0
-        last_error: Optional[Exception] = None
+        last_error: Exception | None = None
 
         for models_tried in range(1, total + 1):
             current_name = LLMRegistry.LLMS[current]["name"]
