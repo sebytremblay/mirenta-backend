@@ -63,6 +63,7 @@ async def run_interaction(input: RunInteractionInput) -> RunInteractionResult:
         [HumanMessage(content=body)],
         session_id=thread_id,
         metadata={
+            "org_id": str(input.task.org_id),
             "contact_id": str(input.task.contact_id),
             "task_id": str(input.task.id),
             "task_goal": goal,
