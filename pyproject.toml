@@ -101,8 +101,13 @@ line-length = 119
 exclude = ["migrations", "*.ipynb", "venv"]
 
 [tool.ruff.lint]
-# Enable flake8-bugbear (`B`) rules and docstring (`D`) rules
-select = ["E", "F", "B", "ERA", "D"]
+# Enable flake8-bugbear (`B`), docstring (`D`), and pep585/604 type-hint
+# modernization (`UP006`/`UP007`/`UP035`) rules. The `UP` subset keeps
+# annotations on the built-in-generic (`list[str]`) and `X | None` union form
+# the codebase standardized on; the datetime and misc `UP` rules are excluded.
+# (`UP045`, `Optional[X]` -> `X | None`, is still preview-only in this ruff and
+# would emit a no-op warning, so it stays out until it stabilizes.)
+select = ["E", "F", "B", "ERA", "D", "UP006", "UP007", "UP035"]
 # Never enforce `E501` (line length violations).
 ignore = ["E501", "D203", "D213", "B904", "B008"]
 # Avoid trying to fix flake8-bugbear (`B`) violations.
