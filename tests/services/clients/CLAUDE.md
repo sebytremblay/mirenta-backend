@@ -1,0 +1,8 @@
+# tests/services/clients/
+
+Run just this subtree: `uv run --group test pytest tests/services/clients/`
+
+Both files exercise real logic (TwiML string generation, Fernet encrypt/decrypt roundtrip, FastAPI route wiring via `TestClient(app)`) while mocking only the network boundary — the actual Twilio SDK client and Supabase/service-role calls. Nothing here hits a live Twilio account, a live LiveKit deployment, or a live database.
+
+- `test_twilio_client.py` — `app/services/clients/twilio_client.py`. `get_twilio_client` itself is exercised for real (subaccount vs. parent credential branching); the underlying `twilio.rest.Client` is mocked via `MagicMock`/`AsyncMock` (see `_make_fake_sub_client`/`_make_fake_parent`). Covers the full org-provisioning flow (subaccount create → number purchase → messaging service create), TwiML generation (`generate_voice_dial_twiml`/`generate_voice_reject_twiml`, including header URL-encoding), and the real `Fernet`-based `encrypt_twilio_auth_token`/`decrypt_twilio_auth_token` roundtrip (a real key is generated per test, not mocked).
+- `test_livekit_voice.py` — despite the filename, this covers the Twilio voice webhook (`app/api/routers/voice.py::receive_twilio_call`) and the LiveKit bootstrap endpoint's request binding, not the LiveKit SDK itself. Uses `TestClient(app)` for real ASGI routing/auth, and patches out `get_service_role_client`, `validate_twilio_signature`, `find_org_by_phone`, `get_or_create_contact_by_phone`, `execute_query`, `get_current_consent`, and `mark_signal_status` at the router-module level. Asserts on the actual TwiML returned (`<Dial><Sip>` when `LIVEKIT_SIP_URI` is configured, `<Hangup>` reject otherwise) and that the corresponding `signals.status` transition (`delivered` vs. `ignored`) fires.

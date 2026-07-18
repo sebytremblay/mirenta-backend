@@ -1,0 +1,9 @@
+# app/core/ — cross-cutting infrastructure
+
+- `config.py` — `Settings` is a plain class (not Pydantic Settings, despite AGENTS.md's "Configuration Management" section suggesting otherwise), populated straight from `os.getenv` in `__init__`. Loads `.env.{environment}[.local]` / `.env[.local]` in that priority order (`load_env_file`), then applies environment-specific overrides (`apply_environment_settings`) for any var not explicitly set. `RATE_LIMIT_ENDPOINTS` is a dict built from `default_endpoints`, overridable per-key via `RATE_LIMIT_<KEY>` env vars — add a new key here (and use it in a router) rather than inventing a new limiter.
+- `limiter.py` — the shared `slowapi.Limiter` instance (in-memory, keyed by remote address) every route decorator references.
+- `logging.py` — structlog setup; also owns a parallel JSONL file handler (`JsonlFileHandler`, one file per day under `settings.LOG_DIR`) in addition to stdout. `bind_context`/`clear_context` back the per-request context vars — `LoggingContextMiddleware` (below) clears them, `get_current_user` binds `user_id`.
+- `middleware.py` — `LoggingContextMiddleware`: clears structlog's request-scoped context before *and* after each request so context never leaks across requests sharing a worker.
+- `observability.py` — Langfuse init (`langfuse_init`, called once at import time in `app/main.py`) and the shared `langfuse_callback_handler` used by the LangGraph agents' `RunnableConfig.callbacks`.
+- `langgraph/` — the SMS/voice LangGraph subagents (state, base class, per-channel graphs, nodes, tools). Go here for anything about the compose/guardrail loop.
+- `prompts/` — Jinja2 templates (`sms.md`, `voice.md`, `voice_greeting.md`) rendered by `prompts/__init__.py`'s `load_sms_prompt`/`load_voice_prompt`/`load_voice_greeting`. `load_system_prompt` is a backward-compat alias for `load_sms_prompt` — don't add a second alias, update call sites instead if you rename it.

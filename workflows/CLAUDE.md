@@ -1,0 +1,27 @@
+# workflows/
+
+## contact_loop.py — ContactLoopWorkflow
+
+ID scheme: `f"contact-loop:{contact_id}"` — one per contact, started via signal-with-start (see `activities/logging.py`'s `emit_interaction_result_signal`, and the SMS webhook path that isn't in this subtree).
+
+- **Signal**: `signal_received(envelope: SignalEnvelope)` just appends to an in-memory `self._pending` list — no processing happens in the signal handler itself.
+- **Main loop** (`run`): on startup, calls `contact_store.set_contact_workflow_id` once, then loops `workflow.wait_condition(lambda: bool(self._pending))` → pop one envelope → `_handle_signal` → increment `self._processed`. No timers live in this workflow directly; all durable sleeping happens in the child `TaskExecutionWorkflow`.
+- **Continue-as-new**: triggers at `MAX_SIGNALS_PER_RUN = 200` processed signals, but only once `self._pending` is empty (won't cut off a signal it's already mid-processing-queue for). No workflow state is carried forward across continue-as-new beyond `input` (contact_id/org_id) — that's intentional; everything durable lives in `contact_state`/`tasks`/`interactions` rows, not workflow memory.
+- **`_handle_signal`**: fetches `contact`, `contact_state`, `consent` via `activities/contact_store.py`, calls `decision.engine.evaluate(now=workflow.now())` (never wall-clock — replay-determinism), then in order: (1) `update_contact_state` if there's a patch, (2) `cancel_scheduled_follow_ups` if the decision set that flag, (3) `mark_signal_processed`, (4) for each `ProposedTask` in the decision output — `insert_task` then `start_child_workflow("TaskExecutionWorkflow", ..., id=f"task-exec:{task.id}", parent_close_policy=ParentClosePolicy.ABANDON)`. `ABANDON` means a task's execution workflow outlives the parent's continue-as-new/completion — task delivery doesn't get orphaned by contact-loop churn.
+- All activity calls use `ACTIVITY_TIMEOUT = 10s` and `DEFAULT_RETRY_POLICY = RetryPolicy(maximum_attempts=5)`.
+
+## task_execution.py — TaskExecutionWorkflow
+
+ID scheme: `f"task-exec:{task.id}"`, started as a child of `ContactLoopWorkflow` per proposed task.
+
+- **The actual durable timer**: `await workflow.sleep(delay_seconds)` where `delay_seconds = (task.scheduled_for - workflow.now()).total_seconds()` — this is what makes a 3-day follow-up survive a worker restart/deploy, not a Temporal cron or retry policy.
+- **Re-fetches `task` after the sleep**, not before — a `cancel_scheduled_follow_ups` call from a newer inbound signal (see contact_loop.py above) can flip `task.status` to `"canceled"` while this workflow was asleep; it checks that and returns early with no further activity calls.
+- **Re-runs `run_hard_guardrails` at execution time** (`workflow.now()`, not the emission-time value) — this is the "preconditions re-checked at execution" AGENTS.md refers to. On denial: `update_task_status(status="skipped_guardrail", guardrail_result={"denials": [...]})` and return.
+- **Only `task.type == "sms"` is wired**: any other type gets `update_task_status(status="failed", error="unsupported task type in this pass")` and returns — no channel dispatch table exists yet.
+- **Happy path call chain**: `update_task_status(status="running", mark_started=True)` → `contact_store.get_organization` → `activities/interactions.py:run_interaction` (the LangGraph hop, budget `INTERACTION_TIMEOUT=90s`, `retry_policy=RetryPolicy(maximum_attempts=task.max_attempts)` — this is the one activity whose retry count is task-controlled, not the workflow default) → if `result.reply` and the contact/org have phone info, `activities/channels.py:send_sms_message` (own retry policy, `maximum_attempts=3`) → `logging_activities.log_interaction` → `logging_activities.emit_interaction_result_signal` (this is what re-enters `ContactLoopWorkflow` via signal-with-start with a new `interaction_result` signal) → `update_task_status(status="completed", mark_completed=True)`.
+- **Outcome derivation is a stub**: `outcome = "handoff_human" if result.guardrail_escalated else "progressed"` — there's no real outcome-classification node on the SMS graph yet (comment in the file flags this as future work), so `interaction_result` signals almost always carry `"progressed"` today, which is why `decide_on_interaction_result` in `decision/rules.py` treats anything not in `TERMINAL_OUTCOMES` as "schedule a follow-up."
+- All activity calls default to `ACTIVITY_TIMEOUT = 30s` / `DEFAULT_RETRY_POLICY = RetryPolicy(maximum_attempts=5)` except where noted above.
+
+## models.py
+
+`SignalEnvelope{signal, channel}` is the payload for `ContactLoopWorkflow.signal_received` — carries the full `Signal` (not just an ID) so the workflow can run the decision engine without a round-trip fetch. `channel` is decision-engine context only (currently always `"sms"`); it isn't derived from `signal` itself. Also imported by `activities/logging.py` to construct the signal-with-start payload — that's the one place outside `workflows/` that imports from here.
