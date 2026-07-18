@@ -19,6 +19,7 @@ SignalType = Literal[
     "inbound_sms",
     "portal_event",
     "interaction_result",
+    "meeting_scheduled",
     "manual",
 ]
 SignalStatus = Literal["received", "delivered", "processed", "ignored", "failed"]

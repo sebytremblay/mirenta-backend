@@ -23,8 +23,10 @@ from postgrest.exceptions import APIError
 from activities.contact_store import GetConsentInput, get_current_consent
 from activities.logging import (
     EmitInteractionResultSignalInput,
+    EmitMeetingScheduledSignalInput,
     LogInteractionInput,
     emit_interaction_result_signal,
+    emit_meeting_scheduled_signal,
     log_interaction,
 )
 from app.api.twilio_utils import load_org_twilio_auth_token, mark_signal_status, validate_twilio_signature
@@ -402,6 +404,15 @@ async def voice_schedule_meeting(
         location=body.location,
     )
 
+    await _emit_meeting_scheduled(
+        org_id=body.org_id,
+        contact_id=body.contact_id,
+        start=booked.start,
+        end=booked.end,
+        location=body.location,
+        event_id=booked.event_id,
+    )
+
     logger.info(
         "voice_meeting_scheduled",
         org_id=body.org_id,
@@ -469,3 +480,34 @@ async def _send_confirmation_sms(
         logger.exception("voice_confirmation_sms_failed", contact_id=contact_id)
         return False
     return True
+
+
+async def _emit_meeting_scheduled(
+    *,
+    org_id: str,
+    contact_id: str,
+    start: datetime,
+    end: datetime,
+    location: str | None,
+    event_id: str,
+) -> None:
+    """Re-enter the contact's loop so the engine can schedule the post-meeting follow-up.
+
+    Best-effort: the booking already succeeded and the caller was texted, so a
+    Temporal delivery failure here must not fail the scheduling request — it is
+    logged and the follow-up is simply not scheduled. Mirrors the same
+    best-effort stance as `_send_confirmation_sms`.
+    """
+    try:
+        await emit_meeting_scheduled_signal(
+            EmitMeetingScheduledSignalInput(
+                org_id=org_id,
+                contact_id=contact_id,
+                meeting_start=start.isoformat(),
+                meeting_end=end.isoformat(),
+                meeting_location=location,
+                event_id=event_id,
+            )
+        )
+    except Exception:
+        logger.exception("voice_meeting_scheduled_signal_failed", contact_id=contact_id)

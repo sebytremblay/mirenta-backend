@@ -23,6 +23,7 @@ RuleHandler = Callable[..., DecisionOutput]
 SIGNAL_HANDLERS: dict[SignalType, RuleHandler] = {
     "inbound_sms": rules.decide_on_inbound_sms,
     "interaction_result": rules.decide_on_interaction_result,
+    "meeting_scheduled": rules.decide_on_meeting_scheduled,
 }
 
 

@@ -25,6 +25,11 @@ GOAL_INSTRUCTIONS = {
         "The contact has not replied for a few days. Send a brief, polite follow-up. "
         "Offer to help with questions or booking if relevant; do not pressure them."
     ),
+    "post_meeting_followup": (
+        "The contact just finished a tour or meeting with the organization. Send a warm, "
+        "brief thank-you for coming in. Invite any questions and offer next steps if they "
+        "are interested; keep it light and do not pressure them."
+    ),
 }
 
 

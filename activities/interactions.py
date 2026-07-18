@@ -23,6 +23,27 @@ FOLLOW_UP_HUMAN_PROMPT = (
 )
 
 
+def _post_meeting_human_prompt(payload: dict) -> str:
+    """Synthetic human turn for the post-meeting thank-you (no inbound body).
+
+    Folds the booked meeting's time and location from the signal payload into a
+    system note so the model can reference the specific tour it is thanking the
+    contact for, rather than drafting a generic message.
+    """
+    meeting_start = payload.get("meeting_start")
+    meeting_location = payload.get("meeting_location")
+    details: list[str] = []
+    if meeting_start:
+        details.append(f"scheduled start {meeting_start}")
+    if meeting_location:
+        details.append(f"location {meeting_location}")
+    suffix = f" Meeting details: {', '.join(details)}." if details else ""
+    return (
+        "[System note: the contact just finished their tour/meeting and there is no new inbound "
+        f"message. Draft the scheduled post-meeting thank-you based on the prior conversation.{suffix}]"
+    )
+
+
 class RunInteractionInput(BaseModel):
     """Arguments to `run_interaction`."""
 
@@ -54,6 +75,8 @@ async def run_interaction(input: RunInteractionInput) -> RunInteractionResult:
     body = input.task.payload.get("inbound_body", "")
     if not body and goal == "follow_up_no_response":
         body = FOLLOW_UP_HUMAN_PROMPT
+    elif not body and goal == "post_meeting_followup":
+        body = _post_meeting_human_prompt(input.task.payload)
 
     knowledge_entries = await fetch_active_knowledge(input.task.org_id)
     knowledge = format_knowledge_for_prompt(knowledge_entries)
