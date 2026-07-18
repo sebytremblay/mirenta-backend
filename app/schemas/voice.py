@@ -46,3 +46,53 @@ class VoiceSessionFinalizeResponse(BaseModel):
 
     interaction_id: str
     signal_id: str
+
+
+class VoiceAvailabilityRequest(BaseModel):
+    """Agent asks for the org's open calendar slots during a live call."""
+
+    org_id: str
+    contact_id: str
+    weekdays: list[str] = Field(
+        default_factory=list,
+        description="Optional weekday names to restrict to (e.g. ['monday', 'wednesday']).",
+    )
+
+
+class VoiceSlot(BaseModel):
+    """One open bookable slot, with a spoken label and machine-precise bounds."""
+
+    start: str = Field(..., description="Slot start, ISO 8601 with timezone offset")
+    end: str = Field(..., description="Slot end, ISO 8601 with timezone offset")
+    label: str = Field(..., description="Spoken-friendly label, e.g. 'Monday, July 21 at 9:00 AM'")
+
+
+class VoiceAvailabilityResponse(BaseModel):
+    """Open slots for the agent to offer, or a not-connected signal."""
+
+    connected: bool = Field(..., description="False when the org has not linked Google Calendar")
+    timezone: str = Field(..., description="IANA timezone the slots are expressed in")
+    slots: list[VoiceSlot] = Field(default_factory=list)
+
+
+class VoiceScheduleRequest(BaseModel):
+    """Agent books a chosen slot and asks Mirenta to text the caller."""
+
+    org_id: str
+    contact_id: str
+    start: str = Field(..., description="Chosen slot start, ISO 8601 (copied from an availability slot)")
+    end: str = Field(..., description="Chosen slot end, ISO 8601 (copied from an availability slot)")
+    location: str | None = Field(default=None, description="Meeting location as free text (e.g. a listing address)")
+    summary: str | None = Field(default=None, description="Optional event title override")
+    notes: str | None = Field(default=None, description="Optional extra context for the event description")
+
+
+class VoiceScheduleResponse(BaseModel):
+    """Result of a booking attempt + whether the confirmation text was sent."""
+
+    booked: bool = Field(..., description="True when the calendar event was created")
+    connected: bool = Field(..., description="False when the org has not linked Google Calendar")
+    start: str | None = Field(default=None, description="Confirmed start, ISO 8601")
+    end: str | None = Field(default=None, description="Confirmed end, ISO 8601")
+    sms_sent: bool = Field(default=False, description="Whether a confirmation SMS reached the caller")
+    label: str | None = Field(default=None, description="Spoken-friendly confirmation label")

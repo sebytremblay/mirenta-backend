@@ -37,6 +37,7 @@ from livekit.rtc import ParticipantKind, RemoteParticipant
 
 from call_context import infer_outcome, merge_call_context
 from mirenta_client import MirentaVoiceClient
+from scheduling_tools import build_scheduling_tools
 
 logger = logging.getLogger("mirenta-voice")
 
@@ -125,8 +126,8 @@ def _build_agent_session() -> AgentSession:
 class MirentaVoiceAssistant(Agent):
     """Phone agent whose instructions are loaded from Mirenta bootstrap."""
 
-    def __init__(self, *, instructions: str, greeting: str) -> None:
-        super().__init__(instructions=instructions)
+    def __init__(self, *, instructions: str, greeting: str, tools: list | None = None) -> None:
+        super().__init__(instructions=instructions, tools=tools or [])
         self._greeting = greeting
 
     async def on_enter(self) -> None:
@@ -249,10 +250,17 @@ async def entrypoint(ctx: JobContext) -> None:
 
     ctx.add_shutdown_callback(finalize_call)
 
+    scheduling_tools = build_scheduling_tools(
+        mirenta=mirenta,
+        org_id=org_id,
+        contact_id=contact_id,
+    )
+
     await session.start(
         agent=MirentaVoiceAssistant(
             instructions=str(bootstrap["instructions"]),
             greeting=str(bootstrap["greeting"]),
+            tools=scheduling_tools,
         ),
         room=ctx.room,
         room_options=room_io.RoomOptions(audio_input=True, audio_output=True),

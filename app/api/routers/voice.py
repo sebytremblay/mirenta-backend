@@ -14,6 +14,7 @@ and WebRTC / console sessions that supply Mirenta correlation metadata.
 """
 
 import secrets
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request, Response, status
@@ -26,7 +27,7 @@ from activities.logging import (
     emit_interaction_result_signal,
     log_interaction,
 )
-from app.api.twilio_utils import mark_signal_status, validate_twilio_signature
+from app.api.twilio_utils import load_org_twilio_auth_token, mark_signal_status, validate_twilio_signature
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import logger
@@ -34,13 +35,25 @@ from app.core.prompts import load_voice_greeting, load_voice_prompt
 from app.schemas.contacts import Contact
 from app.schemas.signals import Signal
 from app.schemas.voice import (
+    VoiceAvailabilityRequest,
+    VoiceAvailabilityResponse,
+    VoiceScheduleRequest,
+    VoiceScheduleResponse,
     VoiceSessionBootstrapRequest,
     VoiceSessionBootstrapResponse,
     VoiceSessionFinalizeRequest,
     VoiceSessionFinalizeResponse,
+    VoiceSlot,
+)
+from app.services.calendar import (
+    CalendarNotConnectedError,
+    book_meeting,
+    format_slot_label,
+    get_availability,
+    parse_weekdays,
 )
 from app.services.clients.supabase_client import execute_query, get_service_role_client
-from app.services.clients.twilio_client import generate_voice_dial_twiml, generate_voice_reject_twiml
+from app.services.clients.twilio_client import generate_voice_dial_twiml, generate_voice_reject_twiml, send_sms
 from app.services.knowledge import fetch_active_knowledge, format_knowledge_for_prompt
 from app.services.sms_interaction import find_org_by_phone, get_or_create_contact_by_phone
 from decision.guardrails import check_consent, check_dnc
@@ -256,3 +269,203 @@ async def finalize_voice_session(
         outcome=outcome,
     )
     return VoiceSessionFinalizeResponse(interaction_id=interaction_id, signal_id=result_signal_id)
+
+
+async def _load_org_for_scheduling(client: Any, org_id: str) -> dict[str, Any]:
+    """Load the org fields needed to schedule + text a caller.
+
+    Raises:
+        HTTPException: 404 when the org row does not exist.
+    """
+    response = await execute_query(
+        client.table("organizations")
+        .select("name, timezone, phone, twilio_messaging_service_sid, twilio_subaccount_sid")
+        .eq("id", org_id)
+        .maybe_single()
+    )
+    row = getattr(response, "data", None)
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="organization_not_found")
+    return row
+
+
+@router.post("/internal/voice/availability", response_model=VoiceAvailabilityResponse)
+@limiter.limit(settings.RATE_LIMIT_ENDPOINTS["voice_internal"][0])
+async def voice_availability(
+    request: Request,
+    body: VoiceAvailabilityRequest,
+    x_mirenta_internal_key: str | None = Header(default=None),
+) -> VoiceAvailabilityResponse:
+    """Return open calendar slots for the agent to offer on a live call.
+
+    Reads the org's connected Google Calendar free/busy and computes short,
+    business-hours slots in the org's timezone. An optional ``weekdays`` list
+    lets the agent honor "what days are you looking for?" without a second
+    round-trip. Returns ``connected=False`` (not an error) when the org has not
+    linked Google, so the agent can gracefully offer to take a message instead.
+
+    Args:
+        request: FastAPI request (required by slowapi).
+        body: Org/contact ids + optional weekday filter.
+        x_mirenta_internal_key: Shared secret from the LiveKit Cloud agent.
+
+    Returns:
+        VoiceAvailabilityResponse: Open slots with spoken labels, or not-connected.
+    """
+    _ = request
+    _require_internal_api_key(x_mirenta_internal_key)
+    client = await get_service_role_client()
+    org = await _load_org_for_scheduling(client, body.org_id)
+    tz_name = str(org.get("timezone") or "America/Los_Angeles")
+
+    try:
+        slots = await get_availability(
+            org_id=body.org_id,
+            timezone=tz_name,
+            now=datetime.now(timezone.utc),
+            day_filter=parse_weekdays(body.weekdays),
+        )
+    except CalendarNotConnectedError:
+        logger.info("voice_availability_not_connected", org_id=body.org_id)
+        return VoiceAvailabilityResponse(connected=False, timezone=tz_name, slots=[])
+
+    return VoiceAvailabilityResponse(
+        connected=True,
+        timezone=tz_name,
+        slots=[
+            VoiceSlot(start=slot.start.isoformat(), end=slot.end.isoformat(), label=format_slot_label(slot.start))
+            for slot in slots
+        ],
+    )
+
+
+@router.post("/internal/voice/schedule-meeting", response_model=VoiceScheduleResponse)
+@limiter.limit(settings.RATE_LIMIT_ENDPOINTS["voice_internal"][0])
+async def voice_schedule_meeting(
+    request: Request,
+    body: VoiceScheduleRequest,
+    x_mirenta_internal_key: str | None = Header(default=None),
+) -> VoiceScheduleResponse:
+    """Book a chosen slot on the org's calendar and text the caller a confirmation.
+
+    The single scheduling action: it writes the calendar event, then sends an
+    SMS to the caller (resolved from ``contact_id``, never plumbed through SIP)
+    with the confirmed time and free-text location. A missing caller phone or a
+    Twilio hiccup does not undo the booking — the event stands and ``sms_sent``
+    reports whether the text went out.
+
+    Args:
+        request: FastAPI request (required by slowapi).
+        body: Chosen slot, location, and optional title/notes.
+        x_mirenta_internal_key: Shared secret from the LiveKit Cloud agent.
+
+    Returns:
+        VoiceScheduleResponse: Booking + confirmation-text outcome.
+    """
+    _ = request
+    _require_internal_api_key(x_mirenta_internal_key)
+    client = await get_service_role_client()
+    org = await _load_org_for_scheduling(client, body.org_id)
+    tz_name = str(org.get("timezone") or "America/Los_Angeles")
+
+    try:
+        start = datetime.fromisoformat(body.start)
+        end = datetime.fromisoformat(body.end)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_slot_datetime") from e
+
+    company_name = str(org.get("name") or settings.DEFAULT_PERSONA_NAME)
+    summary = body.summary or f"Meeting with {company_name}"
+
+    try:
+        booked = await book_meeting(
+            org_id=body.org_id,
+            timezone=tz_name,
+            start=start,
+            end=end,
+            summary=summary,
+            location=body.location,
+            description=body.notes,
+        )
+    except CalendarNotConnectedError:
+        logger.info("voice_schedule_not_connected", org_id=body.org_id)
+        return VoiceScheduleResponse(booked=False, connected=False)
+
+    label = format_slot_label(booked.start.astimezone(start.tzinfo) if start.tzinfo else booked.start)
+    sms_sent = await _send_confirmation_sms(
+        client,
+        org=org,
+        org_id=body.org_id,
+        contact_id=body.contact_id,
+        company_name=company_name,
+        label=label,
+        location=body.location,
+    )
+
+    logger.info(
+        "voice_meeting_scheduled",
+        org_id=body.org_id,
+        contact_id=body.contact_id,
+        event_id=booked.event_id,
+        sms_sent=sms_sent,
+    )
+    return VoiceScheduleResponse(
+        booked=True,
+        connected=True,
+        start=booked.start.isoformat(),
+        end=booked.end.isoformat(),
+        sms_sent=sms_sent,
+        label=label,
+    )
+
+
+async def _send_confirmation_sms(
+    client: Any,
+    *,
+    org: dict[str, Any],
+    org_id: str,
+    contact_id: str,
+    company_name: str,
+    label: str,
+    location: str | None,
+) -> bool:
+    """Text the caller a booking confirmation; return whether it was sent.
+
+    Best-effort: the booking already succeeded, so any failure here (no caller
+    phone, no Twilio identity, transient send error) is logged and reported via
+    the return value rather than raised — the meeting stands either way.
+    """
+    contact_response = await execute_query(
+        client.table("contacts").select("phone").eq("id", contact_id).maybe_single()
+    )
+    contact_row = getattr(contact_response, "data", None)
+    caller_phone = (contact_row or {}).get("phone")
+    if not caller_phone:
+        logger.info("voice_confirmation_sms_skipped_no_phone", contact_id=contact_id)
+        return False
+
+    messaging_service_sid = org.get("twilio_messaging_service_sid")
+    from_number = org.get("phone")
+    if not messaging_service_sid and not from_number:
+        logger.info("voice_confirmation_sms_skipped_no_sender", org_id=org_id)
+        return False
+
+    where = f" at {location}" if location else ""
+    body_text = f"You are confirmed with {company_name} on {label}{where}. Reply here if you need to make a change."
+
+    subaccount_sid = org.get("twilio_subaccount_sid")
+    auth_token = await load_org_twilio_auth_token(client, org_id) if subaccount_sid else None
+
+    try:
+        await send_sms(
+            to=caller_phone,
+            body=body_text,
+            from_=from_number,
+            messaging_service_sid=messaging_service_sid,
+            subaccount_sid=subaccount_sid,
+            auth_token=auth_token,
+        )
+    except Exception:
+        logger.exception("voice_confirmation_sms_failed", contact_id=contact_id)
+        return False
+    return True

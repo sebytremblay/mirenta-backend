@@ -169,6 +169,24 @@ class Settings:
         # LiveKit URL/keys live on the agent (`livekit_agent/.env`).
         self.MIRENTA_INTERNAL_API_KEY = os.getenv("MIRENTA_INTERNAL_API_KEY", "")
 
+        # Google Calendar OAuth — realtors connect their Google Calendar so the
+        # voice agent can read availability and book meetings. Web-app OAuth
+        # client (Console → APIs & Services → Credentials). The redirect URI must
+        # match a registered Authorized redirect URI exactly and track
+        # APP_BASE_URL (see GOOGLE_OAUTH_REDIRECT_URI default below).
+        self.GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+        self.GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+        self.GOOGLE_OAUTH_REDIRECT_URI = os.getenv(
+            "GOOGLE_OAUTH_REDIRECT_URI", f"{self.APP_BASE_URL}/api/integrations/google/callback"
+        )
+        # Fernet key (url-safe base64, 32 bytes) encrypting stored Google refresh
+        # tokens at rest. Independent from the Twilio key so the two secrets can
+        # rotate separately; required to connect a Google account.
+        self.GOOGLE_TOKEN_ENCRYPTION_KEY = os.getenv("GOOGLE_TOKEN_ENCRYPTION_KEY", "")
+        # Where the OAuth callback sends the browser back after linking. The
+        # dashboard reads ?google=connected|error to show a result banner.
+        self.WEBSITE_BASE_URL = os.getenv("WEBSITE_BASE_URL", "http://localhost:3000")
+
         # LiveKit Cloud SIP inbound trunk host (e.g. "<project>.sip.livekit.cloud"),
         # no "sip:" scheme. Set on the LiveKit Cloud project's SIP settings page
         # after creating the inbound trunk + dispatch rule (see
@@ -229,6 +247,7 @@ class Settings:
             "sms_webhook": ["120 per minute"],
             "voice_webhook": ["60 per minute"],
             "voice_internal": ["120 per minute"],
+            "integrations": ["60 per minute"],
             "agent_chat": ["30 per minute"],
         }
 

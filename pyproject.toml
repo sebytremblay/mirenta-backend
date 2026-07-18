@@ -61,6 +61,10 @@ test = ["httpx>=0.28.1", "pytest>=8.3.5"]
 [tool.pytest.ini_options]
 markers = ["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
 python_files = ["test_*.py", "*_test.py", "tests.py"]
+# Scope to the backend suite. `livekit_agent/` is a separate project with its
+# own venv + pythonpath (run via `make voice-agent-test`); collecting it here
+# fails on its `src`-relative imports.
+testpaths = ["tests"]
 
 [tool.black]
 line-length = 119

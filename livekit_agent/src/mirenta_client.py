@@ -62,6 +62,56 @@ class MirentaVoiceClient:
             self._raise_for_status(response)
             return response.json()
 
+    async def get_availability(
+        self,
+        *,
+        org_id: str,
+        contact_id: str,
+        weekdays: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Fetch open calendar slots for this org (optionally filtered by weekday)."""
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            response = await client.post(
+                self._url("/internal/voice/availability"),
+                headers=self._headers(),
+                json={
+                    "org_id": org_id,
+                    "contact_id": contact_id,
+                    "weekdays": weekdays or [],
+                },
+            )
+            self._raise_for_status(response)
+            return response.json()
+
+    async def schedule_meeting(
+        self,
+        *,
+        org_id: str,
+        contact_id: str,
+        start: str,
+        end: str,
+        location: str | None = None,
+        summary: str | None = None,
+        notes: str | None = None,
+    ) -> dict[str, Any]:
+        """Book a chosen slot and text the caller a confirmation."""
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            response = await client.post(
+                self._url("/internal/voice/schedule-meeting"),
+                headers=self._headers(),
+                json={
+                    "org_id": org_id,
+                    "contact_id": contact_id,
+                    "start": start,
+                    "end": end,
+                    "location": location,
+                    "summary": summary,
+                    "notes": notes,
+                },
+            )
+            self._raise_for_status(response)
+            return response.json()
+
     async def finalize(
         self,
         *,

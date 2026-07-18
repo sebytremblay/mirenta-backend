@@ -9,6 +9,7 @@ the Mirenta Runtime agent loop — see `docs/architecture.md`.
 from fastapi import APIRouter
 
 from app.api.routers.contacts import router as contacts_router
+from app.api.routers.google_oauth import router as google_oauth_router
 from app.api.routers.health import router as health_router
 from app.api.routers.knowledge import router as knowledge_router
 from app.api.routers.organizations import router as organizations_router
@@ -26,3 +27,4 @@ api_router.include_router(contacts_router, tags=["Contacts"])
 api_router.include_router(knowledge_router, tags=["Knowledge"])
 api_router.include_router(signals_router, tags=["Signals"])
 api_router.include_router(voice_router, tags=["Voice"])
+api_router.include_router(google_oauth_router, tags=["Integrations"])
