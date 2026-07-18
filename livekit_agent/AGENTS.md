@@ -43,6 +43,16 @@ uv run pytest                        # unit tests
 From the repo root: `make voice-agent-console`, `make voice-agent-dev`,
 `make voice-agent-deploy`.
 
+Deployment is automated: a push to `main` that touches `livekit_agent/`
+triggers the `Deploy voice agent` GitHub Actions workflow
+(`.github/workflows/deploy-voice-agent.yml`), which runs
+`scripts/deploy.sh`. Deploy by hand only when working off `main`. The agent
+ships separately from the Render backend, so skipping a redeploy leaves the
+deployed agent on older code (for example missing a newly added voice tool)
+even when the backend is current. `scripts/deploy.sh` never sends secrets, so
+existing agent secrets persist across deploys; change them with
+`lk agent update-secrets`, not through a deploy.
+
 ## Docs
 
 Prefer current LiveKit docs (`lk docs` or https://docs.livekit.io/agents/) over

@@ -152,7 +152,7 @@ If it's a false positive, add `# pragma: allowlist secret` to the end of the fla
 Set `LANGFUSE_TRACING_ENABLED=false` in your `.env` to disable tracing entirely during development.
 
 **LiveKit agent never speaks / no transcripts**
-Confirm the agent is deployed or running (`make voice-agent-dev` / `make voice-agent-console`), `DEEPGRAM_API_KEY` / `OPENAI_API_KEY` are set on the agent, and for bootstrap/finalize that `MIRENTA_API_BASE_URL` reaches FastAPI with a matching `API_PREFIX` and `MIRENTA_INTERNAL_API_KEY`. After changing `livekit_agent/`, redeploy with `make voice-agent-deploy` (or `lk agent deploy`).
+Confirm the agent is deployed or running (`make voice-agent-dev` / `make voice-agent-console`), `DEEPGRAM_API_KEY` / `OPENAI_API_KEY` are set on the agent, and for bootstrap/finalize that `MIRENTA_API_BASE_URL` reaches FastAPI with a matching `API_PREFIX` and `MIRENTA_INTERNAL_API_KEY`. Pushes to `main` that touch `livekit_agent/` redeploy the agent automatically through the `Deploy voice agent` GitHub Actions workflow (`.github/workflows/deploy-voice-agent.yml`); redeploy by hand only when working off `main`, with `make voice-agent-deploy` (or `lk agent deploy`). A stale agent is a common cause of this symptom: the backend and the agent ship separately, so an agent left un-redeployed runs older code (for example without a newly added voice tool) even while the backend is current.
 
 **Agent Console exits or never speaks**
 Console/browser joins are standard (non-SIP) participants and use a playground persona without Mirenta bootstrap/finalize. If Console sessions exit unexpectedly, check agent logs and redeploy from this repo.
