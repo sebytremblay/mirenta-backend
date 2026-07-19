@@ -78,7 +78,37 @@ async def test_schedule_meeting_posts_expected_request() -> None:
     assert result["sms_sent"] is True
 
 
-def test_build_scheduling_tools_returns_two_tools() -> None:
+@pytest.mark.asyncio
+async def test_send_email_posts_expected_request() -> None:
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["path"] = request.url.path
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"sent": True, "connected": True, "to": "a@b.com"})
+
+    client = MirentaVoiceClient(base_url="https://api.example.com", api_key="secret", api_prefix="/api")
+    with patch.object(mirenta_client.httpx, "AsyncClient", _patched_async_client(handler)):
+        result = await client.send_email(
+            org_id="o1",
+            contact_id="c1",
+            subject="Confirmed",
+            body="See you Monday",
+            to="a@b.com",
+        )
+
+    assert seen["path"] == "/api/internal/voice/send-email"
+    assert seen["body"] == {
+        "org_id": "o1",
+        "contact_id": "c1",
+        "subject": "Confirmed",
+        "body": "See you Monday",
+        "to": "a@b.com",
+    }
+    assert result["sent"] is True
+
+
+def test_build_scheduling_tools_returns_three_tools() -> None:
     client = MirentaVoiceClient(base_url="https://api.example.com", api_key="secret", api_prefix="/api")
     tools = build_scheduling_tools(mirenta=client, org_id="o1", contact_id="c1")
-    assert len(tools) == 2
+    assert len(tools) == 3

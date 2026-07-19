@@ -16,8 +16,10 @@ the Google HTTP contract and token encryption.
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from datetime import datetime
+from email.message import EmailMessage
 from typing import Any
 from urllib.parse import urlencode
 
@@ -37,6 +39,7 @@ from app.core.logging import logger
 GOOGLE_AUTH_URI = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 GOOGLE_CALENDAR_BASE = "https://www.googleapis.com/calendar/v3"
+GOOGLE_GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1"
 
 # access_type=offline + prompt=consent is what makes Google return a refresh
 # token (and re-issue one on re-consent) — without it a re-auth yields only an
@@ -44,6 +47,7 @@ GOOGLE_CALENDAR_BASE = "https://www.googleapis.com/calendar/v3"
 OAUTH_SCOPES = [
     "https://www.googleapis.com/auth/calendar.events",
     "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
 ]
@@ -309,5 +313,75 @@ async def insert_event(
             response.raise_for_status()
         except httpx.HTTPStatusError:
             logger.exception("google_event_insert_failed", status=response.status_code, calendar_id=calendar_id)
+            raise
+        return response.json()
+
+
+def _build_raw_message(*, sender: str | None, to: str, subject: str, body: str) -> str:
+    """Encode a plain-text email as Gmail's base64url ``raw`` payload.
+
+    Gmail's ``messages/send`` takes an RFC 2822 message, base64url-encoded. We
+    build a minimal text/plain message; ``From`` is optional because Gmail sends
+    as the authenticated account when it is omitted.
+
+    Args:
+        sender: ``From`` address, or ``None`` to let Gmail use the account's own.
+        to: Recipient email address.
+        subject: Email subject line.
+        body: Plain-text email body.
+
+    Returns:
+        str: The base64url-encoded MIME message.
+    """
+    message = EmailMessage()
+    message["To"] = to
+    message["Subject"] = subject
+    if sender:
+        message["From"] = sender
+    message.set_content(body)
+    return base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=4),
+    retry=retry_if_exception(_is_transient_http_error),
+    reraise=True,
+)
+async def send_gmail(
+    access_token: str,
+    *,
+    to: str,
+    subject: str,
+    body: str,
+    sender: str | None = None,
+) -> dict[str, Any]:
+    """Send a plain-text email as the connected Google account.
+
+    Uses the Gmail v3 ``users/me/messages/send`` endpoint, so the message is
+    sent from whichever account authorized the token (the org's connected
+    mailbox). Requires the ``gmail.send`` OAuth scope on the refresh token.
+
+    Args:
+        access_token: A fresh access token (from :func:`refresh_access_token`).
+        to: Recipient email address.
+        subject: Email subject line.
+        body: Plain-text email body.
+        sender: Optional explicit ``From`` address; defaults to the account's own.
+
+    Returns:
+        dict: The sent-message resource (includes ``id`` and ``threadId``).
+    """
+    raw = _build_raw_message(sender=sender, to=to, subject=subject, body=body)
+    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT) as client:
+        response = await client.post(
+            f"{GOOGLE_GMAIL_BASE}/users/me/messages/send",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json={"raw": raw},
+        )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError:
+            logger.exception("google_gmail_send_failed", status=response.status_code)
             raise
         return response.json()

@@ -41,6 +41,8 @@ from app.schemas.voice import (
     VoiceAvailabilityResponse,
     VoiceScheduleRequest,
     VoiceScheduleResponse,
+    VoiceSendEmailRequest,
+    VoiceSendEmailResponse,
     VoiceSessionBootstrapRequest,
     VoiceSessionBootstrapResponse,
     VoiceSessionFinalizeRequest,
@@ -54,6 +56,7 @@ from app.services.calendar import (
     get_availability,
     parse_weekdays,
 )
+from app.services.email import GoogleNotConnectedError, send_org_email
 from app.services.clients.supabase_client import execute_query, get_service_role_client
 from app.services.clients.twilio_client import generate_voice_dial_twiml, generate_voice_reject_twiml, send_sms
 from app.services.knowledge import fetch_active_knowledge, format_knowledge_for_prompt
@@ -348,13 +351,12 @@ async def voice_schedule_meeting(
     body: VoiceScheduleRequest,
     x_mirenta_internal_key: str | None = Header(default=None),
 ) -> VoiceScheduleResponse:
-    """Book a chosen slot on the org's calendar and text the caller a confirmation.
+    """Book a chosen slot on the org's calendar.
 
-    The single scheduling action: it writes the calendar event, then sends an
-    SMS to the caller (resolved from ``contact_id``, never plumbed through SIP)
-    with the confirmed time and free-text location. A missing caller phone or a
-    Twilio hiccup does not undo the booking — the event stands and ``sms_sent``
-    reports whether the text went out.
+    Writes the calendar event only. The confirmation is sent separately: the
+    agent collects the caller's email and calls ``send_email`` next, so booking
+    stays a single, side-effect-light write. The SMS confirmation helper below
+    is retained (unused here) for other tasks that still text callers.
 
     Args:
         request: FastAPI request (required by slowapi).
@@ -362,7 +364,7 @@ async def voice_schedule_meeting(
         x_mirenta_internal_key: Shared secret from the LiveKit Cloud agent.
 
     Returns:
-        VoiceScheduleResponse: Booking + confirmation-text outcome.
+        VoiceScheduleResponse: Booking outcome (``sms_sent`` stays False here).
     """
     _ = request
     _require_internal_api_key(x_mirenta_internal_key)
@@ -394,15 +396,6 @@ async def voice_schedule_meeting(
         return VoiceScheduleResponse(booked=False, connected=False)
 
     label = format_slot_label(booked.start.astimezone(start.tzinfo) if start.tzinfo else booked.start)
-    sms_sent = await _send_confirmation_sms(
-        client,
-        org=org,
-        org_id=body.org_id,
-        contact_id=body.contact_id,
-        company_name=company_name,
-        label=label,
-        location=body.location,
-    )
 
     await _emit_meeting_scheduled(
         org_id=body.org_id,
@@ -418,16 +411,70 @@ async def voice_schedule_meeting(
         org_id=body.org_id,
         contact_id=body.contact_id,
         event_id=booked.event_id,
-        sms_sent=sms_sent,
     )
     return VoiceScheduleResponse(
         booked=True,
         connected=True,
         start=booked.start.isoformat(),
         end=booked.end.isoformat(),
-        sms_sent=sms_sent,
+        sms_sent=False,
         label=label,
     )
+
+
+@router.post("/internal/voice/send-email", response_model=VoiceSendEmailResponse)
+@limiter.limit(settings.RATE_LIMIT_ENDPOINTS["voice_internal"][0])
+async def voice_send_email(
+    request: Request,
+    body: VoiceSendEmailRequest,
+    x_mirenta_internal_key: str | None = Header(default=None),
+) -> VoiceSendEmailResponse:
+    """Send an email from the org's connected Google account during a live call.
+
+    Used for the post-booking confirmation: the agent collects the caller's
+    email, then calls this to send the details. The recipient falls back to the
+    contact's email on file when the agent omits ``to``. Returns
+    ``connected=False`` (not an error) when the org has not connected Google, so
+    the agent can gracefully say it could not email and offer another channel.
+
+    Args:
+        request: FastAPI request (required by slowapi).
+        body: Recipient (optional), subject, and body.
+        x_mirenta_internal_key: Shared secret from the LiveKit Cloud agent.
+
+    Returns:
+        VoiceSendEmailResponse: Whether the email was sent, plus the recipient.
+    """
+    _ = request
+    _require_internal_api_key(x_mirenta_internal_key)
+    client = await get_service_role_client()
+
+    recipient = (body.to or "").strip() or await _load_contact_email(client, body.contact_id)
+    if not recipient:
+        logger.info("voice_send_email_skipped_no_recipient", contact_id=body.contact_id)
+        return VoiceSendEmailResponse(sent=False, connected=True, to=None)
+
+    try:
+        await send_org_email(org_id=body.org_id, to=recipient, subject=body.subject, body=body.body)
+    except GoogleNotConnectedError:
+        logger.info("voice_send_email_not_connected", org_id=body.org_id)
+        return VoiceSendEmailResponse(sent=False, connected=False, to=recipient)
+    except Exception:
+        logger.exception("voice_send_email_failed", org_id=body.org_id, contact_id=body.contact_id)
+        return VoiceSendEmailResponse(sent=False, connected=True, to=recipient)
+
+    logger.info("voice_send_email_sent", org_id=body.org_id, contact_id=body.contact_id)
+    return VoiceSendEmailResponse(sent=True, connected=True, to=recipient)
+
+
+async def _load_contact_email(client: Any, contact_id: str) -> str | None:
+    """Return the contact's email on file, or ``None`` when unset/absent."""
+    response = await execute_query(
+        client.table("contacts").select("email").eq("id", contact_id).maybe_single()
+    )
+    row = getattr(response, "data", None)
+    email = (row or {}).get("email")
+    return str(email).strip() if email else None
 
 
 async def _send_confirmation_sms(
@@ -442,9 +489,10 @@ async def _send_confirmation_sms(
 ) -> bool:
     """Text the caller a booking confirmation; return whether it was sent.
 
-    Best-effort: the booking already succeeded, so any failure here (no caller
-    phone, no Twilio identity, transient send error) is logged and reported via
-    the return value rather than raised — the meeting stands either way.
+    Retained for future texting tasks but no longer wired into booking — the
+    voice flow now confirms by email (see ``voice_send_email``). Best-effort:
+    any failure here (no caller phone, no Twilio identity, transient send error)
+    is logged and reported via the return value rather than raised.
     """
     contact_response = await execute_query(
         client.table("contacts").select("phone").eq("id", contact_id).maybe_single()
