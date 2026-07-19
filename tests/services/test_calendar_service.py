@@ -32,7 +32,7 @@ def _credential() -> GoogleCredential:
 
 def test_get_availability_refreshes_token_and_returns_slots() -> None:
     now = datetime(2026, 7, 20, 9, 0, tzinfo=_LA)  # Monday
-    with patch.object(calendar, "_load_credential", new=AsyncMock(return_value=_credential())), patch.object(
+    with patch.object(calendar, "load_org_google_credential", new=AsyncMock(return_value=_credential())), patch.object(
         calendar, "refresh_access_token", new=AsyncMock(return_value="access-token")
     ) as refresh, patch.object(calendar, "query_free_busy", new=AsyncMock(return_value=[])) as free_busy:
         slots = asyncio.run(get_availability(org_id="org-1", timezone="America/Los_Angeles", now=now))
@@ -46,7 +46,7 @@ def test_get_availability_refreshes_token_and_returns_slots() -> None:
 def test_get_availability_passes_busy_blocks_into_slot_math() -> None:
     now = datetime(2026, 7, 20, 9, 0, tzinfo=_LA)
     busy = [BusyBlock(start="2026-07-20T09:00:00-07:00", end="2026-07-20T10:00:00-07:00")]
-    with patch.object(calendar, "_load_credential", new=AsyncMock(return_value=_credential())), patch.object(
+    with patch.object(calendar, "load_org_google_credential", new=AsyncMock(return_value=_credential())), patch.object(
         calendar, "refresh_access_token", new=AsyncMock(return_value="access-token")
     ), patch.object(calendar, "query_free_busy", new=AsyncMock(return_value=busy)):
         slots = asyncio.run(get_availability(org_id="org-1", timezone="America/Los_Angeles", now=now))
@@ -57,7 +57,7 @@ def test_get_availability_passes_busy_blocks_into_slot_math() -> None:
 
 def test_get_availability_raises_when_not_connected() -> None:
     with patch.object(
-        calendar, "_load_credential", new=AsyncMock(side_effect=CalendarNotConnectedError("org-1"))
+        calendar, "load_org_google_credential", new=AsyncMock(side_effect=CalendarNotConnectedError("org-1"))
     ):
         with pytest.raises(CalendarNotConnectedError):
             asyncio.run(
@@ -73,7 +73,7 @@ def test_book_meeting_inserts_event_and_returns_result() -> None:
     start = datetime(2026, 7, 20, 9, 0, tzinfo=_LA)
     end = datetime(2026, 7, 20, 9, 30, tzinfo=_LA)
     insert = AsyncMock(return_value={"id": "evt-1", "htmlLink": "https://cal/evt-1"})
-    with patch.object(calendar, "_load_credential", new=AsyncMock(return_value=_credential())), patch.object(
+    with patch.object(calendar, "load_org_google_credential", new=AsyncMock(return_value=_credential())), patch.object(
         calendar, "refresh_access_token", new=AsyncMock(return_value="access-token")
     ), patch.object(calendar, "insert_event", new=insert):
         result = asyncio.run(

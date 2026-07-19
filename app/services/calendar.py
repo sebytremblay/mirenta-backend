@@ -190,7 +190,7 @@ def format_slot_label(slot_start: datetime) -> str:
     return f"{slot_start.strftime('%A, %B %d')} at {hour}:{slot_start.strftime('%M %p')}"
 
 
-async def _load_credential(org_id: str) -> GoogleCredential:
+async def load_org_google_credential(org_id: str) -> GoogleCredential:
     """Load and decrypt an org's Google credential via the service-role client.
 
     Raises:
@@ -233,7 +233,7 @@ async def get_availability(
     Raises:
         CalendarNotConnectedError: If the org has not connected Google.
     """
-    credential = await _load_credential(org_id)
+    credential = await load_org_google_credential(org_id)
     tz = ZoneInfo(timezone)
     access_token = await refresh_access_token(credential.refresh_token)
     window_end = now + timedelta(days=BOOKING_WINDOW_DAYS)
@@ -275,7 +275,7 @@ async def book_meeting(
     Raises:
         CalendarNotConnectedError: If the org has not connected Google.
     """
-    credential = await _load_credential(org_id)
+    credential = await load_org_google_credential(org_id)
     access_token = await refresh_access_token(credential.refresh_token)
     event = await insert_event(
         access_token,

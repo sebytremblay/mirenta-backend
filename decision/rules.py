@@ -1,7 +1,7 @@
 """Rule handlers per `Signal.type` — the decision-engine state machine.
 
-Only `inbound_sms` and `interaction_result` are handled this pass; voice
-rules are future work (see `decision/engine.py`'s `SIGNAL_HANDLERS`).
+`inbound_sms`, `interaction_result`, and `meeting_scheduled` are handled;
+other voice rules are future work (see `decision/engine.py`'s `SIGNAL_HANDLERS`).
 """
 
 from datetime import datetime, timedelta
@@ -14,6 +14,13 @@ from decision.models import DecisionOutput, ProposedTask
 
 FOLLOW_UP_DELAY = timedelta(days=3)
 FOLLOW_UP_GOAL = "follow_up_no_response"
+POST_MEETING_GOAL = "post_meeting_followup"
+# Wait this long after the meeting's scheduled end before texting, so the
+# thank-you does not fire while a tour that ran long is still in progress.
+POST_MEETING_DELAY = timedelta(hours=2)
+# current_state set once a meeting is on the books; read by
+# decide_on_interaction_result to suppress the generic silence follow-up.
+MEETING_SCHEDULED_STATE = "meeting_scheduled"
 # Outcomes that should not schedule a silence follow-up.
 TERMINAL_OUTCOMES = frozenset({"opt_out", "goal_achieved", "handoff_human"})
 
@@ -67,6 +74,57 @@ def decide_on_inbound_sms(
     )
 
 
+def decide_on_meeting_scheduled(
+    *,
+    signal: Signal,
+    contact: Contact,
+    contact_state: ContactState,
+    consent: CurrentConsent | None,
+    now: datetime,
+) -> DecisionOutput:
+    """Meeting booked -> schedule one post-meeting SMS follow-up at meeting-end.
+
+    Fired when the voice agent books a tour (`app/api/routers/voice.py`). Emits
+    one `sms` task (`goal=post_meeting_followup`) scheduled a short buffer after
+    the meeting's end, quiet-hours deferred and gated by the hard guardrails the
+    same way the 3-day silence follow-up is. Sets `current_state` so a later
+    voice `interaction_result` does not also schedule the generic silence nudge.
+
+    The meeting end time comes from the signal payload (`meeting_end`, ISO 8601).
+    A missing/invalid time emits no task rather than guessing a send time.
+    """
+    meeting_end_raw = signal.payload.get("meeting_end")
+    if not meeting_end_raw:
+        return DecisionOutput(tasks=[], contact_state_patch={}, guardrail_denials=[])
+    try:
+        meeting_end = datetime.fromisoformat(meeting_end_raw)
+    except ValueError:
+        return DecisionOutput(tasks=[], contact_state_patch={}, guardrail_denials=[])
+
+    patch: dict = {"current_state": MEETING_SCHEDULED_STATE}
+
+    denials = run_hard_guardrails(
+        contact=contact, contact_state=contact_state, consent=consent, channel="sms", now=now
+    )
+    if denials:
+        return DecisionOutput(tasks=[], contact_state_patch=patch, guardrail_denials=denials)
+
+    scheduled_for = next_allowed_send_time(contact, meeting_end + POST_MEETING_DELAY)
+    task = ProposedTask(
+        type="sms",
+        idempotency_key=derive_idempotency_key(signal.id, "sms", sequence=0),
+        scheduled_for=scheduled_for,
+        payload={
+            "goal": POST_MEETING_GOAL,
+            "trigger_signal_id": str(signal.id),
+            "meeting_start": signal.payload.get("meeting_start"),
+            "meeting_location": signal.payload.get("meeting_location"),
+        },
+    )
+    patch["next_task_at"] = scheduled_for
+    return DecisionOutput(tasks=[task], contact_state_patch=patch, guardrail_denials=[])
+
+
 def decide_on_interaction_result(
     *,
     signal: Signal,
@@ -96,8 +154,15 @@ def decide_on_interaction_result(
         patch["next_task_at"] = None
         return DecisionOutput(tasks=[], contact_state_patch=patch, guardrail_denials=[])
 
-    patch["current_state"] = "active"
     tasks: list[ProposedTask] = []
+
+    # A booked meeting owns the next touch (the post-meeting follow-up scheduled
+    # by decide_on_meeting_scheduled). Don't overwrite that state or stack a
+    # generic silence nudge on top of the thank-you.
+    if contact_state.current_state == MEETING_SCHEDULED_STATE:
+        return DecisionOutput(tasks=tasks, contact_state_patch=patch, guardrail_denials=[])
+
+    patch["current_state"] = "active"
 
     should_follow_up = outcome not in TERMINAL_OUTCOMES and source_goal != FOLLOW_UP_GOAL and contact.status != "dnc"
     if should_follow_up:

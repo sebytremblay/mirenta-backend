@@ -112,6 +112,31 @@ class MirentaVoiceClient:
             self._raise_for_status(response)
             return response.json()
 
+    async def send_email(
+        self,
+        *,
+        org_id: str,
+        contact_id: str,
+        subject: str,
+        body: str,
+        to: str | None = None,
+    ) -> dict[str, Any]:
+        """Send a confirmation email from the org's connected Google account."""
+        async with httpx.AsyncClient(timeout=self._timeout) as client:
+            response = await client.post(
+                self._url("/internal/voice/send-email"),
+                headers=self._headers(),
+                json={
+                    "org_id": org_id,
+                    "contact_id": contact_id,
+                    "subject": subject,
+                    "body": body,
+                    "to": to,
+                },
+            )
+            self._raise_for_status(response)
+            return response.json()
+
     async def finalize(
         self,
         *,

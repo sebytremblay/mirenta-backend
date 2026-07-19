@@ -116,3 +116,57 @@ async def emit_interaction_result_signal(input: EmitInteractionResultSignalInput
     )
     logger.info("interaction_result_signal_emitted", contact_id=input.contact_id, signal_id=str(signal.id))
     return str(signal.id)
+
+
+class EmitMeetingScheduledSignalInput(BaseModel):
+    """Arguments to `emit_meeting_scheduled_signal`."""
+
+    org_id: str
+    contact_id: str
+    meeting_start: str
+    meeting_end: str
+    meeting_location: str | None = None
+    event_id: str | None = None
+
+
+@activity.defn
+async def emit_meeting_scheduled_signal(input: EmitMeetingScheduledSignalInput) -> str:
+    """Insert a `meeting_scheduled` signal and deliver it to the contact's workflow.
+
+    Emitted after the voice agent books a tour (`app/api/routers/voice.py`).
+    The decision engine (`decide_on_meeting_scheduled`) reads `meeting_end` off
+    the payload to schedule a post-meeting SMS follow-up. Delivered via Temporal
+    signal-with-start for the same reason as `emit_interaction_result_signal`:
+    the caller may have no `ContactLoopWorkflow` running yet.
+    """
+    client = await get_service_role_client()
+    now = datetime.now(timezone.utc).isoformat()
+    row = {
+        "org_id": input.org_id,
+        "contact_id": input.contact_id,
+        "type": "meeting_scheduled",
+        "channel": "voice",
+        "source": "system",
+        "payload": {
+            "meeting_start": input.meeting_start,
+            "meeting_end": input.meeting_end,
+            "meeting_location": input.meeting_location,
+            "event_id": input.event_id,
+        },
+        "received_at": now,
+        "delivered_at": now,
+    }
+    response = await execute_query(client.table("signals").insert(row))
+    signal = Signal(**response.data[0])
+
+    temporal_client = await get_temporal_client()
+    await temporal_client.start_workflow(
+        ContactLoopWorkflow.run,
+        ContactLoopInput(contact_id=input.contact_id, org_id=input.org_id),
+        id=f"contact-loop:{input.contact_id}",
+        task_queue=settings.TEMPORAL_TASK_QUEUE,
+        start_signal="signal_received",
+        start_signal_args=[SignalEnvelope(signal=signal, channel="sms")],
+    )
+    logger.info("meeting_scheduled_signal_emitted", contact_id=input.contact_id, signal_id=str(signal.id))
+    return str(signal.id)

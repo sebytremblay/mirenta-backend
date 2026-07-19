@@ -88,7 +88,12 @@ class VoiceScheduleRequest(BaseModel):
 
 
 class VoiceScheduleResponse(BaseModel):
-    """Result of a booking attempt + whether the confirmation text was sent."""
+    """Result of a booking attempt.
+
+    Booking no longer auto-sends a confirmation: the agent collects the caller's
+    email and calls ``send_email`` next (see :class:`VoiceSendEmailRequest`).
+    ``sms_sent`` is retained for the intact texting path but stays ``False`` here.
+    """
 
     booked: bool = Field(..., description="True when the calendar event was created")
     connected: bool = Field(..., description="False when the org has not linked Google Calendar")
@@ -96,3 +101,24 @@ class VoiceScheduleResponse(BaseModel):
     end: str | None = Field(default=None, description="Confirmed end, ISO 8601")
     sms_sent: bool = Field(default=False, description="Whether a confirmation SMS reached the caller")
     label: str | None = Field(default=None, description="Spoken-friendly confirmation label")
+
+
+class VoiceSendEmailRequest(BaseModel):
+    """Agent sends an email from the org's connected Google account."""
+
+    org_id: str
+    contact_id: str
+    subject: str = Field(..., description="Email subject line")
+    body: str = Field(..., description="Plain-text email body")
+    to: str | None = Field(
+        default=None,
+        description="Recipient email; falls back to the contact's email on file when omitted",
+    )
+
+
+class VoiceSendEmailResponse(BaseModel):
+    """Result of an email send attempt."""
+
+    sent: bool = Field(..., description="True when the email was accepted by Gmail")
+    connected: bool = Field(..., description="False when the org has not connected Google")
+    to: str | None = Field(default=None, description="Address the email was sent to, when known")

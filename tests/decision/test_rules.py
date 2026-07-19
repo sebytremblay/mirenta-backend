@@ -3,7 +3,12 @@
 from datetime import datetime, timedelta, timezone
 
 from decision.engine import evaluate
-from decision.rules import decide_on_interaction_result, decide_on_inbound_sms
+from decision.rules import (
+    POST_MEETING_DELAY,
+    decide_on_inbound_sms,
+    decide_on_interaction_result,
+    decide_on_meeting_scheduled,
+)
 from tests.decision.factories import make_contact, make_contact_state, make_signal
 
 
@@ -117,6 +122,113 @@ def test_decide_on_inbound_sms_requests_follow_up_cancel() -> None:
     output = decide_on_inbound_sms(signal=signal, contact=contact, contact_state=contact_state, consent=None, now=now)
 
     assert output.cancel_scheduled_follow_ups is True
+
+
+def test_decide_on_meeting_scheduled_emits_followup_at_meeting_end() -> None:
+    now = datetime(2026, 7, 10, 14, 0, tzinfo=timezone.utc)
+    meeting_end = datetime(2026, 7, 12, 15, 0, tzinfo=timezone.utc)
+    contact = make_contact(status="active", timezone_name="UTC")
+    contact_state = make_contact_state(contact_id=contact.id, org_id=contact.org_id)
+    signal = make_signal(
+        type="meeting_scheduled",
+        contact_id=contact.id,
+        org_id=contact.org_id,
+        payload={
+            "meeting_start": "2026-07-12T14:00:00+00:00",
+            "meeting_end": meeting_end.isoformat(),
+            "meeting_location": "123 Main St",
+        },
+    )
+
+    output = decide_on_meeting_scheduled(
+        signal=signal, contact=contact, contact_state=contact_state, consent=None, now=now
+    )
+
+    assert len(output.tasks) == 1
+    task = output.tasks[0]
+    assert task.type == "sms"
+    assert task.payload["goal"] == "post_meeting_followup"
+    assert task.payload["meeting_location"] == "123 Main St"
+    assert task.scheduled_for == meeting_end + POST_MEETING_DELAY
+    assert output.contact_state_patch["current_state"] == "meeting_scheduled"
+    assert output.contact_state_patch["next_task_at"] == task.scheduled_for
+    assert output.guardrail_denials == []
+
+
+def test_decide_on_meeting_scheduled_missing_end_emits_no_task() -> None:
+    now = datetime(2026, 7, 10, 14, 0, tzinfo=timezone.utc)
+    contact = make_contact(status="active", timezone_name="UTC")
+    contact_state = make_contact_state(contact_id=contact.id, org_id=contact.org_id)
+    signal = make_signal(
+        type="meeting_scheduled",
+        contact_id=contact.id,
+        org_id=contact.org_id,
+        payload={"meeting_start": "2026-07-12T14:00:00+00:00"},
+    )
+
+    output = decide_on_meeting_scheduled(
+        signal=signal, contact=contact, contact_state=contact_state, consent=None, now=now
+    )
+
+    assert output.tasks == []
+    assert output.contact_state_patch == {}
+
+
+def test_decide_on_meeting_scheduled_blocked_by_dnc_still_sets_state() -> None:
+    now = datetime(2026, 7, 10, 14, 0, tzinfo=timezone.utc)
+    contact = make_contact(status="dnc", timezone_name="UTC")
+    contact_state = make_contact_state(contact_id=contact.id, org_id=contact.org_id)
+    signal = make_signal(
+        type="meeting_scheduled",
+        contact_id=contact.id,
+        org_id=contact.org_id,
+        payload={"meeting_end": "2026-07-12T15:00:00+00:00"},
+    )
+
+    output = decide_on_meeting_scheduled(
+        signal=signal, contact=contact, contact_state=contact_state, consent=None, now=now
+    )
+
+    assert output.tasks == []
+    assert output.contact_state_patch["current_state"] == "meeting_scheduled"
+    assert any(denial.check == "dnc" for denial in output.guardrail_denials)
+
+
+def test_decide_on_interaction_result_suppresses_followup_after_meeting_scheduled() -> None:
+    now = datetime(2026, 7, 10, 14, 0, tzinfo=timezone.utc)
+    contact = make_contact(status="active", timezone_name="UTC")
+    contact_state = make_contact_state(
+        contact_id=contact.id, org_id=contact.org_id, current_state="meeting_scheduled"
+    )
+    signal = make_signal(
+        type="interaction_result",
+        contact_id=contact.id,
+        org_id=contact.org_id,
+        payload={"outcome": "progressed", "task_goal": "reply_to_inbound_sms"},
+    )
+
+    output = decide_on_interaction_result(
+        signal=signal, contact=contact, contact_state=contact_state, consent=None, now=now
+    )
+
+    assert output.tasks == []
+    assert "current_state" not in output.contact_state_patch
+
+
+def test_evaluate_dispatches_meeting_scheduled_to_rules_handler() -> None:
+    now = datetime(2026, 7, 10, 14, 0, tzinfo=timezone.utc)
+    contact = make_contact(timezone_name="UTC")
+    contact_state = make_contact_state(contact_id=contact.id, org_id=contact.org_id)
+    signal = make_signal(
+        type="meeting_scheduled",
+        contact_id=contact.id,
+        org_id=contact.org_id,
+        payload={"meeting_end": "2026-07-12T15:00:00+00:00"},
+    )
+
+    output = evaluate(signal=signal, contact=contact, contact_state=contact_state, consent=None, now=now)
+
+    assert len(output.tasks) == 1
 
 
 def test_evaluate_dispatches_inbound_sms_to_rules_handler() -> None:
