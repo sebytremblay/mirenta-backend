@@ -11,7 +11,13 @@ import pytest
 
 from app.services import email
 from app.services.calendar import GoogleCredential
-from app.services.email import GoogleNotConnectedError, SentEmail, send_org_email
+from app.services.email import (
+    GoogleNotConnectedError,
+    SentEmail,
+    build_meeting_confirmation_email,
+    build_post_meeting_email,
+    send_org_email,
+)
 
 
 def _credential() -> GoogleCredential:
@@ -42,3 +48,30 @@ def test_send_org_email_raises_when_not_connected() -> None:
     ):
         with pytest.raises(GoogleNotConnectedError):
             asyncio.run(send_org_email(org_id="org-1", to="a@b.com", subject="s", body="b"))
+
+
+def test_build_meeting_confirmation_email_states_when_and_where() -> None:
+    subject, body = build_meeting_confirmation_email(
+        company_name="Acme Realty", when_label="Monday, July 20 at 9:00 AM", location="123 Main St"
+    )
+    assert "Acme Realty" in subject
+    assert "confirmed" in body
+    assert "Monday, July 20 at 9:00 AM" in body
+    assert "123 Main St" in body
+
+
+def test_build_meeting_confirmation_email_omits_location_when_absent() -> None:
+    _, body = build_meeting_confirmation_email(
+        company_name="Acme Realty", when_label="Monday at 9:00 AM", location=None
+    )
+    assert " at " in body  # the time label keeps its own "at"
+    assert "None" not in body
+
+
+def test_build_post_meeting_email_thanks_the_contact() -> None:
+    subject, body = build_post_meeting_email(
+        company_name="Acme Realty", when_label="Monday, July 20 at 9:00 AM", location="123 Main St"
+    )
+    assert "Thanks" in subject or "Thank" in subject
+    assert "Acme Realty" in body
+    assert "123 Main St" in body

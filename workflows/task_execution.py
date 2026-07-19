@@ -16,6 +16,7 @@ from workflows.models import TaskExecutionInput
 with workflow.unsafe.imports_passed_through():
     from activities import channels, contact_store, interactions
     from activities import logging as logging_activities
+    from app.schemas.tasks import Task
 
 ACTIVITY_TIMEOUT = timedelta(seconds=30)
 INTERACTION_TIMEOUT = timedelta(seconds=90)  # LLM call budget + margin
@@ -64,15 +65,17 @@ class TaskExecutionWorkflow:
             start_to_close_timeout=ACTIVITY_TIMEOUT,
             retry_policy=DEFAULT_RETRY_POLICY,
         )
+        # Email tasks are gated on email consent; every other type on sms.
+        channel = "email" if task.type == "email" else "sms"
         consent = await workflow.execute_activity(
             contact_store.get_current_consent,
-            contact_store.GetConsentInput(contact_id=str(task.contact_id), channel="sms"),
+            contact_store.GetConsentInput(contact_id=str(task.contact_id), channel=channel),
             start_to_close_timeout=ACTIVITY_TIMEOUT,
             retry_policy=DEFAULT_RETRY_POLICY,
         )
 
         denials = run_hard_guardrails(
-            contact=contact, contact_state=contact_state, consent=consent, channel="sms", now=workflow.now()
+            contact=contact, contact_state=contact_state, consent=consent, channel=channel, now=workflow.now()
         )
         if denials:
             await workflow.execute_activity(
@@ -96,8 +99,12 @@ class TaskExecutionWorkflow:
             retry_policy=DEFAULT_RETRY_POLICY,
         )
 
+        if task.type == "email":
+            await self._run_email_task(input, task)
+            return
+
         if task.type != "sms":
-            # Only the SMS channel is wired up this pass -- see docs/architecture.md's status table.
+            # Only sms and email channels are wired up -- see docs/architecture.md's status table.
             await workflow.execute_activity(
                 contact_store.update_task_status,
                 contact_store.UpdateTaskStatusInput(
@@ -167,6 +174,73 @@ class TaskExecutionWorkflow:
                 outcome=outcome,
                 summary=None,
                 task_goal=result.task_goal,
+            ),
+            start_to_close_timeout=ACTIVITY_TIMEOUT,
+            retry_policy=DEFAULT_RETRY_POLICY,
+        )
+        await workflow.execute_activity(
+            contact_store.update_task_status,
+            contact_store.UpdateTaskStatusInput(task_id=input.task_id, status="completed", mark_completed=True),
+            start_to_close_timeout=ACTIVITY_TIMEOUT,
+            retry_policy=DEFAULT_RETRY_POLICY,
+        )
+
+    async def _run_email_task(self, input: TaskExecutionInput, task: Task) -> None:
+        """Send the post-meeting follow-up email, then log and close the loop.
+
+        Deterministic (no LLM): the follow-up copy is composed inside
+        `channels.send_post_meeting_email` from the org name and meeting details
+        on the task payload, the same built-in pattern as the confirmation email.
+        A send that finds no recipient / no connected mailbox still completes the
+        task (the activity returns `sent=False` rather than raising). The task is
+        already marked `running` by `run()` before this branch.
+        """
+        org = await workflow.execute_activity(
+            contact_store.get_organization,
+            str(task.org_id),
+            start_to_close_timeout=ACTIVITY_TIMEOUT,
+            retry_policy=DEFAULT_RETRY_POLICY,
+        )
+
+        result = await workflow.execute_activity(
+            channels.send_post_meeting_email,
+            channels.SendPostMeetingEmailInput(
+                org_id=str(task.org_id),
+                contact_id=str(task.contact_id),
+                company_name=org.name,
+                meeting_start=task.payload.get("meeting_start"),
+                meeting_location=task.payload.get("meeting_location"),
+            ),
+            start_to_close_timeout=ACTIVITY_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=3),
+        )
+
+        outcome = "progressed" if result.sent else "no_answer"
+        interaction_id = await workflow.execute_activity(
+            logging_activities.log_interaction,
+            logging_activities.LogInteractionInput(
+                org_id=str(task.org_id),
+                contact_id=str(task.contact_id),
+                task_id=str(task.id),
+                channel="email",
+                direction="outbound",
+                agent_graph="post_meeting_email",
+                transcript=[],
+                outcome=outcome,
+                provider_ref=result.message_id,
+            ),
+            start_to_close_timeout=ACTIVITY_TIMEOUT,
+            retry_policy=DEFAULT_RETRY_POLICY,
+        )
+        await workflow.execute_activity(
+            logging_activities.emit_interaction_result_signal,
+            logging_activities.EmitInteractionResultSignalInput(
+                org_id=str(task.org_id),
+                contact_id=str(task.contact_id),
+                interaction_id=interaction_id,
+                channel="email",
+                outcome=outcome,
+                task_goal=task.payload.get("goal"),
             ),
             start_to_close_timeout=ACTIVITY_TIMEOUT,
             retry_policy=DEFAULT_RETRY_POLICY,

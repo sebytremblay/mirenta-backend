@@ -1,8 +1,10 @@
 # activities/
 
-## channels.py — `send_sms_message`
+## channels.py — `send_sms_message` and `send_post_meeting_email`
 
-Wraps `app.services.clients.twilio_client.send_sms`. If `subaccount_sid` and `org_id` are both set, it first calls `app.api.twilio_utils.load_org_twilio_auth_token` (via `get_service_role_client()`) to fetch that org's per-subaccount auth token before sending — orgs without a Twilio subaccount send with the platform's default credentials instead. Called only from `workflows/task_execution.py` after a successful `interactions.run_interaction` that produced a `reply`.
+`send_sms_message` wraps `app.services.clients.twilio_client.send_sms`. If `subaccount_sid` and `org_id` are both set, it first calls `app.api.twilio_utils.load_org_twilio_auth_token` (via `get_service_role_client()`) to fetch that org's per-subaccount auth token before sending — orgs without a Twilio subaccount send with the platform's default credentials instead. Called only from `workflows/task_execution.py` after a successful `interactions.run_interaction` that produced a `reply`.
+
+`send_post_meeting_email` sends the post-meeting thank-you for an `email` task. It loads the contact's email via `execute_query`, composes the subject/body deterministically with `app.services.email.build_post_meeting_email` (no LLM), and sends through the org's connected Google account via `send_org_email`. It returns a result rather than raising on the two expected empty cases: no recipient on file → `sent=False`, and a `GoogleNotConnectedError` → `sent=False, connected=False`. Called only from `workflows/task_execution.py`'s `_run_email_task`.
 
 ## contact_store.py — Supabase reads/writes, no LLM
 

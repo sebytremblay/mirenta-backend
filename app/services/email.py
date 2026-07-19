@@ -33,6 +33,65 @@ class SentEmail:
     thread_id: str | None
 
 
+def build_meeting_confirmation_email(
+    *,
+    company_name: str,
+    when_label: str,
+    location: str | None = None,
+) -> tuple[str, str]:
+    """Compose the confirmation email sent the moment a meeting is booked.
+
+    Pure (no I/O, no clock) so it is unit-testable and safe to call from the
+    booking endpoint. The wording is deterministic — the confirmation is a
+    built-in side effect of booking, not an LLM-authored message.
+
+    Args:
+        company_name: The organization's display name.
+        when_label: Spoken-friendly meeting time (from ``format_slot_label``).
+        location: Meeting location, when known.
+
+    Returns:
+        tuple[str, str]: The email subject and plain-text body.
+    """
+    where = f" at {location}" if location else ""
+    subject = f"Your meeting with {company_name} is confirmed"
+    body = (
+        f"Your meeting with {company_name} is confirmed for {when_label}{where}.\n\n"
+        f"We look forward to seeing you. Reply to this email if you need to make a change."
+    )
+    return subject, body
+
+
+def build_post_meeting_email(
+    *,
+    company_name: str,
+    when_label: str,
+    location: str | None = None,
+) -> tuple[str, str]:
+    """Compose the follow-up email sent after a meeting's scheduled end time.
+
+    Pure (no I/O, no clock) so it is unit-testable and safe to compose inside
+    the durable follow-up task. Delivered by ``activities.channels.send_post_meeting_email``
+    when the Temporal timer scheduled at meeting-end fires.
+
+    Args:
+        company_name: The organization's display name.
+        when_label: Spoken-friendly meeting time (from ``format_slot_label``).
+        location: Meeting location, when known.
+
+    Returns:
+        tuple[str, str]: The email subject and plain-text body.
+    """
+    where = f" at {location}" if location else ""
+    subject = f"Thanks for meeting with {company_name}"
+    body = (
+        f"Thank you for meeting with {company_name} for your {when_label}{where} appointment.\n\n"
+        f"We hope it went well. Reply to this email with any questions or to set up a next step, "
+        f"and we will be glad to help."
+    )
+    return subject, body
+
+
 async def send_org_email(
     *,
     org_id: str,

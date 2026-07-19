@@ -29,6 +29,7 @@ ACTIVITIES = [
     contact_store.cancel_scheduled_follow_ups,
     interactions.run_interaction,
     channels.send_sms_message,
+    channels.send_post_meeting_email,
     logging_activities.log_interaction,
     logging_activities.emit_interaction_result_signal,
 ]

@@ -76,7 +76,7 @@ class VoiceAvailabilityResponse(BaseModel):
 
 
 class VoiceScheduleRequest(BaseModel):
-    """Agent books a chosen slot and asks Mirenta to text the caller."""
+    """Agent books a chosen slot; Mirenta confirms by email as part of booking."""
 
     org_id: str
     contact_id: str
@@ -85,40 +85,25 @@ class VoiceScheduleRequest(BaseModel):
     location: str | None = Field(default=None, description="Meeting location as free text (e.g. a listing address)")
     summary: str | None = Field(default=None, description="Optional event title override")
     notes: str | None = Field(default=None, description="Optional extra context for the event description")
+    email: str | None = Field(
+        default=None,
+        description="Caller's email for the confirmation; falls back to the contact's email on file when omitted",
+    )
 
 
 class VoiceScheduleResponse(BaseModel):
     """Result of a booking attempt.
 
-    Booking no longer auto-sends a confirmation: the agent collects the caller's
-    email and calls ``send_email`` next (see :class:`VoiceSendEmailRequest`).
-    ``sms_sent`` is retained for the intact texting path but stays ``False`` here.
+    Booking sends the confirmation email itself (built in, not a separate tool):
+    when the event is created, Mirenta emails the caller from the org's
+    connected Google account. ``email_sent`` reports whether that confirmation
+    reached a recipient; ``email_to`` is the address it went to when known.
     """
 
     booked: bool = Field(..., description="True when the calendar event was created")
     connected: bool = Field(..., description="False when the org has not linked Google Calendar")
     start: str | None = Field(default=None, description="Confirmed start, ISO 8601")
     end: str | None = Field(default=None, description="Confirmed end, ISO 8601")
-    sms_sent: bool = Field(default=False, description="Whether a confirmation SMS reached the caller")
+    email_sent: bool = Field(default=False, description="Whether the confirmation email reached the caller")
+    email_to: str | None = Field(default=None, description="Address the confirmation email was sent to, when known")
     label: str | None = Field(default=None, description="Spoken-friendly confirmation label")
-
-
-class VoiceSendEmailRequest(BaseModel):
-    """Agent sends an email from the org's connected Google account."""
-
-    org_id: str
-    contact_id: str
-    subject: str = Field(..., description="Email subject line")
-    body: str = Field(..., description="Plain-text email body")
-    to: str | None = Field(
-        default=None,
-        description="Recipient email; falls back to the contact's email on file when omitted",
-    )
-
-
-class VoiceSendEmailResponse(BaseModel):
-    """Result of an email send attempt."""
-
-    sent: bool = Field(..., description="True when the email was accepted by Gmail")
-    connected: bool = Field(..., description="False when the org has not connected Google")
-    to: str | None = Field(default=None, description="Address the email was sent to, when known")
