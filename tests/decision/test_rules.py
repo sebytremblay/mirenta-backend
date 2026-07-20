@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from decision.engine import evaluate
 from decision.rules import (
-    POST_MEETING_DELAY,
+    POST_MEETING_GOAL,
     decide_on_inbound_sms,
     decide_on_interaction_result,
     decide_on_meeting_scheduled,
@@ -124,7 +124,7 @@ def test_decide_on_inbound_sms_requests_follow_up_cancel() -> None:
     assert output.cancel_scheduled_follow_ups is True
 
 
-def test_decide_on_meeting_scheduled_emits_followup_at_meeting_end() -> None:
+def test_decide_on_meeting_scheduled_emits_email_followup_at_meeting_end() -> None:
     now = datetime(2026, 7, 10, 14, 0, tzinfo=timezone.utc)
     meeting_end = datetime(2026, 7, 12, 15, 0, tzinfo=timezone.utc)
     contact = make_contact(status="active", timezone_name="UTC")
@@ -146,10 +146,12 @@ def test_decide_on_meeting_scheduled_emits_followup_at_meeting_end() -> None:
 
     assert len(output.tasks) == 1
     task = output.tasks[0]
-    assert task.type == "sms"
-    assert task.payload["goal"] == "post_meeting_followup"
+    assert task.type == "email"
+    assert task.payload["goal"] == POST_MEETING_GOAL
     assert task.payload["meeting_location"] == "123 Main St"
-    assert task.scheduled_for == meeting_end + POST_MEETING_DELAY
+    assert task.payload["meeting_start"] == "2026-07-12T14:00:00+00:00"
+    # Scheduled for the meeting's end time exactly (no quiet-hours deferral).
+    assert task.scheduled_for == meeting_end
     assert output.contact_state_patch["current_state"] == "meeting_scheduled"
     assert output.contact_state_patch["next_task_at"] == task.scheduled_for
     assert output.guardrail_denials == []

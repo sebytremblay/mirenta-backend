@@ -15,9 +15,6 @@ from decision.models import DecisionOutput, ProposedTask
 FOLLOW_UP_DELAY = timedelta(days=3)
 FOLLOW_UP_GOAL = "follow_up_no_response"
 POST_MEETING_GOAL = "post_meeting_followup"
-# Wait this long after the meeting's scheduled end before texting, so the
-# thank-you does not fire while a tour that ran long is still in progress.
-POST_MEETING_DELAY = timedelta(hours=2)
 # current_state set once a meeting is on the books; read by
 # decide_on_interaction_result to suppress the generic silence follow-up.
 MEETING_SCHEDULED_STATE = "meeting_scheduled"
@@ -82,16 +79,20 @@ def decide_on_meeting_scheduled(
     consent: CurrentConsent | None,
     now: datetime,
 ) -> DecisionOutput:
-    """Meeting booked -> schedule one post-meeting SMS follow-up at meeting-end.
+    """Meeting booked -> schedule one post-meeting follow-up email at meeting-end.
 
     Fired when the voice agent books a tour (`app/api/routers/voice.py`). Emits
-    one `sms` task (`goal=post_meeting_followup`) scheduled a short buffer after
-    the meeting's end, quiet-hours deferred and gated by the hard guardrails the
-    same way the 3-day silence follow-up is. Sets `current_state` so a later
-    voice `interaction_result` does not also schedule the generic silence nudge.
+    one `email` task (`goal=post_meeting_followup`) scheduled for the meeting's
+    end time, gated by the hard guardrails on the `email` channel. The durable
+    Temporal timer in `TaskExecutionWorkflow` sleeps until that time and sends
+    the follow-up from the org's connected Google account. Sets `current_state`
+    so a later voice `interaction_result` does not also schedule the generic
+    silence nudge.
 
     The meeting end time comes from the signal payload (`meeting_end`, ISO 8601).
-    A missing/invalid time emits no task rather than guessing a send time.
+    A missing/invalid time emits no task rather than guessing a send time. Quiet
+    hours does not apply: an email fires at the meeting's end regardless of the
+    local hour, since it is not an intrusive channel the way an SMS is.
     """
     meeting_end_raw = signal.payload.get("meeting_end")
     if not meeting_end_raw:
@@ -104,20 +105,21 @@ def decide_on_meeting_scheduled(
     patch: dict = {"current_state": MEETING_SCHEDULED_STATE}
 
     denials = run_hard_guardrails(
-        contact=contact, contact_state=contact_state, consent=consent, channel="sms", now=now
+        contact=contact, contact_state=contact_state, consent=consent, channel="email", now=now
     )
     if denials:
         return DecisionOutput(tasks=[], contact_state_patch=patch, guardrail_denials=denials)
 
-    scheduled_for = next_allowed_send_time(contact, meeting_end + POST_MEETING_DELAY)
+    scheduled_for = meeting_end
     task = ProposedTask(
-        type="sms",
-        idempotency_key=derive_idempotency_key(signal.id, "sms", sequence=0),
+        type="email",
+        idempotency_key=derive_idempotency_key(signal.id, "email", sequence=0),
         scheduled_for=scheduled_for,
         payload={
             "goal": POST_MEETING_GOAL,
             "trigger_signal_id": str(signal.id),
             "meeting_start": signal.payload.get("meeting_start"),
+            "meeting_end": signal.payload.get("meeting_end"),
             "meeting_location": signal.payload.get("meeting_location"),
         },
     )

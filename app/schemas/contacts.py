@@ -12,7 +12,7 @@ from pydantic import Field
 
 from app.schemas.base import BaseResponse
 
-Channel = Literal["sms", "voice", "webhook", "portal"]
+Channel = Literal["sms", "email", "voice", "webhook", "portal"]
 ContactStatus = Literal["active", "paused", "archived", "dnc"]
 
 
