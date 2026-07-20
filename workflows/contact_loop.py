@@ -6,10 +6,14 @@ from temporalio import workflow
 from temporalio.common import RetryPolicy
 from temporalio.workflow import ParentClosePolicy
 
-from decision.engine import evaluate
-from workflows.models import ContactLoopInput, SignalEnvelope, TaskExecutionInput
-
 with workflow.unsafe.imports_passed_through():
+    # `decision.*` and `workflows.models` are deterministic, but importing them
+    # runs `app/schemas/__init__.py`, which eagerly pulls in langgraph -> sniffio.
+    # sniffio subclasses threading.local at import time, which the workflow
+    # sandbox forbids, so reuse the host modules instead of reimporting them.
+    from decision.engine import evaluate
+    from workflows.models import ContactLoopInput, SignalEnvelope, TaskExecutionInput
+
     from activities import contact_store
 
 ACTIVITY_TIMEOUT = timedelta(seconds=10)
