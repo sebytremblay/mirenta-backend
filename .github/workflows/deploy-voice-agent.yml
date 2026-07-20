@@ -1,0 +1,36 @@
+name: Deploy voice agent
+
+# Keep the deployed LiveKit Cloud voice agent in sync with main. The backend
+# on Render already auto-deploys from main; the agent worker in livekit_agent/
+# ships separately, so a change that touches both (for example a new voice
+# tool) needs this job to keep the agent from going stale.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "livekit_agent/**"
+      - ".github/workflows/deploy-voice-agent.yml"
+  # Allow a manual redeploy from the Actions tab without a code change.
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-voice-agent
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install LiveKit CLI
+        run: curl -sSL https://get.livekit.io/cli | bash
+
+      - name: Deploy agent to LiveKit Cloud
+        env:
+          LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
+          LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+          LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+        run: bash livekit_agent/scripts/deploy.sh
