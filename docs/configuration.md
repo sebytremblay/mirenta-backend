@@ -87,17 +87,20 @@ lk sip dispatch create livekit_agent/sip/dispatch-rule.json
 | `TEMPORAL_TASK_QUEUE` | `mirenta-runtime` | Task queue the worker polls and the API dispatches workflows to — must match on both sides |
 | `TEMPORAL_TLS` | `false` | Set `true` for Temporal Cloud |
 
-The API process signal-with-starts `ContactLoopWorkflow`s but doesn't execute them — run `make worker` as a separate process (or deployment) to actually process the agent loop. LiveKit voice sessions (when used) run outside Temporal (see [Architecture](architecture.md)); only the finalize step re-enters the loop.
+The API process signal-with-starts `ContactLoopWorkflow`s but doesn't execute them — the worker (`worker/main.py`, `make worker` locally) polls the task queue and runs the agent loop. LiveKit voice sessions (when used) run outside Temporal (see [Architecture](architecture.md)); only the finalize step re-enters the loop.
 
-### Redeploying the worker
+### Deploying the API and worker
 
-Production Temporal runs on Temporal Cloud, so the managed server needs no deploy. The worker process does. The Render API auto-deploys from `main` but never runs the worker, so a push to `main` that touches worker code redeploys the worker separately through the `Deploy Temporal worker` GitHub Actions workflow (`.github/workflows/deploy-temporal-worker.yml`). The job fires on changes under `worker/`, `workflows/`, `activities/`, `app/`, or the dependency lockfiles, and calls the worker service's Render deploy hook.
+Production Temporal runs on Temporal Cloud, so the managed server needs no deploy. The API and the worker do, and they deploy as two separate Render services declared in one blueprint (`render.yaml` at the repo root):
 
-| Secret | Where | Description |
-| --- | --- | --- |
-| `RENDER_TEMPORAL_WORKER_DEPLOY_HOOK` | GitHub repository secret | Render deploy-hook URL for the worker service (Render dashboard → worker service → Settings → Deploy Hook). When absent, the workflow logs and exits cleanly instead of failing. |
+| Service | Render type | Start command | Role |
+| --- | --- | --- | --- |
+| `mirenta-backend` | Web Service | `uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT` | Serves HTTP; enqueues workflows into Temporal |
+| `mirenta-temporal-worker` | Background Worker | `uv run python -m worker.main` | Polls the task queue; runs the workflows and activities |
 
-Trigger a redeploy by hand from the Actions tab (`workflow_dispatch`) when a worker restart is needed without a code change.
+Both auto-deploy from `main`, so a push that changes workflow, activity, or worker code redeploys the worker on its own — no separate deploy trigger required. Both read the same `mirenta-runtime` environment group, which keeps `TEMPORAL_TASK_QUEUE` (and every other shared secret) identical across the two; mismatched task queues silently strand the loop.
+
+To bring the blueprint online the first time: create the `mirenta-runtime` env group in the Render dashboard and fill its values, then connect the blueprint (Render dashboard → Blueprints → New Blueprint Instance → pick this repo). Render adopts the existing `mirenta-backend` web service by name and provisions `mirenta-temporal-worker` fresh.
 
 ---
 

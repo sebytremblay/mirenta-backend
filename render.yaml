@@ -1,0 +1,119 @@
+# Render Blueprint — declares both processes this repo runs in production.
+#
+# Two long-running services share one codebase but play opposite roles:
+#   - mirenta-backend        (web)    the FastAPI API. Serves HTTP: auth,
+#                                     dashboard reads/writes, Twilio SMS/voice
+#                                     webhooks. On webhook, it signal-with-starts
+#                                     a ContactLoopWorkflow into Temporal and
+#                                     returns — it never executes the loop.
+#   - mirenta-temporal-worker (worker) the Temporal worker (worker/main.py).
+#                                     Polls the shared task queue and actually
+#                                     runs ContactLoopWorkflow, TaskExecutionWorkflow,
+#                                     and their activities. Binds no port.
+#
+# Temporal sits between them: the API produces work, Temporal schedules and
+# durably holds it (timers fire minutes to weeks out), the worker consumes it.
+# TEMPORAL_TASK_QUEUE MUST be identical on both services or the API enqueues to
+# one queue and the worker polls another and nothing runs.
+#
+# Env vars live in the `mirenta-runtime` env group so the two services cannot
+# drift apart. Create the group in the Render dashboard and set its values
+# there before the first worker deploy (see docs/configuration.md).
+
+services:
+  # ---------------------------------------------------------------------------
+  # FastAPI API (adopts the existing service — name/build/start match the live
+  # dashboard config verbatim so Render updates it in place instead of creating
+  # a duplicate). envVars are intentionally omitted here; the API keeps the
+  # environment already configured on the dashboard service.
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: mirenta-backend
+    runtime: python
+    region: oregon
+    plan: starter
+    branch: main
+    autoDeploy: true
+    buildCommand: uv sync --frozen && uv cache prune --ci
+    startCommand: uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - fromGroup: mirenta-runtime
+
+  # ---------------------------------------------------------------------------
+  # Temporal worker — new. Background Worker, no port, no health check. Same
+  # build as the API; start command matches `make worker`.
+  # ---------------------------------------------------------------------------
+  - type: worker
+    name: mirenta-temporal-worker
+    runtime: python
+    region: oregon
+    plan: starter
+    branch: main
+    autoDeploy: true
+    buildCommand: uv sync --frozen && uv cache prune --ci
+    startCommand: uv run python -m worker.main
+    envVars:
+      - fromGroup: mirenta-runtime
+
+envVarGroups:
+  # Shared environment for both services. Values are set in the Render dashboard
+  # (envVarGroups declared in a blueprint create the group and its keys, but
+  # secret values are entered there, not committed). Keep this the single source
+  # of truth for anything both the API and worker read from app/core/config.py.
+  - name: mirenta-runtime
+    envVars:
+      # Temporal (Temporal Cloud in production)
+      - key: TEMPORAL_ADDRESS
+        sync: false
+      - key: TEMPORAL_NAMESPACE
+        sync: false
+      - key: TEMPORAL_KEY
+        sync: false
+      - key: TEMPORAL_TASK_QUEUE
+        sync: false
+      - key: TEMPORAL_TLS
+        sync: false
+      # Supabase (Postgres + Auth + service-role for agent-loop tables)
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_JWKS_URL
+        sync: false
+      - key: SUPABASE_DB_HOST
+        sync: false
+      - key: SUPABASE_DB_PORT
+        sync: false
+      - key: SUPABASE_DB_NAME
+        sync: false
+      - key: SUPABASE_DB_USER
+        sync: false
+      - key: SUPABASE_DB_PASSWORD
+        sync: false
+      # LLM + observability
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false
+      - key: LANGFUSE_BASE_URL
+        sync: false
+      # Twilio (SMS send from activities/channels.py)
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_TOKEN_ENCRYPTION_KEY
+        sync: false
+      # App
+      - key: APP_ENV
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+      - key: WEBSITE_BASE_URL
+        sync: false
+      - key: MIRENTA_INTERNAL_API_KEY
+        sync: false
