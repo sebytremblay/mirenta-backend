@@ -1,4 +1,4 @@
-"""SMS channel subagent — texts on behalf of the clinic, one turn at a time.
+"""SMS channel subagent — texts on behalf of the organization, one turn at a time.
 
 Overrides `create_graph()` with a compose -> output_guardrails loop instead
 of the shared chat/tool-call graph — see `docs/architecture.md` §5 and

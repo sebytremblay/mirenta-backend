@@ -54,7 +54,7 @@ async def _find_contact_by_phone(client: Any, org_id: str, phone: str) -> dict[s
 async def get_or_create_contact_by_phone(client: Any, org_id: str, phone: str) -> dict[str, Any]:
     """Resolve the contact a message came from, auto-creating a bare one on first contact.
 
-    Inbound texts from numbers not already on the org's recall list still
+    Inbound texts from numbers not already on the org's contact list still
     get a reply (and somewhere for consent to attach to) rather than being
     dropped.
     """

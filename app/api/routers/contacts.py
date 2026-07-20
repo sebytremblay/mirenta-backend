@@ -1,4 +1,4 @@
-"""Contact (recall list) endpoints for the API.
+"""Contact (contact list) endpoints for the API.
 
 `contacts` has RLS enabled with no policies of its own — locked to the
 service role, same as the rest of the agent-loop tables (`contact_state`,
@@ -36,7 +36,7 @@ router = APIRouter()
 
 
 class CreateContactRequest(BaseModel):
-    """Request body for adding a contact to an organization's recall list."""
+    """Request body for adding a contact to an organization's contact list."""
 
     external_id: str | None = None
     first_name: str | None = None
@@ -99,7 +99,7 @@ async def list_contacts(
 async def create_contact(
     request: Request, org_id: UUID, body: CreateContactRequest, user: SupabaseUser = Depends(get_current_user)
 ):
-    """Add a contact to an organization's recall list.
+    """Add a contact to an organization's contact list.
 
     Args:
         request: The FastAPI request object for rate limiting.

@@ -24,7 +24,7 @@ Both `sms_graph.py` and `voice_graph.py` wire the same two-node loop (`compose <
   - Voice: length ≤ `channel_constraints["max_length"]` (default 600), no STOP-language requirement (voice has no equivalent convention — see the module docstring; handling a spoken "stop calling me" is an unbuilt business-logic classification problem, not a guardrail).
   - Both: `_shared_checks.check_prohibited_claims` (keyword list: "guaranteed cure", "100% effective", "no side effects") and `check_pii` (regex for SSN, credit-card-shaped numbers).
   - On violation: retries `compose` with `guardrail_feedback` set, up to `MAX_GUARDRAIL_ATTEMPTS=3`; on the 3rd failure, escalates with a hardcoded fallback message (`additional_kwargs={"guardrail_escalated": True, "violations": [...]}`) instead of sending the bad draft.
-- **`_shared_checks.py`** — intentionally the only file shared between the SMS and voice guardrail nodes, so the clinical-claims/PII patterns can't drift between channels. Channel-specific checks (length cap, STOP requirement) deliberately stay in each channel's own node file.
+- **`_shared_checks.py`** — intentionally the only file shared between the SMS and voice guardrail nodes, so the prohibited-claim/PII patterns can't drift between channels. Channel-specific checks (length cap, STOP requirement) deliberately stay in each channel's own node file.
 
 ## `tools/`
 

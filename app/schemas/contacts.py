@@ -17,7 +17,7 @@ ContactStatus = Literal["active", "paused", "archived", "dnc"]
 
 
 class Contact(BaseResponse):
-    """A contact on a clinic's recall list.
+    """A contact on an organization's contact list.
 
     Attributes:
         id: Contact ID.

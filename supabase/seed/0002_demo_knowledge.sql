@@ -12,8 +12,8 @@ cross join (
   values
     (
       'booking',
-      'How to book an appointment',
-      'Patients can book by texting a preferred day and time window, or by calling the front desk. We confirm within one business day. For same-day requests, ask them to call the office directly.'
+      'How to book a showing',
+      'Prospective renters can book a showing by texting a preferred day and time window, or by calling the office. We confirm within one business day. For same-day requests, ask them to call the office directly.'
     ),
     (
       'hours',
@@ -23,7 +23,7 @@ cross join (
     (
       'services',
       'Services',
-      'We help with scheduling, appointment reminders, and general clinic questions over SMS. Clinical advice requires speaking with a staff member.'
+      'We help with scheduling showings, appointment reminders, and general leasing questions over SMS. Application and lease decisions require speaking with a staff member.'
     ),
     (
       'faq',

@@ -1,7 +1,7 @@
 """Deterministic content checks shared by every channel's output-guardrails node.
 
 Kept separate from any one channel's guardrail node so SMS and voice check
-identical clinical-claims/PII patterns without drifting — channel-specific
+identical prohibited-claim/PII patterns without drifting — channel-specific
 concerns (SMS's length cap + required STOP language, voice's spoken-length
 cap) stay in each channel's own guardrail node.
 """
@@ -16,7 +16,7 @@ PII_PATTERNS = {
 
 
 def check_prohibited_claims(lowered_draft: str) -> list[str]:
-    """Return violation strings for any prohibited clinical-claim phrase found in `lowered_draft`."""
+    """Return violation strings for any prohibited-claim phrase found in `lowered_draft`."""
     return [f"prohibited claim: '{phrase}'" for phrase in PROHIBITED_CLAIM_KEYWORDS if phrase in lowered_draft]
 
 

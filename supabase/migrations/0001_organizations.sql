@@ -1,5 +1,5 @@
 -- 0001_organizations.sql
--- Organizations (clinics) and membership. Also defines the shared
+-- Organizations and membership. Also defines the shared
 -- extension + updated_at trigger helper reused by every later migration.
 
 create extension if not exists pgcrypto;   -- gen_random_uuid()
@@ -18,7 +18,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
--- organizations: a clinic (or clinic group)
+-- organizations: an organization running an agent (e.g. a property manager)
 -- ---------------------------------------------------------------------------
 create table organizations (
   id          uuid primary key default gen_random_uuid(),
