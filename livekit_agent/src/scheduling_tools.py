@@ -50,16 +50,33 @@ def build_scheduling_tools(
     """
 
     @function_tool
-    async def get_availability(context: RunContext, weekdays: list[str] | None = None) -> str:
+    async def get_availability(
+        context: RunContext,
+        weekdays: list[str] | None = None,
+        duration_minutes: int | None = None,
+        earliest_hour: int | None = None,
+        latest_hour: int | None = None,
+    ) -> str:
         """Look up open meeting times on the organization's calendar.
 
         Call this when the caller asks about availability or wants to book. If
         the caller named specific days ("Monday or Wednesday"), pass them in
-        ``weekdays``; otherwise omit it to offer the soonest openings. Read the
-        returned times back conversationally and let the caller pick one.
+        ``weekdays``; otherwise omit it to offer the soonest openings. By default
+        this offers reasonable daytime hours. Only pass ``earliest_hour`` /
+        ``latest_hour`` (24-hour local time) when the caller asks about a
+        specific time outside normal daytime, such as "Tuesday at 6am" (pass
+        earliest_hour=6) or "sometime in the evening" (pass latest_hour=21).
+        Meetings are 30 minutes by default; only pass ``duration_minutes`` if the
+        caller asks for a longer meeting, up to 60 minutes. Read the returned
+        times back conversationally and let the caller pick one.
 
         Args:
             weekdays: Optional weekday names to restrict to (e.g. ["monday"]).
+            duration_minutes: Meeting length in minutes (30–60); omit for 30.
+            earliest_hour: Earliest local start hour (0–23) if the caller names
+                an early time; omit for the default daytime band.
+            latest_hour: Latest local start hour (1–24) if the caller names a
+                late time; omit for the default daytime band.
         """
         _ = context
         try:
@@ -67,6 +84,9 @@ def build_scheduling_tools(
                 org_id=org_id,
                 contact_id=contact_id,
                 weekdays=weekdays or [],
+                duration_minutes=duration_minutes,
+                earliest_hour=earliest_hour,
+                latest_hour=latest_hour,
             )
         except Exception:
             logger.exception("voice_tool_get_availability_failed org_id=%s", org_id)
