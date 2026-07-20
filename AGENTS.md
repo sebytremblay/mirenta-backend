@@ -164,6 +164,7 @@ Known gaps if you're picking up related work (see `docs/architecture.md#componen
 
 - Integrate Langfuse for LLM tracing on all agent operations
 - Use structured logging with context binding (request_id, user_id)
+- **Debugging a live call or SMS?** Use the `debug-agent-session` skill (`.agents/skills/debug-agent-session/`). It resolves a customer report (phone, time, Call SID, name) to one `contact_id` and pulls the trace across Supabase, Temporal, LiveKit, Langfuse, and Render. See `docs/observability.md#debugging-a-live-agent-session`.
 
 ## Configuration Management
 
