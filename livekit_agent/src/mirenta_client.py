@@ -68,8 +68,13 @@ class MirentaVoiceClient:
         org_id: str,
         contact_id: str,
         weekdays: list[str] | None = None,
+        duration_minutes: int | None = None,
     ) -> dict[str, Any]:
-        """Fetch open calendar slots for this org (optionally filtered by weekday)."""
+        """Fetch open calendar slots for this org (optionally filtered by weekday).
+
+        ``duration_minutes`` requests the meeting length; the backend clamps it
+        to 30–60 and sizes each returned slot accordingly.
+        """
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(
                 self._url("/internal/voice/availability"),
@@ -78,6 +83,7 @@ class MirentaVoiceClient:
                     "org_id": org_id,
                     "contact_id": contact_id,
                     "weekdays": weekdays or [],
+                    "duration_minutes": duration_minutes,
                 },
             )
             self._raise_for_status(response)

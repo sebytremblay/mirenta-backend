@@ -45,11 +45,18 @@ async def test_get_availability_posts_expected_request() -> None:
 
     client = MirentaVoiceClient(base_url="https://api.example.com", api_key="secret", api_prefix="/api")
     with patch.object(mirenta_client.httpx, "AsyncClient", _patched_async_client(handler)):
-        result = await client.get_availability(org_id="o1", contact_id="c1", weekdays=["monday"])
+        result = await client.get_availability(
+            org_id="o1", contact_id="c1", weekdays=["monday"], duration_minutes=60
+        )
 
     assert seen["path"] == "/api/internal/voice/availability"
     assert seen["key"] == "secret"
-    assert seen["body"] == {"org_id": "o1", "contact_id": "c1", "weekdays": ["monday"]}
+    assert seen["body"] == {
+        "org_id": "o1",
+        "contact_id": "c1",
+        "weekdays": ["monday"],
+        "duration_minutes": 60,
+    }
     assert result["connected"] is True
 
 

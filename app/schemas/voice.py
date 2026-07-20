@@ -57,6 +57,10 @@ class VoiceAvailabilityRequest(BaseModel):
         default_factory=list,
         description="Optional weekday names to restrict to (e.g. ['monday', 'wednesday']).",
     )
+    duration_minutes: int | None = Field(
+        default=None,
+        description="Requested meeting length in minutes; clamped server-side to 30–60 (default 30).",
+    )
 
 
 class VoiceSlot(BaseModel):

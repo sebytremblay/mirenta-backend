@@ -9,9 +9,8 @@ from zoneinfo import ZoneInfo
 
 from app.services.clients.google_client import BusyBlock
 from app.services.calendar import (
-    BUSINESS_END_HOUR,
-    BUSINESS_START_HOUR,
     SLOT_MINUTES,
+    clamp_slot_minutes,
     compute_open_slots,
     format_slot_label,
     parse_weekdays,
@@ -25,14 +24,28 @@ def _monday_9am() -> datetime:
     return datetime(2026, 7, 20, 9, 0, tzinfo=_LA)
 
 
-def test_compute_open_slots_fills_a_clear_business_day() -> None:
-    now = _monday_9am()
-    slots = compute_open_slots(now=now, tz=_LA, busy=[], window_days=1, max_slots=100)
-    expected = (BUSINESS_END_HOUR - BUSINESS_START_HOUR) * 60 // SLOT_MINUTES
+def _monday_midnight() -> datetime:
+    return datetime(2026, 7, 20, 0, 0, tzinfo=_LA)
+
+
+def test_compute_open_slots_fills_a_full_clear_day() -> None:
+    # No business hours: a clear day is offerable end to end, starting at now.
+    now = _monday_midnight()
+    slots = compute_open_slots(now=now, tz=_LA, busy=[], window_days=1, max_slots=1000)
+    expected = 24 * 60 // SLOT_MINUTES  # every 30 minutes across the whole day
     assert len(slots) == expected
     assert slots[0].start == now
-    assert slots[0].end == datetime(2026, 7, 20, 9, 30, tzinfo=_LA)
-    assert slots[-1].end == datetime(2026, 7, 20, BUSINESS_END_HOUR, 0, tzinfo=_LA)
+    assert slots[0].end == datetime(2026, 7, 20, 0, 30, tzinfo=_LA)
+    assert slots[-1].end == datetime(2026, 7, 21, 0, 0, tzinfo=_LA)
+
+
+def test_compute_open_slots_offers_early_morning_and_evening() -> None:
+    # Times outside old business hours (before 9am, after 5pm) are now offerable.
+    now = _monday_midnight()
+    slots = compute_open_slots(now=now, tz=_LA, busy=[], window_days=1, max_slots=1000)
+    starts = {slot.start for slot in slots}
+    assert datetime(2026, 7, 20, 6, 0, tzinfo=_LA) in starts  # early morning
+    assert datetime(2026, 7, 20, 20, 0, tzinfo=_LA) in starts  # evening
 
 
 def test_compute_open_slots_skips_past_slots() -> None:
@@ -43,12 +56,13 @@ def test_compute_open_slots_skips_past_slots() -> None:
     assert slots[0].start == datetime(2026, 7, 20, 12, 30, tzinfo=_LA)
 
 
-def test_compute_open_slots_excludes_weekends() -> None:
-    # Friday 2026-07-24 → weekend → Monday 2026-07-27.
+def test_compute_open_slots_includes_weekends() -> None:
+    # Availability is now a pure free/busy binary: Saturday/Sunday are offered.
     friday = datetime(2026, 7, 24, 9, 0, tzinfo=_LA)
-    slots = compute_open_slots(now=friday, tz=_LA, busy=[], window_days=4, max_slots=100)
+    slots = compute_open_slots(now=friday, tz=_LA, busy=[], window_days=4, max_slots=1000)
     weekdays = {slot.start.weekday() for slot in slots}
-    assert 5 not in weekdays and 6 not in weekdays
+    assert 5 in weekdays  # Saturday
+    assert 6 in weekdays  # Sunday
 
 
 def test_compute_open_slots_avoids_busy_blocks() -> None:
@@ -72,6 +86,23 @@ def test_compute_open_slots_respects_max_slots() -> None:
     now = _monday_9am()
     slots = compute_open_slots(now=now, tz=_LA, busy=[], window_days=5, max_slots=3)
     assert len(slots) == 3
+
+
+def test_compute_open_slots_honors_sixty_minute_length() -> None:
+    now = _monday_midnight()
+    slots = compute_open_slots(now=now, tz=_LA, busy=[], window_days=1, slot_minutes=60, max_slots=1000)
+    assert len(slots) == 24  # one slot per hour across the day
+    assert slots[0].start == now
+    assert slots[0].end == datetime(2026, 7, 20, 1, 0, tzinfo=_LA)
+
+
+def test_clamp_slot_minutes_defaults_and_bounds() -> None:
+    assert clamp_slot_minutes(None) == SLOT_MINUTES  # nothing requested → default
+    assert clamp_slot_minutes(0) == SLOT_MINUTES  # falsy → default
+    assert clamp_slot_minutes(45) == 45  # in-band passes through
+    assert clamp_slot_minutes(60) == 60  # upper edge allowed
+    assert clamp_slot_minutes(15) == 30  # below floor clamps up
+    assert clamp_slot_minutes(120) == 60  # above ceiling clamps down
 
 
 def test_parse_weekdays_maps_names_and_abbreviations() -> None:

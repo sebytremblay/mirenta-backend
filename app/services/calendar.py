@@ -4,8 +4,10 @@ Sits between the Google HTTP client (``clients/google_client.py``) and the
 callers that need scheduling (the internal voice endpoints). Two jobs:
 
 - :func:`get_availability` — load the org's Google credential, refresh an access
-  token, read free/busy, and turn it into a short list of open 30-minute slots
-  during business hours in the org's timezone.
+  token, read free/busy, and turn it into a short list of open slots in the
+  org's timezone. Availability is a pure function of the calendar's free/busy:
+  any time the calendar is not busy is offerable, so the org defines its own
+  "hours" by blocking time in Google Calendar rather than us imposing them.
 - :func:`book_meeting` — insert a calendar event for a chosen slot.
 
 Slot math is factored into :func:`compute_open_slots`, a pure function (no I/O,
@@ -29,12 +31,28 @@ from app.services.clients.google_client import (
 )
 from app.services.clients.supabase_client import execute_query, get_service_role_client
 
-# Sensible defaults (configurable per-org in a later pass — see the plan).
-BUSINESS_START_HOUR = 9  # 9:00 local
-BUSINESS_END_HOUR = 17  # 17:00 local
-SLOT_MINUTES = 30
+# Meeting length: 30 minutes by default, and a caller (via the agent) may go up
+# to an hour. We clamp to this band so the agent can never book an absurd length.
+SLOT_MINUTES = 30  # default meeting length
+MIN_SLOT_MINUTES = 30  # shortest bookable meeting
+MAX_SLOT_MINUTES = 60  # longest bookable meeting
 BOOKING_WINDOW_DAYS = 7  # look this many days ahead
 MAX_SLOTS_RETURNED = 12  # keep the spoken list short
+
+
+def clamp_slot_minutes(minutes: int | None) -> int:
+    """Coerce a requested meeting length into the allowed 30–60 minute band.
+
+    Args:
+        minutes: Requested length; ``None`` or out-of-range falls back sensibly.
+
+    Returns:
+        int: ``SLOT_MINUTES`` when nothing valid was asked for, otherwise the
+        request clamped to ``[MIN_SLOT_MINUTES, MAX_SLOT_MINUTES]``.
+    """
+    if not minutes:
+        return SLOT_MINUTES
+    return max(MIN_SLOT_MINUTES, min(MAX_SLOT_MINUTES, minutes))
 
 
 class CalendarNotConnectedError(Exception):
@@ -92,14 +110,19 @@ def compute_open_slots(
     slot_minutes: int = SLOT_MINUTES,
     max_slots: int = MAX_SLOTS_RETURNED,
 ) -> list[TimeSlot]:
-    """Compute open business-hours slots, skipping busy blocks and the past.
+    """Compute open slots from the calendar's free/busy, skipping the past.
 
     Pure: no I/O, no ambient clock. ``now`` anchors "the future" and the caller
-    passes ``busy`` from a free/busy query. Weekends (Sat/Sun) are excluded.
+    passes ``busy`` from a free/busy query. Availability is treated as a pure
+    binary of the calendar: any time that does not overlap a busy block is
+    offerable. We impose no business hours and do not skip weekends — the org
+    controls its own hours by blocking time in Google Calendar. Candidate starts
+    are stepped every ``slot_minutes`` from midnight local so slot boundaries are
+    stable across calls.
 
     Args:
         now: Current instant (timezone-aware); slots before this are dropped.
-        tz: Org timezone; business hours are interpreted in it.
+        tz: Org timezone; slot boundaries are aligned in it.
         busy: Busy blocks to avoid (RFC3339 strings, any timezone).
         day_filter: When set, only include slots whose local weekday
             (Mon=0..Sun=6) is in this set — lets the agent honor "what days are
@@ -117,15 +140,12 @@ def compute_open_slots(
 
     for day_offset in range(window_days):
         day = (now_local + timedelta(days=day_offset)).date()
-        weekday = day.weekday()
-        if weekday >= 5:  # Saturday/Sunday
-            continue
-        if day_filter is not None and weekday not in day_filter:
+        if day_filter is not None and day.weekday() not in day_filter:
             continue
 
-        cursor = datetime.combine(day, time(hour=BUSINESS_START_HOUR), tzinfo=tz)
-        day_end = datetime.combine(day, time(hour=BUSINESS_END_HOUR), tzinfo=tz)
-        while cursor + step <= day_end:
+        cursor = datetime.combine(day, time(0, 0), tzinfo=tz)
+        next_midnight = datetime.combine(day + timedelta(days=1), time(0, 0), tzinfo=tz)
+        while cursor + step <= next_midnight:
             slot_end = cursor + step
             if cursor >= now_local and not _overlaps(cursor, slot_end, busy):
                 slots.append(TimeSlot(start=cursor, end=slot_end))
@@ -218,6 +238,7 @@ async def get_availability(
     timezone: str,
     now: datetime,
     day_filter: set[int] | None = None,
+    duration_minutes: int | None = None,
 ) -> list[TimeSlot]:
     """Return open slots for an org's connected calendar.
 
@@ -226,6 +247,8 @@ async def get_availability(
         timezone: IANA timezone name (from the org row).
         now: Current instant (injected for testability).
         day_filter: Optional weekday restriction (Mon=0..Sun=6).
+        duration_minutes: Requested meeting length; clamped to the 30–60 band
+            (see :func:`clamp_slot_minutes`). Each returned slot is this long.
 
     Returns:
         list[TimeSlot]: Open slots, possibly empty.
@@ -235,6 +258,7 @@ async def get_availability(
     """
     credential = await load_org_google_credential(org_id)
     tz = ZoneInfo(timezone)
+    slot_minutes = clamp_slot_minutes(duration_minutes)
     access_token = await refresh_access_token(credential.refresh_token)
     window_end = now + timedelta(days=BOOKING_WINDOW_DAYS)
     busy = await query_free_busy(
@@ -243,8 +267,14 @@ async def get_availability(
         time_min=now,
         time_max=window_end,
     )
-    slots = compute_open_slots(now=now, tz=tz, busy=busy, day_filter=day_filter)
-    logger.info("calendar_availability_computed", org_id=org_id, slots=len(slots), busy_blocks=len(busy))
+    slots = compute_open_slots(now=now, tz=tz, busy=busy, day_filter=day_filter, slot_minutes=slot_minutes)
+    logger.info(
+        "calendar_availability_computed",
+        org_id=org_id,
+        slots=len(slots),
+        busy_blocks=len(busy),
+        slot_minutes=slot_minutes,
+    )
     return slots
 
 

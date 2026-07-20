@@ -50,16 +50,23 @@ def build_scheduling_tools(
     """
 
     @function_tool
-    async def get_availability(context: RunContext, weekdays: list[str] | None = None) -> str:
+    async def get_availability(
+        context: RunContext,
+        weekdays: list[str] | None = None,
+        duration_minutes: int | None = None,
+    ) -> str:
         """Look up open meeting times on the organization's calendar.
 
         Call this when the caller asks about availability or wants to book. If
         the caller named specific days ("Monday or Wednesday"), pass them in
-        ``weekdays``; otherwise omit it to offer the soonest openings. Read the
-        returned times back conversationally and let the caller pick one.
+        ``weekdays``; otherwise omit it to offer the soonest openings. Meetings
+        are 30 minutes by default; only pass ``duration_minutes`` if the caller
+        asks for a longer meeting, up to 60 minutes. Read the returned times
+        back conversationally and let the caller pick one.
 
         Args:
             weekdays: Optional weekday names to restrict to (e.g. ["monday"]).
+            duration_minutes: Meeting length in minutes (30–60); omit for 30.
         """
         _ = context
         try:
@@ -67,6 +74,7 @@ def build_scheduling_tools(
                 org_id=org_id,
                 contact_id=contact_id,
                 weekdays=weekdays or [],
+                duration_minutes=duration_minutes,
             )
         except Exception:
             logger.exception("voice_tool_get_availability_failed org_id=%s", org_id)
