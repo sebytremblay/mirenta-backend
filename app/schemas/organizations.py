@@ -15,14 +15,14 @@ MemberRole = Literal["owner", "admin", "member"]
 
 
 class Organization(BaseResponse):
-    """A clinic (or clinic group).
+    """An organization running an agent (e.g. a property manager).
 
     Attributes:
         id: Organization ID.
-        name: The clinic's display name.
+        name: The organization's display name.
         slug: Unique URL-safe identifier for the org.
-        website_url: The clinic's public website.
-        phone: The clinic's Twilio number (E.164); inbound SMS/voice route on this.
+        website_url: The organization's public website.
+        phone: The organization's Twilio number (E.164); inbound SMS/voice route on this.
         twilio_subaccount_sid: Per-org Twilio subaccount (ISV isolation).
         twilio_phone_sid: IncomingPhoneNumber SID for `phone`.
         twilio_messaging_service_sid: Messaging Service used for outbound SMS.
@@ -32,10 +32,10 @@ class Organization(BaseResponse):
     """
 
     id: UUID = Field(..., description="Organization ID")
-    name: str = Field(..., description="The clinic's display name")
+    name: str = Field(..., description="The organization's display name")
     slug: str = Field(..., description="Unique URL-safe identifier for the org")
-    website_url: str | None = Field(default=None, description="The clinic's public website")
-    phone: str | None = Field(default=None, description="The clinic's Twilio number, E.164")
+    website_url: str | None = Field(default=None, description="The organization's public website")
+    phone: str | None = Field(default=None, description="The organization's Twilio number, E.164")
     twilio_subaccount_sid: str | None = Field(default=None, description="Per-org Twilio subaccount SID")
     twilio_phone_sid: str | None = Field(default=None, description="Twilio IncomingPhoneNumber SID")
     twilio_messaging_service_sid: str | None = Field(
@@ -47,7 +47,7 @@ class Organization(BaseResponse):
 
 
 class OrganizationMember(BaseResponse):
-    """A clinic-staff user's membership in an organization.
+    """An org-staff user's membership in an organization.
 
     Attributes:
         org_id: The organization this membership belongs to.

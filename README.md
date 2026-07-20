@@ -1,6 +1,6 @@
 # Mirenta Backend
 
-The API backend for Mirenta — a general-purpose outreach runtime. Any organization (a clinic, a dealership, a sales team, an agency — whatever) imports a contact list, and an AI agent runs outreach across SMS and voice over days-to-weeks-long campaigns, working each contact toward a goal the org defines — booking an appointment, scheduling a call, closing a deal, or anything else.
+The API backend for Mirenta — a runtime for long-running agents. An organization defines an outcome (a definition of done), and an agent pursues it over days, weeks, or months across SMS and voice, waking on each inbound signal to move a contact toward that goal. The runtime is vertical-agnostic: any organization can run an agent — a property manager, a dealership, a sales team, an agency — and the goal is whatever the org defines (booking an appointment, scheduling a call, closing a deal, or anything else). Property managers are the current beachhead: a property manager configures an agent and a phone number, a prospective renter calls to check availability and schedule a showing, and the agent confirms by email and follows up after the visit. Sending paperwork and filing the resulting applications is on the roadmap, not yet built.
 
 Built with **FastAPI** on top of **Supabase** (Postgres + Auth, RLS-enforced). Outreach itself runs on the **Mirenta Runtime** — an event-driven, durable-workflow agent-loop architecture: deterministic code decides *when, whether, and on what channel* to reach a contact; LLMs (LangGraph subagents) only handle the conversation itself. See [docs/architecture.md](docs/architecture.md).
 
@@ -91,7 +91,7 @@ worker/              # Temporal worker entrypoint (make worker)
 Everything lives in one Supabase Postgres project, as numbered SQL migrations in `supabase/migrations/` (no ORM):
 
 - `profiles` — one row per staff user (display name, onboarding flag), exposed at `/profiles/me`
-- `organizations` — any org running outreach (clinic, dealership, agency, etc.), with `organization_members` for staff and roles; `GET /organizations` lists the caller's memberships
+- `organizations` — any org running an agent (property manager, dealership, agency, etc.), with `organization_members` for staff and roles; `GET /organizations` lists the caller's memberships
 - `contacts` — the people an org is reaching out to, sourced from an external import (CRM export, spreadsheet, PMS, etc.), with 1:1 `contact_state` (decision-engine workflow state) and append-only `consent` records
 - `knowledge` — per-org facts (booking, hours, services, FAQ, policy) that ground SMS compose prompts
 - `signals` — everything that kicks off or re-enters the agent loop: inbound webhooks, replies, and completed interactions

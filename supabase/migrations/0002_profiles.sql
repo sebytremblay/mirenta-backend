@@ -1,5 +1,5 @@
 -- 0002_profiles.sql
--- One row per clinic-staff user, 1:1 with auth.users. Auto-created by the
+-- One row per org-staff user, 1:1 with auth.users. Auto-created by the
 -- handle_new_user trigger on sign-up (copies full_name/avatar_url from
 -- OAuth metadata).
 
