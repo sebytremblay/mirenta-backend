@@ -82,3 +82,26 @@ Every request gets a unique `X-Request-ID` header via [`asgi-correlation-id`](ht
 - Bound to every log line for that request
 
 Use the `X-Request-ID` from a response to grep logs and look up Langfuse traces for that exact request.
+
+---
+
+## Debugging a live agent session
+
+When a customer reports that a call or SMS misbehaved, the `debug-agent-session` skill (`.agents/skills/debug-agent-session/`) turns a loose report — a phone number, a time window, a Call SID, a contact name — into one `contact_id`/`org_id` and pulls the full cross-system trace. It resolves the session first (`scripts/resolve.py` reads the direct Postgres connection from `.env`), then hands you the exact Temporal, LiveKit, Langfuse, and Render commands with the IDs already filled in.
+
+Correlation model (every system keys off `contact_id`):
+
+```mermaid
+graph LR
+    Handle["phone / name / CallSid / time"] --> Contact["contacts row\ncontact_id + org_id"]
+    Contact --> Temporal["Temporal\ncontact-loop:{contact_id}\ntask-exec:{task_id}"]
+    Contact --> Langfuse["Langfuse\nsession_id = sms:{org_id}:{contact_id}"]
+    Contact --> LiveKit["LiveKit\nagent mirenta-voice, rooms call-*"]
+    Contact --> Render["Render logs\nweb + worker, filter by contact_id"]
+```
+
+Start there rather than hand-querying each system:
+
+```bash
+uv run python .agents/skills/debug-agent-session/scripts/resolve.py --phone "+14155550123"
+```
