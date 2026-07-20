@@ -1,0 +1,40 @@
+name: Apply Supabase migrations
+
+# Keep the deployed Postgres schema in sync with main. The backend on Render
+# auto-deploys application code and the LiveKit agent auto-deploys through
+# deploy-voice-agent.yml, but the hand-written SQL migrations in
+# supabase/migrations/ had no automated path to the database — they were run by
+# hand. That gap let the schema drift behind the code (a signals insert with a
+# signal_type the enum did not yet have failed in production). This job applies
+# any unrecorded migration on every push to main, tracked by a ledger so it is
+# safe to run repeatedly.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/**"
+      - "scripts/apply_migrations.sh"
+      - ".github/workflows/apply-migrations.yml"
+  # Allow a manual run from the Actions tab (for example after a hotfix
+  # migration applied by hand, to reconcile the ledger).
+  workflow_dispatch:
+
+concurrency:
+  # Never let two runs apply migrations against the same database at once.
+  group: apply-migrations
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Apply pending migrations
+        env:
+          # Session-pooler connection string (port 5432 — DDL needs session
+          # mode). Set as a repository secret; see the PR description.
+          DATABASE_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: bash scripts/apply_migrations.sh
