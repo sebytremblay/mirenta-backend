@@ -62,10 +62,14 @@ def build_scheduling_tools(
         Call this when the caller asks about availability or wants to book. If
         the caller named specific days ("Monday or Wednesday"), pass them in
         ``weekdays``; otherwise omit it to offer the soonest openings. By default
-        this offers reasonable daytime hours. Only pass ``earliest_hour`` /
-        ``latest_hour`` (24-hour local time) when the caller asks about a
-        specific time outside normal daytime, such as "Tuesday at 6am" (pass
-        earliest_hour=6) or "sometime in the evening" (pass latest_hour=21).
+        this offers reasonable daytime hours. Pass ``earliest_hour`` /
+        ``latest_hour`` (24-hour local time) whenever the caller asks about a
+        specific time outside normal daytime — honor the literal hour they name,
+        including late night and the small hours. Examples: "Tuesday at 6am" ->
+        earliest_hour=6; "one or two in the morning" -> earliest_hour=1;
+        "anything tonight from 9 on" -> earliest_hour=21 (the tool then runs to
+        midnight); "sometime in the evening" -> latest_hour=21. Do not round a
+        late or early request up to business hours.
         Meetings are 30 minutes by default; only pass ``duration_minutes`` if the
         caller asks for a longer meeting, up to 60 minutes. Read the returned
         times back conversationally and let the caller pick one.

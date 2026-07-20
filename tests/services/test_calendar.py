@@ -140,6 +140,32 @@ def test_resolve_hour_window_defaults_and_overrides() -> None:
     assert resolve_hour_window(15, 15) == (15, 16)
 
 
+def test_resolve_hour_window_open_ended_late_request_runs_to_midnight() -> None:
+    # "Anything from 9pm on" must open the rest of the evening, not just 9–10pm.
+    # Regression: end used to fall back to the daytime default and collapse to
+    # earliest+1, so a late open-ended request only ever searched a single hour.
+    assert resolve_hour_window(21, None) == (21, 24)
+    assert resolve_hour_window(22, None) == (22, 24)
+    assert resolve_hour_window(DEFAULT_END_HOUR, None) == (DEFAULT_END_HOUR, 24)
+    # An explicit upper bound still wins over the open-ended extension.
+    assert resolve_hour_window(21, 23) == (21, 23)
+    # An early open-ended request keeps the daytime end (1am < default end).
+    assert resolve_hour_window(1, None) == (1, DEFAULT_END_HOUR)
+
+
+def test_compute_open_slots_offers_late_evening_from_open_ended_request() -> None:
+    # End to end through the resolved window: a 9pm-onward ask surfaces 9pm,
+    # 10pm, and 11:30pm slots on the same day, ending by midnight.
+    now = _monday_midnight()
+    slots = compute_open_slots(
+        now=now, tz=_LA, busy=[], hour_window=resolve_hour_window(21, None),
+        window_days=1, max_slots=1000,
+    )
+    assert slots[0].start == datetime(2026, 7, 20, 21, 0, tzinfo=_LA)
+    assert slots[-1].end == datetime(2026, 7, 21, 0, 0, tzinfo=_LA)
+    assert datetime(2026, 7, 20, 22, 0, tzinfo=_LA) in {slot.start for slot in slots}
+
+
 def test_parse_weekdays_maps_names_and_abbreviations() -> None:
     assert parse_weekdays(["Monday", "wed"]) == {0, 2}
     assert parse_weekdays(["FRIDAY"]) == {4}
