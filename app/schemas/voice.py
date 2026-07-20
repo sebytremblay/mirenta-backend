@@ -61,6 +61,14 @@ class VoiceAvailabilityRequest(BaseModel):
         default=None,
         description="Requested meeting length in minutes; clamped server-side to 30–60 (default 30).",
     )
+    earliest_hour: int | None = Field(
+        default=None,
+        description="Earliest local start hour (0–23) the caller will consider; omit for the default daytime band.",
+    )
+    latest_hour: int | None = Field(
+        default=None,
+        description="Exclusive latest local start hour (1–24); omit for the default daytime band.",
+    )
 
 
 class VoiceSlot(BaseModel):

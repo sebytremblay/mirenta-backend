@@ -299,13 +299,14 @@ async def voice_availability(
     """Return open calendar slots for the agent to offer on a live call.
 
     Reads the org's connected Google Calendar free/busy and computes open slots
-    in the org's timezone. Availability is a pure binary of the calendar: any
-    time not marked busy is offerable, so the org sets its own hours by blocking
-    time in Google Calendar rather than us imposing business hours. An optional
-    ``weekdays`` list lets the agent honor "what days are you looking for?"
-    without a second round-trip, and ``duration_minutes`` (clamped to 30–60)
-    sizes each slot. Returns ``connected=False`` (not an error) when the org has
-    not linked Google, so the agent can gracefully offer to take a message.
+    in the org's timezone. Any time not marked busy is offerable, so the org sets
+    its own hours by blocking time in Google Calendar; we only default to a
+    reasonable daytime band so a vague "what's open?" does not surface 3am slots.
+    An optional ``weekdays`` list lets the agent honor "what days work?", and
+    ``earliest_hour``/``latest_hour`` widen the band when the caller names a
+    specific time (e.g. 6am). ``duration_minutes`` (clamped to 30–60) sizes each
+    slot. Returns ``connected=False`` (not an error) when the org has not linked
+    Google, so the agent can gracefully offer to take a message.
 
     Args:
         request: FastAPI request (required by slowapi).
@@ -328,6 +329,8 @@ async def voice_availability(
             now=datetime.now(timezone.utc),
             day_filter=parse_weekdays(body.weekdays),
             duration_minutes=body.duration_minutes,
+            earliest_hour=body.earliest_hour,
+            latest_hour=body.latest_hour,
         )
     except CalendarNotConnectedError:
         logger.info("voice_availability_not_connected", org_id=body.org_id)

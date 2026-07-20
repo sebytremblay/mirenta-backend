@@ -69,11 +69,15 @@ class MirentaVoiceClient:
         contact_id: str,
         weekdays: list[str] | None = None,
         duration_minutes: int | None = None,
+        earliest_hour: int | None = None,
+        latest_hour: int | None = None,
     ) -> dict[str, Any]:
         """Fetch open calendar slots for this org (optionally filtered by weekday).
 
         ``duration_minutes`` requests the meeting length; the backend clamps it
-        to 30–60 and sizes each returned slot accordingly.
+        to 30–60 and sizes each returned slot accordingly. ``earliest_hour`` /
+        ``latest_hour`` widen the default daytime band when the caller names a
+        specific time; omit them for the default hours.
         """
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(
@@ -84,6 +88,8 @@ class MirentaVoiceClient:
                     "contact_id": contact_id,
                     "weekdays": weekdays or [],
                     "duration_minutes": duration_minutes,
+                    "earliest_hour": earliest_hour,
+                    "latest_hour": latest_hour,
                 },
             )
             self._raise_for_status(response)
