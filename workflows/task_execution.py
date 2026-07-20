@@ -10,10 +10,14 @@ from datetime import timedelta
 from temporalio import workflow
 from temporalio.common import RetryPolicy
 
-from decision.guardrails import run_hard_guardrails
-from workflows.models import TaskExecutionInput
-
 with workflow.unsafe.imports_passed_through():
+    # `decision.*` and `workflows.models` are deterministic, but importing them
+    # runs `app/schemas/__init__.py`, which eagerly pulls in langgraph -> sniffio.
+    # sniffio subclasses threading.local at import time, which the workflow
+    # sandbox forbids, so reuse the host modules instead of reimporting them.
+    from decision.guardrails import run_hard_guardrails
+    from workflows.models import TaskExecutionInput
+
     from activities import channels, contact_store, interactions
     from activities import logging as logging_activities
     from app.schemas.tasks import Task
