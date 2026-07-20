@@ -89,6 +89,16 @@ lk sip dispatch create livekit_agent/sip/dispatch-rule.json
 
 The API process signal-with-starts `ContactLoopWorkflow`s but doesn't execute them — run `make worker` as a separate process (or deployment) to actually process the agent loop. LiveKit voice sessions (when used) run outside Temporal (see [Architecture](architecture.md)); only the finalize step re-enters the loop.
 
+### Redeploying the worker
+
+Production Temporal runs on Temporal Cloud, so the managed server needs no deploy. The worker process does. The Render API auto-deploys from `main` but never runs the worker, so a push to `main` that touches worker code redeploys the worker separately through the `Deploy Temporal worker` GitHub Actions workflow (`.github/workflows/deploy-temporal-worker.yml`). The job fires on changes under `worker/`, `workflows/`, `activities/`, `app/`, or the dependency lockfiles, and calls the worker service's Render deploy hook.
+
+| Secret | Where | Description |
+| --- | --- | --- |
+| `RENDER_TEMPORAL_WORKER_DEPLOY_HOOK` | GitHub repository secret | Render deploy-hook URL for the worker service (Render dashboard → worker service → Settings → Deploy Hook). When absent, the workflow logs and exits cleanly instead of failing. |
+
+Trigger a redeploy by hand from the Actions tab (`workflow_dispatch`) when a worker restart is needed without a code change.
+
 ---
 
 ## Database (Supabase)
