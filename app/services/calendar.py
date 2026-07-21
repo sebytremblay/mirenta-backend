@@ -55,6 +55,11 @@ def resolve_hour_window(earliest_hour: int | None, latest_hour: int | None) -> t
     ordered window. A caller naming a specific time (e.g. 6am) passes an explicit
     bound to reach outside the default band.
 
+    When the caller names only an ``earliest_hour`` that lands at or past the
+    default day's end (e.g. "anything from 9pm on"), the open end extends to
+    midnight rather than collapsing to a single hour — an open-ended late request
+    means "the rest of the evening", not just that one hour.
+
     Args:
         earliest_hour: Earliest local start hour (0–23), or ``None`` for default.
         latest_hour: Exclusive latest local start hour (1–24), or ``None``.
@@ -63,7 +68,13 @@ def resolve_hour_window(earliest_hour: int | None, latest_hour: int | None) -> t
         tuple[int, int]: ``(start_hour, end_hour)`` with ``start_hour < end_hour``.
     """
     start = DEFAULT_START_HOUR if earliest_hour is None else max(0, min(23, earliest_hour))
-    end = DEFAULT_END_HOUR if latest_hour is None else max(1, min(24, latest_hour))
+    if latest_hour is not None:
+        end = max(1, min(24, latest_hour))
+    elif start >= DEFAULT_END_HOUR:
+        # Open-ended late request ("from 9pm on"): run to midnight, not one hour.
+        end = 24
+    else:
+        end = DEFAULT_END_HOUR
     if end <= start:
         end = min(24, start + 1)
     return start, end
@@ -323,6 +334,9 @@ async def get_availability(
         busy_blocks=len(busy),
         slot_minutes=slot_minutes,
         hour_window=hour_window,
+        earliest_hour=earliest_hour,
+        latest_hour=latest_hour,
+        day_filter=sorted(day_filter) if day_filter else None,
     )
     return slots
 
