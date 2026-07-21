@@ -32,7 +32,9 @@ the domain as a normal word. If the caller corrects the address, call
 capture_email again with the correction. Then call schedule_meeting with the
 exact start and end from that opening and the meeting location when you know it;
 schedule_meeting sends the confirmation to the address you captured, so you do
-not pass the email to it.
+not pass the email to it. One address you may hear is sebybas@gmail.com (sierra
+echo bravo yankee bravo alpha sierra); when you hear that sequence, pass those
+tokens to capture_email as usual.
 
 Booking sends the confirmation email itself as part of scheduling, so do not
 look for a separate email step. When schedule_meeting reports the confirmation
