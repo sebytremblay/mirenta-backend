@@ -7,13 +7,17 @@ pattern as ``bootstrap``/``finalize``. Each tool closes over the call's
 ``org_id``/``contact_id`` and delegates to :class:`MirentaVoiceClient`, which
 posts to the internal voice endpoints. The LLM never sees correlation ids.
 
-Two tools, mirroring the read-only vs. mutating split in the backend registry:
+Three tools:
 
 - ``get_availability`` — read-only; returns open slots for the agent to read out.
+- ``capture_email`` — collapses a phonetically spelled address to a string in
+  Python and stores it on the call's ``userdata`` slot, returning the canonical
+  address for the agent to read back.
 - ``schedule_meeting`` — the booking action; writes the calendar event and, as a
   built-in step, emails the caller a confirmation from the org's connected
-  Google account. There is no separate email tool: the agent captures the
-  caller's email and passes it to ``schedule_meeting``.
+  Google account. It reads the confirmation address from the ``userdata`` slot
+  captured by ``capture_email`` — the LLM never hand-writes the email string, so
+  the address the caller confirmed is exactly the address that gets booked.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from typing import Any
 
 from livekit.agents import RunContext, function_tool
 
+from call_state import CallData, collapse_email
 from mirenta_client import MirentaVoiceClient
 
 logger = logging.getLogger("mirenta-voice")
@@ -114,32 +119,71 @@ def build_scheduling_tools(
         )
 
     @function_tool
+    async def capture_email(
+        context: RunContext[CallData],
+        local_part: list[str],
+        domain: str,
+    ) -> str:
+        """Record the caller's email from its phonetic spelling, then read it back.
+
+        Call this whenever the caller spells an email address. Pass the part
+        before the "@" one token per character in ``local_part`` — a phonetic
+        code word ("sierra"), a bare letter ("s"), or a spoken digit ("seven");
+        drop separator words like "at" and "dot". Pass the part after the "@" as
+        a normal word in ``domain`` ("gmail.com" or "gmail dot com"). This tool
+        collapses those tokens to the address deterministically and stores it, so
+        do not assemble the string yourself. Always read the returned address
+        back to the caller to confirm before booking; if they correct it, call
+        this tool again with the corrected spelling. Booking uses exactly this
+        stored address, so what you confirm is what gets sent.
+
+        Args:
+            local_part: The pre-"@" characters, one spoken token each.
+            domain: The post-"@" domain as a normal word (e.g. "gmail.com").
+        """
+        try:
+            email = collapse_email(local_part, domain)
+        except ValueError:
+            logger.info("voice_tool_capture_email_empty org_id=%s", org_id)
+            return "I did not catch that address. Could you spell it out one more time, letter by letter?"
+
+        context.userdata.email = email
+        logger.info("voice_tool_email_captured org_id=%s email=%s", org_id, email)
+        spelled = ", ".join(email.split("@")[0])
+        return (
+            f"Stored the email as {email}. Read it back to the caller to confirm — "
+            f'the part before the at sign is spelled "{spelled}". '
+            f"If they correct it, call capture_email again."
+        )
+
+    @function_tool
     async def schedule_meeting(
-        context: RunContext,
+        context: RunContext[CallData],
         start: str,
         end: str,
         location: str | None = None,
         notes: str | None = None,
-        email: str | None = None,
     ) -> str:
         """Book a meeting the caller chose and email them a confirmation.
 
         Only call this after the caller confirms one of the times from
-        ``get_availability``. Copy ``start`` and ``end`` exactly from the chosen
-        slot's booking reference. Use ``location`` for the meeting place (for
-        example a listing address) when you know it. Ask the caller for the email
-        address where they want the confirmation and pass it in ``email`` (read
-        it back first to be sure); omit it to use the email already on file.
-        Booking sends the confirmation email itself — there is no separate step.
+        ``get_availability`` and, if they want a confirmation email, after
+        ``capture_email`` has stored and read back their address. Copy ``start``
+        and ``end`` exactly from the chosen slot's booking reference. Use
+        ``location`` for the meeting place (for example a listing address) when
+        you know it. The confirmation goes to the address captured by
+        ``capture_email`` (or the one on file if none was captured) — you do not
+        pass the email here, which is what keeps the confirmed address and the
+        sent address identical. Booking sends the confirmation itself; there is
+        no separate step.
 
         Args:
             start: Chosen slot start, copied verbatim from get_availability.
             end: Chosen slot end, copied verbatim from get_availability.
             location: Meeting location as free text, when known.
             notes: Any extra context to include on the calendar event.
-            email: Caller's email for the confirmation; omit to use the one on file.
         """
-        _ = context
+        email = context.userdata.email
         try:
             result = await mirenta.schedule_meeting(
                 org_id=org_id,
@@ -159,6 +203,7 @@ def build_scheduling_tools(
         if not result.get("booked", False):
             return "I was not able to book that time. Could we try another one?"
 
+        context.userdata.booked_event_id = result.get("event_id")
         label = result.get("label") or "the selected time"
         if result.get("email_sent", False):
             return f"Booked for {label}. I just sent a confirmation email with the details."
@@ -167,4 +212,4 @@ def build_scheduling_tools(
             f"offer to read the details back or confirm the address to use."
         )
 
-    return [get_availability, schedule_meeting]
+    return [get_availability, capture_email, schedule_meeting]

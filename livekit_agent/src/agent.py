@@ -36,6 +36,7 @@ from livekit.plugins import deepgram, openai, silero
 from livekit.rtc import ParticipantKind, RemoteParticipant
 
 from call_context import infer_outcome, merge_call_context
+from call_state import CallData
 from mirenta_client import MirentaVoiceClient
 from scheduling_tools import build_scheduling_tools
 
@@ -47,6 +48,20 @@ AGENT_NAME = os.getenv("LIVEKIT_AGENT_NAME", "mirenta-voice")
 DEEPGRAM_STT_MODEL = os.getenv("DEEPGRAM_STT_MODEL", "nova-3")
 DEEPGRAM_TTS_MODEL = os.getenv("DEEPGRAM_TTS_MODEL", "aura-2-asteria-en")
 VOICE_LLM_MODEL = os.getenv("VOICE_LLM_MODEL", "gpt-4.1-mini")
+
+# Bias nova-3 toward the NATO phonetic code words so spelled-out emails stop
+# transcribing as near-homophones ("Sierra" -> "Jira"). Deepgram keyterm
+# prompting boosts recognition of these exact tokens. This is the STT-layer
+# complement to the deterministic capture_email collapse: keyterms fix what the
+# model hears, capture_email fixes what it does with it.
+_NATO_KEYTERMS = [
+    "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel",
+    "india", "juliet", "kilo", "lima", "mike", "november", "oscar", "papa",
+    "quebec", "romeo", "sierra", "tango", "uniform", "victor", "whiskey",
+    "x-ray", "yankee", "zulu",
+]
+_EMAIL_KEYTERMS = ["gmail", "at", "dot", "sebybas"]
+_STT_KEYTERMS = _NATO_KEYTERMS + _EMAIL_KEYTERMS
 
 # SIP headers_to_attributes can arrive shortly after the participant joins.
 _SIP_ATTR_WAIT_SECONDS = 3.0
@@ -113,10 +128,11 @@ def _transcript_from_history(session: AgentSession) -> list[dict[str, str]]:
     return rows
 
 
-def _build_agent_session() -> AgentSession:
-    return AgentSession(
+def _build_agent_session() -> AgentSession[CallData]:
+    return AgentSession[CallData](
+        userdata=CallData(),
         vad=silero.VAD.load(),
-        stt=deepgram.STT(model=DEEPGRAM_STT_MODEL),
+        stt=deepgram.STT(model=DEEPGRAM_STT_MODEL, keyterm=_STT_KEYTERMS),
         llm=openai.LLM(model=VOICE_LLM_MODEL),
         tts=deepgram.TTS(model=DEEPGRAM_TTS_MODEL),
         preemptive_generation=True,
