@@ -126,6 +126,7 @@ class EmitMeetingScheduledSignalInput(BaseModel):
     meeting_start: str
     meeting_end: str
     meeting_location: str | None = None
+    recipient_email: str | None = None
     event_id: str | None = None
 
 
@@ -151,6 +152,7 @@ async def emit_meeting_scheduled_signal(input: EmitMeetingScheduledSignalInput) 
             "meeting_start": input.meeting_start,
             "meeting_end": input.meeting_end,
             "meeting_location": input.meeting_location,
+            "recipient_email": input.recipient_email,
             "event_id": input.event_id,
         },
         "received_at": now,

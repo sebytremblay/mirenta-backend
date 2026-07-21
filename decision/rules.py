@@ -93,6 +93,10 @@ def decide_on_meeting_scheduled(
     A missing/invalid time emits no task rather than guessing a send time. Quiet
     hours does not apply: an email fires at the meeting's end regardless of the
     local hour, since it is not an intrusive channel the way an SMS is.
+
+    The customer's `recipient_email` (captured on the call) rides through the
+    signal payload onto the task so the send activity mails the caller, never
+    the contact row — the contact is the realtor/org, not the person who called.
     """
     meeting_end_raw = signal.payload.get("meeting_end")
     if not meeting_end_raw:
@@ -118,6 +122,7 @@ def decide_on_meeting_scheduled(
         payload={
             "goal": POST_MEETING_GOAL,
             "trigger_signal_id": str(signal.id),
+            "recipient_email": signal.payload.get("recipient_email"),
             "meeting_start": signal.payload.get("meeting_start"),
             "meeting_end": signal.payload.get("meeting_end"),
             "meeting_location": signal.payload.get("meeting_location"),

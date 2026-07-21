@@ -9,7 +9,7 @@ from app.api.twilio_utils import load_org_twilio_auth_token
 from app.core.config import settings
 from app.core.logging import logger
 from app.services.calendar import format_slot_label
-from app.services.clients.supabase_client import execute_query, get_service_role_client
+from app.services.clients.supabase_client import get_service_role_client
 from app.services.clients.twilio_client import send_sms
 from app.services.email import GoogleNotConnectedError, build_post_meeting_email, send_org_email
 
@@ -51,11 +51,19 @@ async def send_sms_message(input: SendSmsInput) -> SendSmsResult:
 
 
 class SendPostMeetingEmailInput(BaseModel):
-    """Arguments to `send_post_meeting_email`."""
+    """Arguments to `send_post_meeting_email`.
+
+    ``recipient_email`` is the customer's address captured live on the call and
+    threaded through the meeting_scheduled signal. It is intentionally *not*
+    backfilled from ``contacts.email``: the contact row is the realtor/org, not
+    the caller, so a fallback there would email the wrong party. A missing
+    recipient yields a clean ``sent=False`` rather than a misdirected send.
+    """
 
     org_id: str
     contact_id: str
     company_name: str
+    recipient_email: str | None = None
     meeting_start: str | None = None
     meeting_location: str | None = None
 
@@ -64,8 +72,8 @@ class SendPostMeetingEmailResult(BaseModel):
     """Result of `send_post_meeting_email`.
 
     ``sent`` is False (not an error) when the org has not connected Google or
-    the contact has no email on file, so the durable follow-up task completes
-    cleanly rather than exhausting its retries on a permanent condition.
+    no customer email was captured on the call, so the durable follow-up task
+    completes cleanly rather than exhausting its retries on a permanent condition.
     """
 
     sent: bool
@@ -88,20 +96,16 @@ def _meeting_label(meeting_start: str | None) -> str:
 async def send_post_meeting_email(input: SendPostMeetingEmailInput) -> SendPostMeetingEmailResult:
     """Compose and send the post-meeting follow-up email at meeting-end.
 
-    Loads the contact's email on file, composes a deterministic thank-you (no
-    LLM — this mirrors the built-in confirmation email), and sends it from the
-    org's connected Google account. Returns ``sent=False`` (not an error) when
-    the contact has no email or the org has not connected Google, so the Temporal
-    task does not retry a permanent condition. Transient Google failures still
-    raise so the activity's retry policy can take over.
+    Sends to ``input.recipient_email`` — the customer's address captured on the
+    call, not the contact row (which is the realtor/org). Composes a
+    deterministic thank-you (no LLM — this mirrors the built-in confirmation
+    email) and sends it from the org's connected Google account. Returns
+    ``sent=False`` (not an error) when no recipient was captured or the org has
+    not connected Google, so the Temporal task does not retry a permanent
+    condition. Transient Google failures still raise so the activity's retry
+    policy can take over.
     """
-    client = await get_service_role_client()
-    response = await execute_query(
-        client.table("contacts").select("email").eq("id", input.contact_id).maybe_single()
-    )
-    row = getattr(response, "data", None)
-    recipient = (row or {}).get("email")
-    recipient = str(recipient).strip() if recipient else None
+    recipient = input.recipient_email.strip() if input.recipient_email else None
     if not recipient:
         logger.info("post_meeting_email_skipped_no_recipient", contact_id=input.contact_id)
         return SendPostMeetingEmailResult(sent=False, connected=True, to=None)
