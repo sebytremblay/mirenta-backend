@@ -96,7 +96,7 @@ async def test_schedule_meeting_posts_expected_request() -> None:
     assert result["email_sent"] is True
 
 
-def test_build_scheduling_tools_returns_two_tools() -> None:
+def test_build_scheduling_tools_returns_three_tools() -> None:
     client = MirentaVoiceClient(base_url="https://api.example.com", api_key="secret", api_prefix="/api")
     tools = build_scheduling_tools(mirenta=client, org_id="o1", contact_id="c1")
-    assert len(tools) == 2
+    assert len(tools) == 3

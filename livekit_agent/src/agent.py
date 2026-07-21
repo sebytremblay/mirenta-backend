@@ -36,6 +36,7 @@ from livekit.plugins import deepgram, openai, silero
 from livekit.rtc import ParticipantKind, RemoteParticipant
 
 from call_context import infer_outcome, merge_call_context
+from call_state import CallData
 from mirenta_client import MirentaVoiceClient
 from scheduling_tools import build_scheduling_tools
 
@@ -113,8 +114,9 @@ def _transcript_from_history(session: AgentSession) -> list[dict[str, str]]:
     return rows
 
 
-def _build_agent_session() -> AgentSession:
-    return AgentSession(
+def _build_agent_session() -> AgentSession[CallData]:
+    return AgentSession[CallData](
+        userdata=CallData(),
         vad=silero.VAD.load(),
         stt=deepgram.STT(model=DEEPGRAM_STT_MODEL),
         llm=openai.LLM(model=VOICE_LLM_MODEL),
