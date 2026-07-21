@@ -137,6 +137,7 @@ def test_decide_on_meeting_scheduled_emits_email_followup_at_meeting_end() -> No
             "meeting_start": "2026-07-12T14:00:00+00:00",
             "meeting_end": meeting_end.isoformat(),
             "meeting_location": "123 Main St",
+            "recipient_email": "caller@example.com",
         },
     )
 
@@ -150,6 +151,9 @@ def test_decide_on_meeting_scheduled_emits_email_followup_at_meeting_end() -> No
     assert task.payload["goal"] == POST_MEETING_GOAL
     assert task.payload["meeting_location"] == "123 Main St"
     assert task.payload["meeting_start"] == "2026-07-12T14:00:00+00:00"
+    # The customer's captured email rides onto the task so the follow-up mails
+    # the caller, not the contact row (which is the realtor/org).
+    assert task.payload["recipient_email"] == "caller@example.com"
     # Scheduled for the meeting's end time exactly (no quiet-hours deferral).
     assert task.scheduled_for == meeting_end
     assert output.contact_state_patch["current_state"] == "meeting_scheduled"

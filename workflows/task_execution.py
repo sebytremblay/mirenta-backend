@@ -212,6 +212,7 @@ class TaskExecutionWorkflow:
                 org_id=str(task.org_id),
                 contact_id=str(task.contact_id),
                 company_name=org.name,
+                recipient_email=task.payload.get("recipient_email"),
                 meeting_start=task.payload.get("meeting_start"),
                 meeting_location=task.payload.get("meeting_location"),
             ),

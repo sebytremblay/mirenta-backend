@@ -419,6 +419,7 @@ async def voice_schedule_meeting(
         start=booked.start,
         end=booked.end,
         location=body.location,
+        recipient_email=body.email,
         event_id=booked.event_id,
     )
 
@@ -496,6 +497,7 @@ async def _emit_meeting_scheduled(
     start: datetime,
     end: datetime,
     location: str | None,
+    recipient_email: str | None,
     event_id: str,
 ) -> None:
     """Re-enter the contact's loop so the engine can schedule the post-meeting follow-up.
@@ -512,6 +514,7 @@ async def _emit_meeting_scheduled(
                 meeting_start=start.isoformat(),
                 meeting_end=end.isoformat(),
                 meeting_location=location,
+                recipient_email=recipient_email,
                 event_id=event_id,
             )
         )
