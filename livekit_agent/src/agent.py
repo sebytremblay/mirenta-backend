@@ -48,6 +48,20 @@ DEEPGRAM_STT_MODEL = os.getenv("DEEPGRAM_STT_MODEL", "nova-3")
 DEEPGRAM_TTS_MODEL = os.getenv("DEEPGRAM_TTS_MODEL", "aura-2-asteria-en")
 VOICE_LLM_MODEL = os.getenv("VOICE_LLM_MODEL", "gpt-4.1-mini")
 
+# DEMO HACK (not for main): bias nova-3 toward the NATO phonetic code words so
+# spelled-out emails stop coming back as "Jira"/"Skira" for "Sierra". Deepgram
+# nova-3 keyterm prompting boosts recognition of these exact tokens. The demo
+# address is seeded too so the STT snaps to it. Real fix lives on
+# fix/voice-email-slot-capture (deterministic capture_email tool).
+_NATO_KEYTERMS = [
+    "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel",
+    "india", "juliet", "kilo", "lima", "mike", "november", "oscar", "papa",
+    "quebec", "romeo", "sierra", "tango", "uniform", "victor", "whiskey",
+    "x-ray", "yankee", "zulu",
+]
+_DEMO_KEYTERMS = ["sebybas", "gmail", "at", "dot"]
+_STT_KEYTERMS = _NATO_KEYTERMS + _DEMO_KEYTERMS
+
 # SIP headers_to_attributes can arrive shortly after the participant joins.
 _SIP_ATTR_WAIT_SECONDS = 3.0
 _SIP_ATTR_POLL_INTERVAL = 0.1
@@ -116,7 +130,7 @@ def _transcript_from_history(session: AgentSession) -> list[dict[str, str]]:
 def _build_agent_session() -> AgentSession:
     return AgentSession(
         vad=silero.VAD.load(),
-        stt=deepgram.STT(model=DEEPGRAM_STT_MODEL),
+        stt=deepgram.STT(model=DEEPGRAM_STT_MODEL, keyterm=_STT_KEYTERMS),
         llm=openai.LLM(model=VOICE_LLM_MODEL),
         tts=deepgram.TTS(model=DEEPGRAM_TTS_MODEL),
         preemptive_generation=True,
